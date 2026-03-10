@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import type { SubagentTask } from '../types/modelTypes';
+import { DEFAULT_PROFILE } from '../models/modelCalibration';
 import type { ITool } from '../tools/ITool';
 
 // Mock tool for testing
@@ -25,7 +26,13 @@ describe('SubagentPromptGenerator', () => {
                 task: 'Investigate the authentication flow in src/auth/',
             };
 
-            const prompt = generator.generateSystemPrompt(task, [], 10);
+            const prompt = generator.generateSystemPrompt(
+                task,
+                [],
+                10,
+                undefined,
+                DEFAULT_PROFILE
+            );
 
             expect(prompt).toContain(
                 'Investigate the authentication flow in src/auth/'
@@ -38,7 +45,13 @@ describe('SubagentPromptGenerator', () => {
                 context: 'PR adds new JWT validation in auth.ts',
             };
 
-            const prompt = generator.generateSystemPrompt(task, [], 10);
+            const prompt = generator.generateSystemPrompt(
+                task,
+                [],
+                10,
+                undefined,
+                DEFAULT_PROFILE
+            );
 
             expect(prompt).toContain('PR adds new JWT validation in auth.ts');
             expect(prompt).toContain('Context from Parent Agent');
@@ -49,7 +62,13 @@ describe('SubagentPromptGenerator', () => {
                 task: 'Check for security issues',
             };
 
-            const prompt = generator.generateSystemPrompt(task, [], 10);
+            const prompt = generator.generateSystemPrompt(
+                task,
+                [],
+                10,
+                undefined,
+                DEFAULT_PROFILE
+            );
 
             expect(prompt).not.toContain('Context from Parent Agent');
         });
@@ -61,7 +80,13 @@ describe('SubagentPromptGenerator', () => {
                     'Found issue in <script>alert("xss")</script> and src/</path>',
             };
 
-            const prompt = generator.generateSystemPrompt(task, [], 10);
+            const prompt = generator.generateSystemPrompt(
+                task,
+                [],
+                10,
+                undefined,
+                DEFAULT_PROFILE
+            );
 
             expect(prompt).not.toContain('<script>');
             expect(prompt).not.toContain('</path>');
@@ -77,7 +102,13 @@ describe('SubagentPromptGenerator', () => {
             ];
 
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, tools, 10);
+            const prompt = generator.generateSystemPrompt(
+                task,
+                tools,
+                10,
+                undefined,
+                DEFAULT_PROFILE
+            );
 
             expect(prompt).toContain('find_symbol');
             expect(prompt).toContain('## Investigation Approach');
@@ -85,7 +116,13 @@ describe('SubagentPromptGenerator', () => {
 
         it('should generate prompt even with no tools', () => {
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, [], 10);
+            const prompt = generator.generateSystemPrompt(
+                task,
+                [],
+                10,
+                undefined,
+                DEFAULT_PROFILE
+            );
 
             expect(prompt).toContain('investigation subagent');
             expect(prompt).toContain('## Your Assigned Task');
@@ -93,7 +130,13 @@ describe('SubagentPromptGenerator', () => {
 
         it('should include response requirements section', () => {
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, [], 10);
+            const prompt = generator.generateSystemPrompt(
+                task,
+                [],
+                10,
+                undefined,
+                DEFAULT_PROFILE
+            );
 
             expect(prompt).toContain('## Response Requirements');
             expect(prompt).toContain('### Findings');
@@ -103,14 +146,26 @@ describe('SubagentPromptGenerator', () => {
 
         it('should include the maxIterations value in constraints', () => {
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, [], 15);
+            const prompt = generator.generateSystemPrompt(
+                task,
+                [],
+                15,
+                undefined,
+                DEFAULT_PROFILE
+            );
 
             expect(prompt).toContain('15 tool iterations');
         });
 
         it('should include investigation approach guidance', () => {
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, [], 10);
+            const prompt = generator.generateSystemPrompt(
+                task,
+                [],
+                10,
+                undefined,
+                DEFAULT_PROFILE
+            );
 
             expect(prompt).toContain('## Investigation Approach');
             expect(prompt).toContain('Gather Evidence');
@@ -119,7 +174,13 @@ describe('SubagentPromptGenerator', () => {
 
         it('should include constraints section without diff tools', () => {
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, [], 10);
+            const prompt = generator.generateSystemPrompt(
+                task,
+                [],
+                10,
+                undefined,
+                DEFAULT_PROFILE
+            );
 
             expect(prompt).toContain('## Constraints');
             expect(prompt).toContain('CANNOT see the PR diff');
@@ -132,7 +193,13 @@ describe('SubagentPromptGenerator', () => {
                 createMockTool('find_symbol', 'Finds symbols in code'),
             ];
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, tools, 10);
+            const prompt = generator.generateSystemPrompt(
+                task,
+                tools,
+                10,
+                undefined,
+                DEFAULT_PROFILE
+            );
 
             expect(prompt).toContain('### Diff Access');
             expect(prompt).toContain('get_file_diff');
@@ -144,7 +211,13 @@ describe('SubagentPromptGenerator', () => {
                 createMockTool('find_symbol', 'Finds symbols in code'),
             ];
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, tools, 10);
+            const prompt = generator.generateSystemPrompt(
+                task,
+                tools,
+                10,
+                undefined,
+                DEFAULT_PROFILE
+            );
 
             expect(prompt).not.toContain('### Diff Access');
             expect(prompt).toContain('CANNOT see the PR diff');
@@ -161,7 +234,9 @@ describe('SubagentPromptGenerator', () => {
                 const prompt = generator.generateSystemPrompt(
                     task,
                     noDiffTools,
-                    10
+                    10,
+                    undefined,
+                    DEFAULT_PROFILE
                 );
 
                 expect(prompt).not.toContain('Read the Diff');
@@ -178,7 +253,13 @@ describe('SubagentPromptGenerator', () => {
                     createMockTool('find_symbol', 'Finds symbols in code'),
                 ];
                 const task: SubagentTask = { task: 'Test task' };
-                const prompt = generator.generateSystemPrompt(task, tools, 10);
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    tools,
+                    10,
+                    undefined,
+                    DEFAULT_PROFILE
+                );
 
                 expect(prompt).toContain('Read the Diff');
                 expect(prompt).toContain('orientation');
@@ -199,7 +280,8 @@ describe('SubagentPromptGenerator', () => {
                     task,
                     diffTools,
                     30,
-                    true
+                    true,
+                    DEFAULT_PROFILE
                 );
 
                 expect(prompt).toContain('Decomposition Strategy');
@@ -215,7 +297,8 @@ describe('SubagentPromptGenerator', () => {
                     task,
                     diffTools,
                     30,
-                    true
+                    true,
+                    DEFAULT_PROFILE
                 );
 
                 expect(prompt).toContain('1-3 files');
@@ -229,7 +312,8 @@ describe('SubagentPromptGenerator', () => {
                     task,
                     diffTools,
                     30,
-                    true
+                    true,
+                    DEFAULT_PROFILE
                 );
 
                 expect(prompt).toContain(
@@ -243,7 +327,8 @@ describe('SubagentPromptGenerator', () => {
                     task,
                     diffTools,
                     30,
-                    true
+                    true,
+                    DEFAULT_PROFILE
                 );
 
                 expect(prompt).not.toContain('maximum recursion depth');
@@ -256,7 +341,8 @@ describe('SubagentPromptGenerator', () => {
                     task,
                     diffTools,
                     30,
-                    false
+                    false,
+                    DEFAULT_PROFILE
                 );
 
                 expect(prompt).toContain('Recursion Limit');
@@ -270,7 +356,8 @@ describe('SubagentPromptGenerator', () => {
                     task,
                     diffTools,
                     25,
-                    true
+                    true,
+                    DEFAULT_PROFILE
                 );
 
                 expect(prompt).toContain('25 iterations');
@@ -282,7 +369,8 @@ describe('SubagentPromptGenerator', () => {
                     task,
                     diffTools,
                     30,
-                    true
+                    true,
+                    DEFAULT_PROFILE
                 );
 
                 expect(prompt).toContain('MANDATORY');
@@ -296,7 +384,8 @@ describe('SubagentPromptGenerator', () => {
                     task,
                     diffTools,
                     30,
-                    true
+                    true,
+                    DEFAULT_PROFILE
                 );
 
                 expect(prompt).toContain('multiple');
@@ -311,7 +400,8 @@ describe('SubagentPromptGenerator', () => {
                     task,
                     diffTools,
                     30,
-                    true
+                    true,
+                    DEFAULT_PROFILE
                 );
 
                 expect(prompt).toContain(
@@ -332,7 +422,8 @@ describe('SubagentPromptGenerator', () => {
                     task,
                     noDiffTools,
                     30,
-                    true
+                    true,
+                    DEFAULT_PROFILE
                 );
 
                 expect(prompt).toContain('Decomposition Strategy');
@@ -346,7 +437,8 @@ describe('SubagentPromptGenerator', () => {
                     task,
                     noDiffTools,
                     30,
-                    true
+                    true,
+                    DEFAULT_PROFILE
                 );
 
                 expect(prompt).toContain('Review Parent Context');
@@ -364,7 +456,13 @@ describe('SubagentPromptGenerator', () => {
                     ),
                     createMockTool('find_symbol', 'Finds symbols in code'),
                 ];
-                const prompt = generator.generateSystemPrompt(task, tools, 10);
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    tools,
+                    10,
+                    undefined,
+                    DEFAULT_PROFILE
+                );
 
                 expect(prompt).toContain('Diff content alone is not evidence');
                 expect(prompt).toContain('find_symbol, find_usages');
@@ -379,7 +477,13 @@ describe('SubagentPromptGenerator', () => {
                     ),
                     createMockTool('find_symbol', 'Finds symbols in code'),
                 ];
-                const prompt = generator.generateSystemPrompt(task, tools, 10);
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    tools,
+                    10,
+                    undefined,
+                    DEFAULT_PROFILE
+                );
 
                 expect(prompt).toContain(
                     'Diff reading is orientation, not investigation'
@@ -404,7 +508,13 @@ describe('SubagentPromptGenerator', () => {
                     ),
                     createMockTool('find_symbol', 'Finds symbols in code'),
                 ];
-                const prompt = generator.generateSystemPrompt(task, tools, 30);
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    tools,
+                    30,
+                    undefined,
+                    DEFAULT_PROFILE
+                );
 
                 expect(prompt).toContain('Finding Quality');
                 expect(prompt).toContain('Required Verification');
@@ -418,7 +528,13 @@ describe('SubagentPromptGenerator', () => {
                 const tools = [
                     createMockTool('find_symbol', 'Finds symbols in code'),
                 ];
-                const prompt = generator.generateSystemPrompt(task, tools, 30);
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    tools,
+                    30,
+                    undefined,
+                    DEFAULT_PROFILE
+                );
 
                 expect(prompt).toContain('Changed Code Only');
                 expect(prompt).toContain('Revert Test');
@@ -431,7 +547,13 @@ describe('SubagentPromptGenerator', () => {
                 const tools = [
                     createMockTool('find_symbol', 'Finds symbols in code'),
                 ];
-                const prompt = generator.generateSystemPrompt(task, tools, 30);
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    tools,
+                    30,
+                    undefined,
+                    DEFAULT_PROFILE
+                );
 
                 expect(prompt).toContain('layered architecture');
                 expect(prompt).toContain('surrounding layer');
@@ -444,7 +566,13 @@ describe('SubagentPromptGenerator', () => {
                 const tools = [
                     createMockTool('find_symbol', 'Finds symbols in code'),
                 ];
-                const prompt = generator.generateSystemPrompt(task, tools, 30);
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    tools,
+                    30,
+                    undefined,
+                    DEFAULT_PROFILE
+                );
 
                 expect(prompt).toContain('production callers');
                 expect(prompt).toContain('Confidence Levels');
@@ -455,7 +583,13 @@ describe('SubagentPromptGenerator', () => {
                 const tools = [
                     createMockTool('find_symbol', 'Finds symbols in code'),
                 ];
-                const prompt = generator.generateSystemPrompt(task, tools, 30);
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    tools,
+                    30,
+                    undefined,
+                    DEFAULT_PROFILE
+                );
 
                 expect(prompt).toContain('call-site contract');
                 expect(prompt).toContain('centralized error handlers');
@@ -472,7 +606,13 @@ describe('SubagentPromptGenerator', () => {
                     ),
                     createMockTool('find_symbol', 'Finds symbols in code'),
                 ];
-                const prompt = generator.generateSystemPrompt(task, tools, 10);
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    tools,
+                    10,
+                    undefined,
+                    DEFAULT_PROFILE
+                );
 
                 expect(prompt).toContain('Hypothesis Generation');
                 expect(prompt).toContain('generate 2-3 specific hypotheses');
@@ -486,7 +626,13 @@ describe('SubagentPromptGenerator', () => {
                 const tools = [
                     createMockTool('find_symbol', 'Finds symbols in code'),
                 ];
-                const prompt = generator.generateSystemPrompt(task, tools, 10);
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    tools,
+                    10,
+                    undefined,
+                    DEFAULT_PROFILE
+                );
 
                 expect(prompt).toContain('Hypothesis Generation');
                 expect(prompt).toContain('generate 2-3 specific hypotheses');
@@ -501,7 +647,13 @@ describe('SubagentPromptGenerator', () => {
                     ),
                     createMockTool('find_symbol', 'Finds symbols in code'),
                 ];
-                const prompt = generator.generateSystemPrompt(task, tools, 10);
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    tools,
+                    10,
+                    undefined,
+                    DEFAULT_PROFILE
+                );
 
                 expect(prompt).toContain(
                     'with 2-3 hypotheses in identified_risks'
