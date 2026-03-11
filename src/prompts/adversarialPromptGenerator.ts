@@ -3,7 +3,7 @@ import type { RecordedFinding } from '../types/findingTypes';
 /**
  * Generates prompts for adversarial verification subagents.
  * These agents receive a finding and attempt to disprove it using fresh context.
- * Only used for CRITICAL findings to avoid anchoring bias.
+ * Used for findings at or above the model's adversarialVerificationThreshold.
  */
 export class AdversarialPromptGenerator {
     generateSystemPrompt(finding: RecordedFinding): string {
@@ -31,11 +31,15 @@ You are NOT the original investigator. You have fresh context and no prior commi
    - Check callers (\`find_usages\`) — do they validate before calling?
    - Check surrounding code (\`find_symbol\`) — is there error handling wrapping this?
    - Check tests (\`search_for_pattern\`) — do tests verify this behavior works correctly?
-3. **Search for intent** — is this behavior intentional?
+3. **Check for structural impossibility** — is the claimed scenario even possible?
+   - If the finding claims something "can happen" (e.g., cycles, null values), verify the data flow — can the input actually reach this state?
+   - If the finding claims something is "missing," check whether it's actually needed, or if the use case is handled by the framework/platform
+   - Check if the finding's assumed precondition is structurally prevented by the type system, data construction, or runtime constraints
+4. **Search for intent** — is this behavior intentional?
    - Check comments and docs near the code
    - Search for "intentional", "by design", "expected" in nearby files
-4. **Validate factual claims** — use \`validate_claim\` for any claims about symbols being unused, types being wrong, etc.
-5. **Check scope** — is this actually in changed code, or pre-existing?
+5. **Validate factual claims** — use \`validate_claim\` for any claims about symbols being unused, types being wrong, etc.
+6. **Check scope** — is this actually in changed code, or pre-existing?
 
 ## Your Response
 
@@ -58,6 +62,17 @@ Summary: [1-2 sentences explaining your conclusion]
 - Do NOT investigate unrelated code.
 - Do NOT generate new findings — only evaluate the one provided.
 - Bias toward REFUTED — actively look for reasons the finding is wrong.
+
+## Common False Positive Patterns
+
+These are the most frequent FP patterns in automated code review. Actively look for them:
+
+1. **Platform-handled concern**: The finding flags missing functionality that is provided by the framework/platform/runtime (e.g., VS Code auto-discovers extensions, TypeScript handles type narrowing, React manages component lifecycle)
+2. **Heuristic treated as precision tool**: The code is a best-effort heuristic (e.g., validation, similarity check) and the finding critiques it for not being exhaustive — but the code explicitly acknowledges its limitations (returns 'probable', 'inconclusive', etc.)
+3. **Structurally impossible scenario**: The finding claims X could happen, but the data structure makes it impossible (e.g., cycles in a tree built by linear append, null in a non-nullable typed field)
+4. **Already handled elsewhere**: The finding says handling is missing, but it exists in a caller, wrapper, error boundary, or fallback path that the original investigator didn't check
+5. **Deleted/phantom file**: The finding references a file that was DELETED in this PR or doesn't exist — check with tool calls if the file actually exists
+6. **Absence ≠ bug**: The finding says "X is not done" — verify whether X is actually NEEDED. Not doing something unnecessary is correct behavior, not a bug
 </adversarial_verification>`;
     }
 

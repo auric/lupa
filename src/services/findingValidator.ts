@@ -33,6 +33,7 @@ export interface ValidationResult {
 const SEVERITY_REQUIRING_DISPROOF = new Set([
     'CRITICAL',
     'HIGH',
+    'MEDIUM',
 ] as FindingSeverity[]);
 
 const SEVERITY_ORDER: FindingSeverity[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
@@ -51,6 +52,9 @@ export class FindingValidator {
         token: vscode.CancellationToken
     ): Promise<ValidationResult> {
         const changedFiles = new Set(parsedDiff.map((d) => d.filePath));
+        const deletedFiles = new Set(
+            parsedDiff.filter((d) => d.isDeletedFile).map((d) => d.filePath)
+        );
         const validated: ValidatedFinding[] = [];
 
         for (const finding of findings) {
@@ -67,6 +71,11 @@ export class FindingValidator {
                 verdict = 'drop';
             }
 
+            if (this.checkFileDeleted(finding, deletedFiles)) {
+                violations.push('Finding targets a deleted file');
+                verdict = 'drop';
+            }
+
             if (!this.checkLineRange(finding)) {
                 violations.push('Invalid line range');
                 verdict = 'drop';
@@ -74,7 +83,7 @@ export class FindingValidator {
 
             if (!this.checkDisproof(finding)) {
                 violations.push(
-                    'No disproof attempted for CRITICAL/HIGH finding'
+                    'No disproof attempted for CRITICAL/HIGH/MEDIUM finding'
                 );
                 if (verdict !== 'drop') {
                     verdict = 'downgrade';
@@ -119,6 +128,13 @@ export class FindingValidator {
         changedFiles: Set<string>
     ): boolean {
         return changedFiles.has(finding.file);
+    }
+
+    private checkFileDeleted(
+        finding: RecordedFinding,
+        deletedFiles: Set<string>
+    ): boolean {
+        return deletedFiles.has(finding.file);
     }
 
     private checkLineRange(finding: RecordedFinding): boolean {

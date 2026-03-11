@@ -30,7 +30,8 @@ import { FindingStore } from '../sessions/findingStore';
 import { AdversarialPromptGenerator } from '../prompts/adversarialPromptGenerator';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator, ValidatedFinding } from './findingValidator';
-import type { RecordedFinding } from '../types/findingTypes';
+import type { RecordedFinding, FindingSeverity } from '../types/findingTypes';
+import { FINDING_SEVERITIES } from '../types/findingTypes';
 
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
@@ -371,27 +372,32 @@ export class ToolCallingAnalysisProvider {
                         );
                     }
 
-                    // Adversarial verification for CRITICAL findings
-                    const criticalFindings =
-                        findingStore.getBySeverity('CRITICAL');
+                    // Adversarial verification for findings at or above the calibration threshold
+                    const threshold =
+                        executionContext.calibrationProfile
+                            .adversarialVerificationThreshold;
+                    const findingsToVerify = this.getFindingsAtOrAboveSeverity(
+                        findingStore,
+                        threshold
+                    );
                     if (
-                        criticalFindings.length > 0 &&
+                        findingsToVerify.length > 0 &&
                         !token.isCancellationRequested
                     ) {
                         progressCallback?.(
-                            'Adversarial verification of CRITICAL findings...',
+                            `Adversarial verification of ${findingsToVerify.length} finding(s)...`,
                             0.5
                         );
                         const adversarialResults =
                             await this.runAdversarialVerification(
-                                criticalFindings,
+                                findingsToVerify,
                                 executionContext,
                                 subagentExecutor,
                                 findingStore,
                                 token
                             );
-                        if (adversarialResults.refuted > 0) {
-                            analysisText += `\n*Adversarial verification: ${adversarialResults.refuted} CRITICAL finding(s) refuted and removed*`;
+                        if (adversarialResults.removed > 0) {
+                            analysisText += `\n*Adversarial verification: ${adversarialResults.removed} finding(s) refuted and removed*`;
                         }
                     }
                 }
@@ -506,19 +512,19 @@ export class ToolCallingAnalysisProvider {
     }
 
     private async runAdversarialVerification(
-        criticalFindings: RecordedFinding[],
+        findings: RecordedFinding[],
         executionContext: ExecutionContext,
         subagentExecutor: SubagentExecutor,
         findingStore: FindingStore,
         token: vscode.CancellationToken
-    ): Promise<{ refuted: number; confirmed: number; uncertain: number }> {
+    ): Promise<{ removed: number; confirmed: number }> {
         const adversarialPromptGen = new AdversarialPromptGenerator();
-        const ADVERSARIAL_BUDGET = 7;
-        let refuted = 0;
+        const ADVERSARIAL_BUDGET_CRITICAL = 7;
+        const ADVERSARIAL_BUDGET_DEFAULT = 5;
+        let removed = 0;
         let confirmed = 0;
-        let uncertain = 0;
 
-        for (const finding of criticalFindings) {
+        for (const finding of findings) {
             if (token.isCancellationRequested) {
                 break;
             }
@@ -527,8 +533,13 @@ export class ToolCallingAnalysisProvider {
                 const adversarialTask =
                     adversarialPromptGen.generateSystemPrompt(finding);
 
+                const budget =
+                    finding.severity === 'CRITICAL'
+                        ? ADVERSARIAL_BUDGET_CRITICAL
+                        : ADVERSARIAL_BUDGET_DEFAULT;
+
                 Log.info(
-                    `Adversarial verification for CRITICAL finding: ${finding.title} in ${finding.file}`
+                    `Adversarial verification for ${finding.severity} finding: ${finding.title} in ${finding.file} (budget: ${budget})`
                 );
 
                 const result = await subagentExecutor.execute(
@@ -539,28 +550,26 @@ export class ToolCallingAnalysisProvider {
                     token,
                     -1, // negative ID to distinguish adversarial from regular subagents
                     {
-                        childBudget: ADVERSARIAL_BUDGET,
+                        childBudget: budget,
                         calibrationProfile: executionContext.calibrationProfile,
                     }
                 );
 
                 const verdict = this.parseAdversarialVerdict(result.response);
 
-                if (verdict === 'REFUTED') {
-                    findingStore.remove(finding.id);
-                    refuted++;
-                    Log.info(
-                        `Adversarial REFUTED: ${finding.title} — removed from findings`
-                    );
-                } else if (verdict === 'CONFIRMED') {
+                if (verdict === 'CONFIRMED') {
                     confirmed++;
                     Log.info(
                         `Adversarial CONFIRMED: ${finding.title} — keeping`
                     );
                 } else {
-                    uncertain++;
+                    // REFUTED or UNCERTAIN → remove.
+                    // If a dedicated adversarial agent can't confirm the finding,
+                    // it's not confirmed — precision over recall.
+                    findingStore.remove(finding.id);
+                    removed++;
                     Log.info(
-                        `Adversarial UNCERTAIN: ${finding.title} — keeping (benefit of doubt)`
+                        `Adversarial ${verdict}: ${finding.title} — removed from findings`
                     );
                 }
             } catch (error) {
@@ -570,11 +579,13 @@ export class ToolCallingAnalysisProvider {
                 Log.warn(
                     `Adversarial verification failed for ${finding.title}: ${getErrorMessage(error)}`
                 );
-                uncertain++;
+                // Verification failure → can't confirm → remove
+                findingStore.remove(finding.id);
+                removed++;
             }
         }
 
-        return { refuted, confirmed, uncertain };
+        return { removed, confirmed };
     }
 
     private parseAdversarialVerdict(
@@ -608,6 +619,17 @@ export class ToolCallingAnalysisProvider {
             return 'CONFIRMED';
         }
         return 'UNCERTAIN';
+    }
+
+    private getFindingsAtOrAboveSeverity(
+        findingStore: FindingStore,
+        threshold: FindingSeverity
+    ): RecordedFinding[] {
+        const thresholdIndex = FINDING_SEVERITIES.indexOf(threshold);
+        const severities = FINDING_SEVERITIES.filter(
+            (_, i) => i <= thresholdIndex
+        );
+        return severities.flatMap((s) => findingStore.getBySeverity(s));
     }
 
     private applyValidationResults(

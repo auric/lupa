@@ -90,6 +90,22 @@ describe('FindingValidator', () => {
         );
     });
 
+    it('drops finding when file is deleted in diff', async () => {
+        const findings = [createTestFinding({ file: 'src/foo.ts' })];
+        const deletedDiff: DiffHunk = {
+            ...createTestDiffHunk('src/foo.ts'),
+            isDeletedFile: true,
+        };
+
+        const result = await validator.validate(findings, [deletedDiff], token);
+
+        expect(result.dropped).toBe(1);
+        expect(result.validated[0]!.verdict).toBe('drop');
+        expect(result.validated[0]!.violations).toContain(
+            'Finding targets a deleted file'
+        );
+    });
+
     it('drops finding when line range start > end', async () => {
         const findings = [createTestFinding({ lineRange: [20, 10] })];
         const diff = [createTestDiffHunk('src/foo.ts')];
@@ -154,7 +170,7 @@ describe('FindingValidator', () => {
         expect(result.downgraded).toBe(1);
         expect(result.validated[0]!.verdict).toBe('downgrade');
         expect(result.validated[0]!.violations).toContain(
-            'No disproof attempted for CRITICAL/HIGH finding'
+            'No disproof attempted for CRITICAL/HIGH/MEDIUM finding'
         );
     });
 

@@ -1,3 +1,5 @@
+import type { FindingSeverity } from '../types/findingTypes';
+
 /**
  * Model-specific calibration profiles for PR review.
  *
@@ -61,6 +63,14 @@ export interface ModelCalibrationProfile {
      * High: "Record ONLY with strong, concrete evidence" (for aggressive models).
      */
     readonly evidenceThreshold: EvidenceThreshold;
+
+    /**
+     * Minimum severity for adversarial verification subagents.
+     * Findings at or above this severity get a dedicated adversarial agent that tries to disprove them.
+     * For high-FP models: 'MEDIUM' to verify all meaningful findings.
+     * For balanced models: 'CRITICAL' (current default behavior).
+     */
+    readonly adversarialVerificationThreshold: FindingSeverity;
 }
 
 const GPT_41_PROFILE: ModelCalibrationProfile = {
@@ -72,6 +82,7 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
     minValidateClaimBeforeSubmit: 1,
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
+    adversarialVerificationThreshold: 'MEDIUM',
 };
 
 const GPT_4O_PROFILE: ModelCalibrationProfile = {
@@ -83,6 +94,7 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
     minValidateClaimBeforeSubmit: 1,
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
+    adversarialVerificationThreshold: 'HIGH',
 };
 
 const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
@@ -94,6 +106,7 @@ const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
     minValidateClaimBeforeSubmit: 0,
     includeAgenticPreamble: true,
     evidenceThreshold: 'high',
+    adversarialVerificationThreshold: 'HIGH',
 };
 
 /**
@@ -110,6 +123,7 @@ const RAPTOR_MINI_PROFILE: ModelCalibrationProfile = {
     minValidateClaimBeforeSubmit: 0,
     includeAgenticPreamble: true,
     evidenceThreshold: 'medium',
+    adversarialVerificationThreshold: 'CRITICAL',
 };
 
 const CLAUDE_PROFILE: ModelCalibrationProfile = {
@@ -121,6 +135,7 @@ const CLAUDE_PROFILE: ModelCalibrationProfile = {
     minValidateClaimBeforeSubmit: 0,
     includeAgenticPreamble: false,
     evidenceThreshold: 'medium',
+    adversarialVerificationThreshold: 'CRITICAL',
 };
 
 export const DEFAULT_PROFILE: ModelCalibrationProfile = {
