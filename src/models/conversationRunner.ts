@@ -123,6 +123,8 @@ export class ConversationRunner {
     private static readonly MAX_RATE_LIMIT_RETRIES = 5;
     /** Maximum consecutive "Response too long" retries before giving up */
     private static readonly MAX_RESPONSE_TOO_LONG_RETRIES = 2;
+    /** Maximum consecutive non-recoverable errors before breaking the loop */
+    private static readonly MAX_CONSECUTIVE_ERRORS = 3;
     /** Initial backoff delay in ms for rate-limited requests */
     private static readonly INITIAL_BACKOFF_MS = 2000;
     /** Maximum backoff delay in ms */
@@ -172,6 +174,7 @@ export class ConversationRunner {
         let completionNudgeCount = 0;
         let rateLimitRetries = 0;
         let responseTooLongRetries = 0;
+        let consecutiveErrors = 0;
         let lastSubstantiveResponse = '';
         let windDownInjected = false;
         let windDownNudged = false;
@@ -324,6 +327,7 @@ export class ConversationRunner {
                 // Without this, a later rate-limit hit would continue from
                 // the old retry count and prematurely exhaust retries.
                 rateLimitRetries = 0;
+                consecutiveErrors = 0;
 
                 if (token.isCancellationRequested) {
                     Log.info(`${logPrefix} Cancelled by user`);
@@ -649,6 +653,31 @@ export class ConversationRunner {
                 // Reset response-too-long counter on unrelated errors
                 responseTooLongRetries = 0;
 
+                // Context overflow: the conversation exceeded the model's max tokens.
+                // Each retry adds more tokens, making it progressively worse — break immediately.
+                if (this.isContextOverflowError(error)) {
+                    Log.error(
+                        `${logPrefix} Context overflow at iteration ${iteration} — stopping to prevent token spiral`
+                    );
+                    return (
+                        lastSubstantiveResponse ||
+                        "The conversation exceeded the model's context limit. Partial results may be available."
+                    );
+                }
+
+                // Conversation history corruption: orphaned tool messages without
+                // a preceding assistant message with tool_calls. This is unrecoverable
+                // for this conversation — every subsequent request will fail identically.
+                if (this.isConversationCorruptionError(error)) {
+                    Log.error(
+                        `${logPrefix} Conversation history corrupted (orphaned tool messages) — stopping`
+                    );
+                    return (
+                        lastSubstantiveResponse ||
+                        'The conversation history became corrupted. Partial results may be available.'
+                    );
+                }
+
                 const fatalError = this.detectFatalError(error);
                 if (fatalError) {
                     Log.error(
@@ -671,6 +700,23 @@ export class ConversationRunner {
                     error.message.includes('service unavailable')
                 ) {
                     throw error;
+                }
+
+                // Track consecutive errors to prevent infinite error loops.
+                // Some API errors (e.g., malformed conversation state) repeat
+                // identically every iteration, burning budget without progress.
+                consecutiveErrors++;
+                if (
+                    consecutiveErrors >=
+                    ConversationRunner.MAX_CONSECUTIVE_ERRORS
+                ) {
+                    Log.error(
+                        `${logPrefix} ${consecutiveErrors} consecutive errors — stopping to prevent infinite error loop`
+                    );
+                    return (
+                        lastSubstantiveResponse ||
+                        `Stopped after ${consecutiveErrors} consecutive errors. Last error: ${getErrorMessage(error)}`
+                    );
                 }
 
                 conversation.addAssistantMessage(
@@ -833,6 +879,40 @@ export class ConversationRunner {
             message.includes('rate limit') ||
             message.includes('Rate limit') ||
             message.includes('RateLimited')
+        );
+    }
+
+    /**
+     * Check if an error indicates the conversation exceeded the model's context window.
+     * This is unrecoverable in the current conversation — each retry adds more tokens
+     * to the error messages, creating a progressively worsening spiral.
+     */
+    private isContextOverflowError(error: unknown): boolean {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+        const message = error.message ?? '';
+        return (
+            message.includes('maximum context length') ||
+            message.includes('context_length_exceeded')
+        );
+    }
+
+    /**
+     * Check if an error indicates conversation history corruption.
+     * This occurs when tool-role messages appear without a preceding assistant
+     * message containing tool_calls (e.g., after an error during tool execution
+     * that corrupts the message sequence). Unrecoverable for this conversation.
+     */
+    private isConversationCorruptionError(error: unknown): boolean {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+        const message = error.message ?? '';
+        return (
+            message.includes("role 'tool' must be a response to") ||
+            message.includes('tool_use result') ||
+            message.includes('tool result without')
         );
     }
 

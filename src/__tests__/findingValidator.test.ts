@@ -643,5 +643,21 @@ describe('FindingValidator', () => {
                 'single-threaded runtime'
             );
         });
+
+        it('keeps concurrency finding in C++ project', async () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/engine.cpp',
+                    category: 'logic_error',
+                    title: 'Race condition in thread pool',
+                    description: 'Concurrent access to shared vector',
+                }),
+            ];
+            const diff = [createTestDiffHunk('src/engine.cpp')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.kept).toBe(1);
+        });
     });
 });

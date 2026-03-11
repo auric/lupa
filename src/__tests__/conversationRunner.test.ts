@@ -1189,6 +1189,104 @@ describe('ConversationRunner', () => {
 
             expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
         });
+
+        it('should stop on context overflow error', async () => {
+            const contextError = new Error(
+                'Request Failed: 400 {"error":{"message":"This model\'s maximum context length is 128000 tokens. However, you requested 131000 tokens.","code":"invalid_request_body"}}'
+            );
+
+            const modelManager = {
+                sendRequest: vi.fn().mockRejectedValue(contextError),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'gpt-4.1',
+                    maxInputTokens: 128000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 50,
+                tools: [],
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toContain('context limit');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
+        });
+
+        it('should stop on conversation corruption error', async () => {
+            const corruptionError = new Error(
+                'Request Failed: 400 {"error":{"message":"Invalid parameter: messages with role \'tool\' must be a response to a preceeding message with \'tool_calls\'.","code":"invalid_request_body"}}'
+            );
+
+            const modelManager = {
+                sendRequest: vi.fn().mockRejectedValue(corruptionError),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'gpt-4.1',
+                    maxInputTokens: 128000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 50,
+                tools: [],
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toContain('corrupted');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
+        });
+
+        it('should stop after consecutive errors to prevent infinite loops', async () => {
+            const genericError = new Error('Some intermittent API error');
+
+            const modelManager = {
+                sendRequest: vi.fn().mockRejectedValue(genericError),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'gpt-4.1',
+                    maxInputTokens: 128000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 50,
+                tools: [],
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toContain('consecutive errors');
+            // Should stop after MAX_CONSECUTIVE_ERRORS (3), not burn all 50
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
+        });
     });
 
     describe('Reset', () => {

@@ -90,6 +90,11 @@ const STATIC_TYPE_EXTENSIONS = new Set([
     '.rs',
     '.swift',
     '.hs',
+    '.cpp',
+    '.cc',
+    '.cxx',
+    '.hpp',
+    '.h',
 ]);
 
 function hasStaticTypeSystem(filePaths: string[]): boolean {
