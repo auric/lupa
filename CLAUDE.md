@@ -51,6 +51,7 @@ Each subagent gets a **fresh context window**. It can read files, search code, m
 - **Verify subagent output** — they can make mistakes too, especially on complex logic
 - **Parallelize when possible** — launch independent subagents simultaneously
 - **Subagents can edit files** — file editing works well when instructions are specific and include enough surrounding context
+- **Sequential thinking belongs in subagents** — for design decisions, multi-step reasoning, or trade-off analysis, instruct the subagent to use sequential thinking tool in its prompt rather than running it in the main context. This keeps the main agent's context clean (sequential thinking outputs can be large). Only use sequential thinking directly when the decision depends on context already accumulated in the main conversation.
 
 ### When NOT to Use Subagents
 
