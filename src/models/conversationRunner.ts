@@ -121,6 +121,8 @@ export class ConversationRunner {
 
     /** Maximum number of consecutive rate-limit retries before giving up */
     private static readonly MAX_RATE_LIMIT_RETRIES = 5;
+    /** Maximum consecutive "Response too long" retries before giving up */
+    private static readonly MAX_RESPONSE_TOO_LONG_RETRIES = 2;
     /** Initial backoff delay in ms for rate-limited requests */
     private static readonly INITIAL_BACKOFF_MS = 2000;
     /** Maximum backoff delay in ms */
@@ -169,6 +171,7 @@ export class ConversationRunner {
         let iteration = 0;
         let completionNudgeCount = 0;
         let rateLimitRetries = 0;
+        let responseTooLongRetries = 0;
         let lastSubstantiveResponse = '';
         let windDownInjected = false;
         let windDownNudged = false;
@@ -605,6 +608,47 @@ export class ConversationRunner {
                 // Reset rate limit counter on non-rate-limit errors
                 rateLimitRetries = 0;
 
+                // "Response too long" — model output exceeded the API's
+                // output-token limit.  Retrying blindly just burns iterations
+                // because the model tends to produce the same long response.
+                // Give it up to MAX_RESPONSE_TOO_LONG_RETRIES chances with
+                // explicit guidance to shorten output, then give up.
+                if (this.isResponseTooLongError(error)) {
+                    responseTooLongRetries++;
+                    if (
+                        responseTooLongRetries >
+                        ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES
+                    ) {
+                        Log.error(
+                            `${logPrefix} Response too long: exceeded ${ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES} retries, giving up`
+                        );
+                        return (
+                            lastSubstantiveResponse ||
+                            'The model consistently generated responses that exceeded the maximum length. ' +
+                                'Please try with a simpler query or a model with a larger output window.'
+                        );
+                    }
+
+                    Log.warn(
+                        `${logPrefix} Response too long (attempt ${responseTooLongRetries}/${ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES}), ` +
+                            `adding conciseness guidance`
+                    );
+
+                    // Don't count as iteration — the model never finished
+                    iteration--;
+                    this._iterationsUsed = iteration;
+
+                    conversation.addAssistantMessage(
+                        'My previous response was too long and was rejected by the API. ' +
+                            'I must be much more concise. I will use tool calls for individual actions ' +
+                            'instead of generating long text output.'
+                    );
+                    continue;
+                }
+
+                // Reset response-too-long counter on unrelated errors
+                responseTooLongRetries = 0;
+
                 const fatalError = this.detectFatalError(error);
                 if (fatalError) {
                     Log.error(
@@ -747,6 +791,23 @@ export class ConversationRunner {
             constructorName.includes('QuotaExceeded') ||
             name === 'ChatQuotaExceeded' ||
             name.includes('QuotaExceeded')
+        );
+    }
+
+    /**
+     * Check if an error is a "Response too long" error from the VS Code Copilot API.
+     * This occurs when the model's output exceeds the API's maximum output token limit.
+     * Retrying without guidance just produces the same overlong response.
+     */
+    private isResponseTooLongError(error: unknown): boolean {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+        const message = error.message ?? '';
+        return (
+            message.includes('Response too long') ||
+            message.includes('response_too_long') ||
+            message.includes('ResponseTooLong')
         );
     }
 

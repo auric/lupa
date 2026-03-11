@@ -2716,4 +2716,122 @@ describe('ConversationRunner', () => {
             });
         });
     });
+
+    describe('Response Too Long', () => {
+        it('should retry with guidance on first "Response too long" error', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.reject(new Error('Response too long.'));
+                    }
+                    return Promise.resolve({
+                        content: 'Concise response',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 5,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Concise response');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+            // Should not count the failed attempt as an iteration
+            expect(runner.iterationsUsed).toBe(1);
+        });
+
+        it('should give up after exceeding max response-too-long retries', async () => {
+            const modelManager = {
+                sendRequest: vi
+                    .fn()
+                    .mockRejectedValue(new Error('Response too long.')),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 50,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toContain(
+                'consistently generated responses that exceeded'
+            );
+            // 1 initial + MAX_RESPONSE_TOO_LONG_RETRIES (2) = 3 total calls
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
+        });
+
+        it('should not burn iterations on response-too-long errors', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount <= 2) {
+                        return Promise.reject(new Error('Response too long.'));
+                    }
+                    return Promise.resolve({
+                        content: 'Finally concise',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 5,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Finally concise');
+            // Two retries + one success = 3 calls, but only 1 iteration used
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
+            expect(runner.iterationsUsed).toBe(1);
+        });
+    });
 });
