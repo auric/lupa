@@ -122,4 +122,109 @@ describe('RecordFindingTool', () => {
             expect.objectContaining({ agentId: 'unknown' })
         );
     });
+
+    it('passes verifiable_claims to finding store', async () => {
+        const store = new FindingStore();
+        const recordSpy = vi.spyOn(store, 'record');
+        const context = createMockExecutionContext({
+            findingStore: store,
+            currentAgentId: 'test-agent',
+        });
+
+        await tool.execute(
+            {
+                ...BASE_FINDING_ARGS,
+                verifiable_claims: [
+                    {
+                        claim_type: 'no_callers',
+                        file: 'src/auth.ts',
+                        line: 42,
+                        symbol: 'hashPassword',
+                        assertion:
+                            'No callers handle the error from hashPassword',
+                    },
+                ],
+            },
+            context
+        );
+
+        expect(recordSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                verifiableClaims: [
+                    {
+                        claimType: 'no_callers',
+                        file: 'src/auth.ts',
+                        line: 42,
+                        symbol: 'hashPassword',
+                        assertion:
+                            'No callers handle the error from hashPassword',
+                    },
+                ],
+            })
+        );
+    });
+
+    it('defaults verifiable_claims to empty array when omitted', async () => {
+        const store = new FindingStore();
+        const recordSpy = vi.spyOn(store, 'record');
+        const context = createMockExecutionContext({
+            findingStore: store,
+            currentAgentId: 'test-agent',
+        });
+
+        await tool.execute(BASE_FINDING_ARGS, context);
+
+        expect(recordSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                verifiableClaims: [],
+            })
+        );
+    });
+
+    it('passes multiple verifiable_claims', async () => {
+        const store = new FindingStore();
+        const recordSpy = vi.spyOn(store, 'record');
+        const context = createMockExecutionContext({
+            findingStore: store,
+            currentAgentId: 'test-agent',
+        });
+
+        await tool.execute(
+            {
+                ...BASE_FINDING_ARGS,
+                verifiable_claims: [
+                    {
+                        claim_type: 'symbol_missing',
+                        file: 'src/a.ts',
+                        line: 10,
+                        symbol: 'foo',
+                        assertion: 'foo does not exist',
+                    },
+                    {
+                        claim_type: 'type_mismatch',
+                        file: 'src/b.ts',
+                        line: 20,
+                        symbol: 'bar',
+                        assertion: 'bar should be string not number',
+                    },
+                ],
+            },
+            context
+        );
+
+        expect(recordSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                verifiableClaims: expect.arrayContaining([
+                    expect.objectContaining({
+                        claimType: 'symbol_missing',
+                        symbol: 'foo',
+                    }),
+                    expect.objectContaining({
+                        claimType: 'type_mismatch',
+                        symbol: 'bar',
+                    }),
+                ]),
+            })
+        );
+    });
 });

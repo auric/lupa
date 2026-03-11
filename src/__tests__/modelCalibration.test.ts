@@ -158,4 +158,72 @@ describe('modelCalibration', () => {
             ).toBe(false);
         });
     });
+
+    describe('investigation protocols', () => {
+        it('GPT-4.1 has the most structured investigation protocol', () => {
+            const profile = getCalibrationProfile('gpt-4.1', 'gpt-4.1');
+            expect(
+                profile.investigationProtocol.minToolCallsBeforeFirstFinding
+            ).toBe(5);
+            expect(
+                profile.investigationProtocol.requiredToolsBeforeDone
+            ).toContain('get_file_diff');
+            expect(
+                profile.investigationProtocol.requiredToolsBeforeDone
+            ).toContain('find_symbol');
+            expect(
+                profile.investigationProtocol.requiredToolsBeforeDone
+            ).toContain('validate_claim');
+            expect(
+                profile.investigationProtocol.investigationPreamble
+            ).toContain('keep investigating');
+        });
+
+        it('GPT-4o has moderate investigation requirements', () => {
+            const profile = getCalibrationProfile('gpt-4o', 'gpt-4o');
+            expect(
+                profile.investigationProtocol.minToolCallsBeforeFirstFinding
+            ).toBe(3);
+            expect(
+                profile.investigationProtocol.requiredToolsBeforeDone
+            ).toContain('validate_claim');
+            expect(
+                profile.investigationProtocol.requiredToolsBeforeDone
+            ).not.toContain('find_symbol');
+        });
+
+        it('Claude has minimal investigation protocol', () => {
+            const profile = getCalibrationProfile('claude', 'claude-sonnet');
+            expect(
+                profile.investigationProtocol.minToolCallsBeforeFirstFinding
+            ).toBe(2);
+            expect(
+                profile.investigationProtocol.requiredToolsBeforeDone
+            ).toHaveLength(0);
+            expect(profile.investigationProtocol.investigationPreamble).toBe(
+                ''
+            );
+        });
+
+        it('default profile inherits Claude investigation protocol', () => {
+            const defaultProfile = getCalibrationProfile('unknown', 'unknown');
+            const claudeProfile = getCalibrationProfile(
+                'claude',
+                'claude-sonnet'
+            );
+            expect(defaultProfile.investigationProtocol).toEqual(
+                claudeProfile.investigationProtocol
+            );
+        });
+
+        it('GPT-5-mini requires validate_claim', () => {
+            const profile = getCalibrationProfile('gpt-5-mini', 'gpt-5-mini');
+            expect(
+                profile.investigationProtocol.requiredToolsBeforeDone
+            ).toContain('validate_claim');
+            expect(
+                profile.investigationProtocol.minToolCallsBeforeFirstFinding
+            ).toBe(2);
+        });
+    });
 });

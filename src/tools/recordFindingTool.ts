@@ -7,6 +7,16 @@ import {
     FINDING_SEVERITIES,
     ALLOWED_FINDING_CATEGORIES,
 } from '../types/findingTypes';
+import type { ClaimType } from '../types/claimTypes';
+
+const VALID_CLAIM_TYPES: readonly ClaimType[] = [
+    'symbol_unused',
+    'type_mismatch',
+    'symbol_missing',
+    'not_exported',
+    'no_callers',
+    'no_implementation',
+] as const;
 
 export class RecordFindingTool extends BaseTool {
     name = 'record_finding';
@@ -60,6 +70,24 @@ export class RecordFindingTool extends BaseTool {
                     'Example: "Checked callers with find_usages — all 3 callers pass unvalidated input. ' +
                     'Searched for upstream validation with search_for_pattern — none found."'
             ),
+        verifiable_claims: z
+            .array(
+                z.object({
+                    claim_type: z.enum(
+                        VALID_CLAIM_TYPES as unknown as [string, ...string[]]
+                    ),
+                    file: z.string(),
+                    line: z.coerce.number(),
+                    symbol: z.string(),
+                    assertion: z.string(),
+                })
+            )
+            .optional()
+            .default([])
+            .describe(
+                'Claims verified via validate_claim tool. Each must reference a validate_claim call you made. ' +
+                    'Example: [{claim_type: "no_callers", file: "src/auth.ts", line: 42, symbol: "hashPassword", assertion: "No callers handle the error from hashPassword"}]'
+            ),
     });
 
     async execute(
@@ -85,13 +113,20 @@ export class RecordFindingTool extends BaseTool {
                 method: args.disproof_note,
                 result: args.disproof_note,
             },
-            verifiableClaims: [],
+            verifiableClaims: (args.verifiable_claims ?? []).map((c) => ({
+                claimType: c.claim_type as ClaimType,
+                file: c.file,
+                line: c.line,
+                symbol: c.symbol,
+                assertion: c.assertion,
+            })),
         });
 
         return toolSuccess(
             `Finding recorded: [${finding.id}] ${finding.severity} — ${finding.title}\n` +
                 `Evidence: ${args.verification_evidence}\n` +
                 `Disproof attempt: ${args.disproof_note}\n\n` +
+                `LSP claims: ${args.verifiable_claims?.length ?? 0} attached for post-hoc validation\n\n` +
                 `⚠️ MANDATORY SELF-CHECK before continuing:\n` +
                 `1. Re-read your verification_evidence above. Does it cite a SPECIFIC tool output (not just reasoning)?\n` +
                 `2. Could this be INTENTIONAL design? Did you search for comments, docs, or commit history explaining the rationale?\n` +

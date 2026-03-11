@@ -239,13 +239,15 @@ export class SubagentExecutor {
                   )
                 : undefined;
 
-            // Track whether we've already nudged the subagent for shallow investigation.
-            // Fire at most once to avoid infinite loops if the model repeatedly ignores the nudge.
+            // Track nudge state. Each nudge type fires at most once to avoid infinite loops.
             let shallowInvestigationNudged = false;
+            let evidenceDepthNudged = false;
             const ORIENTATION_ONLY_TOOLS = new Set([
                 'get_file_diff',
                 'list_directory',
             ]);
+            const protocol =
+                childContext.calibrationProfile.investigationProtocol;
 
             // Run the conversation loop with labeled logging and progress reporting
             const response = await conversationRunner.run(
@@ -259,30 +261,49 @@ export class SubagentExecutor {
                         iteration,
                         maxIter
                     ) => {
-                        // Only nudge once, and only if there's budget remaining
-                        if (
-                            shallowInvestigationNudged ||
-                            iteration >= maxIter - 1
-                        ) {
+                        // No nudges on the last iteration — let the model finish
+                        if (iteration >= maxIter - 1) {
                             return undefined;
                         }
-                        // If the subagent only called orientation tools (or no tools),
-                        // nudge it to investigate deeper
-                        const hasInvestigationTools = [...toolNamesCalled].some(
-                            (name) => !ORIENTATION_ONLY_TOOLS.has(name)
-                        );
-                        if (
-                            toolNamesCalled.size > 0 &&
-                            !hasInvestigationTools
-                        ) {
-                            shallowInvestigationNudged = true;
-                            return (
-                                'You only read the diff without investigating the actual codebase. ' +
-                                'Reading diffs is orientation, not investigation. You MUST use tools like ' +
-                                '`find_symbol` (with include_body: true), `find_usages`, or `search_for_pattern` ' +
-                                'to gather evidence before writing findings. Continue investigating.'
-                            );
+
+                        // Nudge 1: Shallow investigation (orientation-only tools)
+                        if (!shallowInvestigationNudged) {
+                            const hasInvestigationTools = [
+                                ...toolNamesCalled,
+                            ].some((name) => !ORIENTATION_ONLY_TOOLS.has(name));
+                            if (
+                                toolNamesCalled.size > 0 &&
+                                !hasInvestigationTools
+                            ) {
+                                shallowInvestigationNudged = true;
+                                return (
+                                    'You only read the diff without investigating the actual codebase. ' +
+                                    'Reading diffs is orientation, not investigation. You MUST use tools like ' +
+                                    '`find_symbol` (with include_body: true), `find_usages`, or `search_for_pattern` ' +
+                                    'to gather evidence before writing findings. Continue investigating.'
+                                );
+                            }
                         }
+
+                        // Nudge 2: Evidence depth — required tools from investigation protocol
+                        if (
+                            !evidenceDepthNudged &&
+                            protocol.requiredToolsBeforeDone.length > 0
+                        ) {
+                            const missingTools =
+                                protocol.requiredToolsBeforeDone.filter(
+                                    (tool) => !toolNamesCalled.has(tool)
+                                );
+                            if (missingTools.length > 0) {
+                                evidenceDepthNudged = true;
+                                return (
+                                    `You have not yet used these required investigation tools: ${missingTools.map((t) => '`' + t + '`').join(', ')}. ` +
+                                    'Your investigation protocol requires using these tools before concluding. ' +
+                                    'Continue investigating — use the missing tools to gather evidence.'
+                                );
+                            }
+                        }
+
                         return undefined;
                     },
                 },

@@ -218,10 +218,9 @@ Focus on the highest-risk items first. If you can't fully investigate all areas,
             .replace(/>/g, '&gt;');
 
         // Calibration-specific behavioral override for subagents
-        const calibrationSection =
+        const prosecutionSection =
             calibration.findingBias === 'dismissive'
                 ? `
-<calibration_override>
 ## Investigation Stance: Prosecution Mode
 
 Your challenge checkpoint (step 8c) operates in **prosecution mode**: instead of arguing AGAINST your finding, construct the **strongest argument that this IS a real bug**. Gather supporting evidence.
@@ -230,6 +229,23 @@ Your challenge checkpoint (step 8c) operates in **prosecution mode**: instead of
 - When validate_claim returns inconclusive, try additional tools (find_usages, search_for_pattern) before dropping
 - Retain hypotheses that are plausible until you have concrete proof they are safe
 - Missing a real bug is costlier than investigating a false lead
+`
+                : '';
+
+        const investigationPreamble = calibration.investigationProtocol
+            .investigationPreamble
+            ? `
+## Investigation Protocol
+
+${calibration.investigationProtocol.investigationPreamble}
+`
+            : '';
+
+        const calibrationSection =
+            prosecutionSection || investigationPreamble
+                ? `
+<calibration_override>
+${prosecutionSection}${investigationPreamble}
 </calibration_override>
 `
                 : '';

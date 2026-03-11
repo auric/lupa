@@ -15,6 +15,15 @@ export type FindingBias = 'dismissive' | 'balanced' | 'aggressive';
 export type ChallengeMode = 'prosecution' | 'devils-advocate';
 export type EvidenceThreshold = 'low' | 'medium' | 'high';
 
+export interface InvestigationProtocol {
+    /** Minimum tool calls before the first record_finding is accepted */
+    readonly minToolCallsBeforeFirstFinding: number;
+    /** Tool names that MUST appear in toolNamesCalled before accepting response */
+    readonly requiredToolsBeforeDone: readonly string[];
+    /** Step-by-step investigation instructions injected into prompt for this model */
+    readonly investigationPreamble: string;
+}
+
 export interface ModelCalibrationProfile {
     /** Human-readable profile name for logging */
     readonly name: string;
@@ -71,6 +80,13 @@ export interface ModelCalibrationProfile {
      * For balanced models: 'CRITICAL' (current default behavior).
      */
     readonly adversarialVerificationThreshold: FindingSeverity;
+
+    /**
+     * Model-specific investigation protocol.
+     * Defines minimum investigation depth, required tools, and structured instructions.
+     * Critical for GPT-4.1 which tends to stop early without explicit guidance.
+     */
+    readonly investigationProtocol: InvestigationProtocol;
 }
 
 const GPT_41_PROFILE: ModelCalibrationProfile = {
@@ -83,6 +99,20 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
     adversarialVerificationThreshold: 'MEDIUM',
+    investigationProtocol: {
+        minToolCallsBeforeFirstFinding: 5,
+        requiredToolsBeforeDone: [
+            'get_file_diff',
+            'find_symbol',
+            'validate_claim',
+        ],
+        investigationPreamble:
+            'You MUST keep investigating until you have thoroughly examined every assigned file. ' +
+            'Do NOT stop early or yield control prematurely. ' +
+            'For EACH changed function: (1) read the diff, (2) read the full implementation with find_symbol, ' +
+            '(3) trace callers with find_usages, (4) verify claims with validate_claim. ' +
+            'You MUST plan extensively before each tool call and reflect on results after.',
+    },
 };
 
 const GPT_4O_PROFILE: ModelCalibrationProfile = {
@@ -95,6 +125,14 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
     adversarialVerificationThreshold: 'HIGH',
+    investigationProtocol: {
+        minToolCallsBeforeFirstFinding: 3,
+        requiredToolsBeforeDone: ['validate_claim'],
+        investigationPreamble:
+            'Investigate thoroughly before recording findings. ' +
+            'Use validate_claim to verify factual claims before recording. ' +
+            'Do not stop at diff reading — trace dependencies and verify assumptions with tools.',
+    },
 };
 
 const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
@@ -107,6 +145,13 @@ const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
     includeAgenticPreamble: true,
     evidenceThreshold: 'high',
     adversarialVerificationThreshold: 'HIGH',
+    investigationProtocol: {
+        minToolCallsBeforeFirstFinding: 2,
+        requiredToolsBeforeDone: ['validate_claim'],
+        investigationPreamble:
+            'Verify all claims with validate_claim before recording. ' +
+            'Focus on precision — only record findings with concrete tool-confirmed evidence.',
+    },
 };
 
 /**
@@ -124,6 +169,13 @@ const RAPTOR_MINI_PROFILE: ModelCalibrationProfile = {
     includeAgenticPreamble: true,
     evidenceThreshold: 'medium',
     adversarialVerificationThreshold: 'CRITICAL',
+    investigationProtocol: {
+        minToolCallsBeforeFirstFinding: 2,
+        requiredToolsBeforeDone: ['validate_claim'],
+        investigationPreamble:
+            'Verify all claims with validate_claim before recording. ' +
+            'Focus on precision — only record findings with concrete tool-confirmed evidence.',
+    },
 };
 
 const CLAUDE_PROFILE: ModelCalibrationProfile = {
@@ -136,6 +188,11 @@ const CLAUDE_PROFILE: ModelCalibrationProfile = {
     includeAgenticPreamble: false,
     evidenceThreshold: 'medium',
     adversarialVerificationThreshold: 'CRITICAL',
+    investigationProtocol: {
+        minToolCallsBeforeFirstFinding: 2,
+        requiredToolsBeforeDone: [],
+        investigationPreamble: '',
+    },
 };
 
 export const DEFAULT_PROFILE: ModelCalibrationProfile = {
