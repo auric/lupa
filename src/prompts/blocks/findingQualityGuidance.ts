@@ -221,32 +221,32 @@ If after thorough investigation you cannot cite a specific tool output that conf
 
 ### FALSE POSITIVE EXAMPLES — Learn from Past Mistakes
 
-These are REAL findings that were recorded in previous reviews and turned out to be 100% false positives. Study them to avoid repeating the same mistakes:
+These are REAL findings from previous reviews that turned out to be 100% false positives. These patterns apply across ALL languages — not just one specific ecosystem:
 
 **Example 1 — Centralized Error Handling Misidentified as Gap:**
-Finding: "Missing error handling in ValidateClaimTool — execute() has no try-catch"
-Why FP: ToolExecutor is the centralized error handler. Per the architecture, tools intentionally omit try-catch because ToolExecutor wraps every execute() call and converts errors to toolError(). This is by design, not a gap.
-Lesson: Before reporting "missing error handling," trace the caller chain 2-3 levels up. If a centralized handler exists, the finding is invalid.
+Finding: "Missing error handling in ServiceHandler — handle() has no try-catch"
+Why FP: A centralized error handler (middleware, executor, decorator) wraps all calls and handles errors. Individual functions intentionally omit try-catch because the framework layer catches everything.
+Lesson: Before reporting "missing error handling," trace the caller chain 2-3 levels up. Check for middleware (Express/Koa), decorators (Python/Java), error boundaries (React), executors, or centralized catch-all handlers. If one exists, the finding is invalid. This applies to ANY framework with centralized error handling.
 
 **Example 2 — Concurrency in Single-Threaded Runtime:**
-Finding: "Missing concurrency tests for DiffEnricher — enrich() could have race conditions"
-Why FP: Node.js is single-threaded. DiffEnricher.enrich() uses only local variables and no shared mutable state. Race conditions are structurally impossible. The internal withConcurrency() is properly scoped per call.
-Lesson: In Node.js/browser, synchronous operations cannot race. Only report concurrency issues when you can prove (1) shared mutable state exists AND (2) an await/yield between read and write of that state.
+Finding: "Race condition in EventProcessor — process() could have concurrent access issues"
+Why FP: The runtime is single-threaded (e.g., Node.js, browser JS, Python with GIL, Ruby with GVL, Lua). Synchronous operations cannot race. The function uses only local variables with no shared mutable state.
+Lesson: Verify the runtime's concurrency model FIRST. In single-threaded runtimes, synchronous operations cannot race. Only report concurrency issues when you can prove (1) shared mutable state, (2) a yield point (await, thread switch, yield) between read and write, and (3) the runtime allows true parallelism at that point.
 
-**Example 3 — TypeScript Types Treated as Needing Runtime Validation:**
-Finding: "Missing input validation in generateSystemPrompt — parameters are not validated at runtime"
-Why FP: This is internal code with TypeScript types. The function is NOT at an API boundary — it's called by other TypeScript code that already provides typed parameters. Runtime validation would be redundant. Per the architecture: "Only validate at system boundaries."
-Lesson: Runtime validation is only needed at SYSTEM BOUNDARIES (user input, external APIs, HTTP endpoints). Internal TypeScript functions are protected by the type system.
+**Example 3 — Static Type System Treated as Needing Runtime Validation:**
+Finding: "Missing input validation in generateConfig — parameters are not validated at runtime"
+Why FP: This is internal code in a statically-typed language (TypeScript, Java, Go, Rust, C#, Kotlin, etc.). The function is called by other type-checked code, not at an API boundary. The compiler already enforces the types. Runtime validation would be redundant.
+Lesson: Runtime validation is only needed at SYSTEM BOUNDARIES (user input, external APIs, deserialization, HTTP endpoints). Internal functions in statically-typed languages are protected by the compiler. This applies to TypeScript, Java, Go, Rust, C#, Kotlin, Swift, and similar type systems.
 
 **Example 4 — Existing Tests Reported as Missing:**
-Finding: "Missing non-standard file type tests in DiffEnricher"
-Why FP: Tests already exist: 'skips non-code files (.md, .json, .yaml, etc.)' and 'processes code files alongside non-code files' cover these exact scenarios.
-Lesson: Before reporting "missing tests," search the __tests__/ directory for the function name AND behavioral synonyms. If tests exist under a different name or description, the finding is invalid.
+Finding: "Missing edge case tests for DataProcessor"
+Why FP: Tests already existed under different names — e.g., 'handles empty input gracefully' and 'skips invalid entries' covered the same scenarios.
+Lesson: Before reporting "missing tests," search the test directory for the function/class name AND behavioral synonyms. Tests may exist under a different name, in a different file, or grouped under a broader integration test. If coverage exists, the finding is invalid.
 
 **Example 5 — Intentional Design Flagged as Bug:**
-Finding: "Lenient validation in UpdatePlanTool is risky"
-Why FP: Intentional design, explicitly documented in code comments. Strict rejection causes LLM retry loops. Soft warnings let the LLM self-correct. The "leniency" IS the feature.
-Lesson: Before reporting a design choice as a bug, search for comments containing "intentional", "by design", "Note:", or design docs explaining the rationale.
+Finding: "Lenient validation in RequestHandler is risky"
+Why FP: Intentional design, explicitly documented in code comments. Strict rejection causes retry loops. Soft warnings allow self-correction. The "leniency" IS the feature.
+Lesson: Before reporting a design choice as a bug, search for comments containing "intentional", "by design", "Note:", "TODO", or design docs explaining the rationale. Check CHANGELOG and commit messages too. This applies in any language.
 
 </finding_quality>`;
 }

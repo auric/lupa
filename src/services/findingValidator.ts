@@ -1,3 +1,4 @@
+import { extname } from 'path';
 import * as vscode from 'vscode';
 import type { DiffHunk } from '../types/contextTypes';
 import type {
@@ -44,6 +45,70 @@ function downgradeSeverity(severity: FindingSeverity): FindingSeverity {
     return SEVERITY_ORDER[Math.max(0, idx - 1)]!;
 }
 
+const SINGLE_THREADED_EXTENSIONS = new Set([
+    '.js',
+    '.mjs',
+    '.cjs',
+    '.ts',
+    '.mts',
+    '.cts',
+    '.tsx',
+    '.jsx',
+    '.rb',
+    '.lua',
+    '.php',
+]);
+
+function isSingleThreadedProject(filePaths: string[]): boolean {
+    const codeFiles = filePaths.filter(
+        (f) =>
+            !f.endsWith('.md') &&
+            !f.endsWith('.json') &&
+            !f.endsWith('.yaml') &&
+            !f.endsWith('.yml')
+    );
+    if (codeFiles.length === 0) {
+        return false;
+    }
+    const singleThreaded = codeFiles.filter((f) =>
+        SINGLE_THREADED_EXTENSIONS.has(extname(f).toLowerCase())
+    );
+    return singleThreaded.length / codeFiles.length > 0.5;
+}
+
+const STATIC_TYPE_EXTENSIONS = new Set([
+    '.ts',
+    '.mts',
+    '.cts',
+    '.tsx',
+    '.java',
+    '.kt',
+    '.scala',
+    '.cs',
+    '.fs',
+    '.go',
+    '.rs',
+    '.swift',
+    '.hs',
+]);
+
+function hasStaticTypeSystem(filePaths: string[]): boolean {
+    const codeFiles = filePaths.filter(
+        (f) =>
+            !f.endsWith('.md') &&
+            !f.endsWith('.json') &&
+            !f.endsWith('.yaml') &&
+            !f.endsWith('.yml')
+    );
+    if (codeFiles.length === 0) {
+        return false;
+    }
+    const staticTyped = codeFiles.filter((f) =>
+        STATIC_TYPE_EXTENSIONS.has(extname(f).toLowerCase())
+    );
+    return staticTyped.length / codeFiles.length > 0.5;
+}
+
 export class FindingValidator {
     constructor(private readonly lspValidation: LspValidationService) {}
 
@@ -56,6 +121,9 @@ export class FindingValidator {
         const deletedFiles = new Set(
             parsedDiff.filter((d) => d.isDeletedFile).map((d) => d.filePath)
         );
+        const filePaths = parsedDiff.map((d) => d.filePath);
+        const singleThreaded = isSingleThreadedProject(filePaths);
+        const staticTypes = hasStaticTypeSystem(filePaths);
         const validated: ValidatedFinding[] = [];
 
         for (const finding of findings) {
@@ -90,7 +158,7 @@ export class FindingValidator {
                 }
             }
 
-            if (verdict !== 'drop') {
+            if (verdict !== 'drop' && singleThreaded) {
                 const concurrencyViolation =
                     this.checkConcurrencyFalsePositive(finding);
                 if (concurrencyViolation) {
@@ -100,7 +168,10 @@ export class FindingValidator {
             }
 
             if (verdict !== 'drop') {
-                const patternViolation = this.checkExcludedPatterns(finding);
+                const patternViolation = this.checkExcludedPatterns(
+                    finding,
+                    staticTypes
+                );
                 if (patternViolation) {
                     violations.push(patternViolation);
                     verdict = 'drop';
@@ -186,13 +257,14 @@ export class FindingValidator {
             concurrencyPattern.test(text) &&
             finding.category !== 'data_integrity'
         ) {
-            return 'Concurrency issue flagged in single-threaded JavaScript runtime';
+            return 'Concurrency issue flagged in single-threaded runtime';
         }
         return undefined;
     }
 
     private checkExcludedPatterns(
-        finding: RecordedFinding
+        finding: RecordedFinding,
+        staticTypes: boolean
     ): string | undefined {
         const text = `${finding.title} ${finding.description}`.toLowerCase();
 
@@ -213,6 +285,7 @@ export class FindingValidator {
         }
 
         if (
+            staticTypes &&
             /\bruntime\s+(type\s+)?validation\b|\bruntime\s+(input\s+)?check/.test(
                 text
             )
@@ -221,7 +294,7 @@ export class FindingValidator {
                 finding.category !== 'security_vulnerability' &&
                 finding.category !== 'error_handling_gap'
             ) {
-                return 'Runtime validation findings on internal TypeScript code are excluded';
+                return 'Runtime validation findings on internal statically-typed code are excluded';
             }
         }
 

@@ -470,7 +470,7 @@ describe('FindingValidator', () => {
 
             expect(result.dropped).toBe(1);
             expect(result.validated[0]!.violations[0]).toContain(
-                'single-threaded JavaScript'
+                'single-threaded runtime'
             );
         });
 
@@ -573,7 +573,74 @@ describe('FindingValidator', () => {
 
             expect(result.dropped).toBe(1);
             expect(result.validated[0]!.violations[0]).toContain(
-                'single-threaded JavaScript'
+                'single-threaded runtime'
+            );
+        });
+
+        it('keeps concurrency finding in multi-threaded Java project', async () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/Main.java',
+                    category: 'data_integrity',
+                    title: 'Race condition in shared HashMap',
+                    description: 'Concurrent access without synchronization',
+                }),
+            ];
+            const diff = [createTestDiffHunk('src/Main.java')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.kept).toBe(1);
+        });
+
+        it('keeps concurrency finding in Go project', async () => {
+            const findings = [
+                createTestFinding({
+                    file: 'main.go',
+                    category: 'logic_error',
+                    title: 'Race condition in goroutine',
+                    description: 'Concurrent access to shared map',
+                }),
+            ];
+            const diff = [createTestDiffHunk('main.go')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.kept).toBe(1);
+        });
+
+        it('keeps runtime validation finding in Python project', async () => {
+            const findings = [
+                createTestFinding({
+                    file: 'app/handler.py',
+                    category: 'api_misuse',
+                    title: 'Missing input validation',
+                    description: 'No runtime type validation for request data',
+                }),
+            ];
+            const diff = [createTestDiffHunk('app/handler.py')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.kept).toBe(1);
+        });
+
+        it('drops concurrency finding in Ruby project (single-threaded GVL)', async () => {
+            const findings = [
+                createTestFinding({
+                    file: 'app/worker.rb',
+                    category: 'logic_error',
+                    title: 'Race condition in request handler',
+                    description: 'Concurrent access to instance variable',
+                }),
+            ];
+            const diff = [createTestDiffHunk('app/worker.rb')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.dropped).toBe(1);
+            expect(result.validated[0]!.violations[0]).toContain(
+                'single-threaded runtime'
             );
         });
     });

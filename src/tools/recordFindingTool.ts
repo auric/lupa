@@ -33,8 +33,8 @@ export class RecordFindingTool extends BaseTool {
                     'data_integrity (lost data, silent truncation, wrong serialization), ' +
                     'regression_risk (change breaks existing behavior). ' +
                     'EXCLUDED categories that must NOT be reported: missing tests, missing documentation, ' +
-                    'code style/naming, runtime type validation on internal TypeScript code, ' +
-                    'concurrency guards in single-threaded JavaScript, design pattern suggestions.'
+                    'code style/naming, runtime type validation on internal statically-typed code, ' +
+                    'concurrency guards in single-threaded runtimes, design pattern suggestions.'
             ),
         title: z.string().describe('Brief finding title'),
         file: z.string().describe('Primary file path affected'),
