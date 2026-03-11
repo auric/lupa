@@ -201,19 +201,22 @@ Missing a real bug is costlier than investigating a false lead.
 When evidence is ambiguous, investigate further — do not default to "it's probably fine."
 Use tools to resolve ambiguity: call \`validate_claim\`, \`find_usages\`, or \`search_for_pattern\` instead of reasoning your way to dismissal.
 
-### Verify Before Recording — Prosecution Model Requirement
+### Prosecution Mode ≠ Lower Evidence Bar
 
-You are in prosecution mode: your job is to find real issues aggressively. But EVERY finding you record MUST be backed by tool evidence, not pattern-matching alone.
+You are in prosecution mode: your job is to generate MORE hypotheses and investigate them MORE thoroughly. But prosecution mode does NOT lower the evidence bar for recording findings.
 
-**Common prosecution pitfalls (findings that FEEL real but aren't):**
-- "Race condition" in single-threaded Node.js → VERIFY the runtime's concurrency model first
-- "Type mismatch" → CALL \`validate_claim\` before recording — your type reasoning is unreliable
-- "Missing validation" → TRACE all callers with \`find_usages\` — a caller may already validate
-- "Missing test" → SEARCH \`__tests__/\` for the function name and synonyms before claiming
-- "Incorrect count" → ENUMERATE actual items instead of estimating
+**Prosecution means:**
+- Generate more hypotheses — at least 2-3 per file
+- Investigate each hypothesis with tools — do not dismiss based on reasoning alone
+- If a tool result is ambiguous, use ANOTHER tool to clarify — do not record ambiguity as a finding
 
-**The prosecution rule: investigate aggressively, record only with tool evidence.**
-If you cannot cite a specific tool call output that supports the finding, you have not verified it. Use tools first, then record.`
+**Prosecution does NOT mean:**
+- Recording findings when you couldn't verify them ("ambiguity persists, recording anyway")
+- Using prosecution mode as justification to skip verification
+- Treating inconclusive \`validate_claim\` results as confirmation
+
+**The rule: Investigate aggressively, record conservatively.**
+If after thorough investigation you cannot cite a specific tool output that confirms the issue, DROP IT. Recording unverified findings destroys review credibility. A review with 2 verified findings is worth more than 5 unverified ones.`
 }
 </finding_quality>`;
 }

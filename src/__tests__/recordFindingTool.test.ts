@@ -18,6 +18,8 @@ const BASE_FINDING_ARGS = {
     file: 'src/api.ts',
     line: 15,
     description: 'The catch block is empty and swallows errors silently.',
+    verification_evidence:
+        'search_for_pattern(catch, src/api.ts) showed empty catch block at line 15 with no logging or rethrow',
     disproof_note:
         'Checked if error is logged elsewhere — no other error handling found',
 };
@@ -91,7 +93,7 @@ describe('RecordFindingTool', () => {
         });
     });
 
-    it('sets disproof.attempted=false for empty disproof_note', async () => {
+    it('always sets disproof.attempted=true since disproof_note is required', async () => {
         const store = new FindingStore();
         const recordSpy = vi.spyOn(store, 'record');
         const ctx = createMockExecutionContext({
@@ -99,11 +101,11 @@ describe('RecordFindingTool', () => {
             currentAgentId: 'root',
         });
 
-        await tool.execute({ ...BASE_FINDING_ARGS, disproof_note: '' }, ctx);
+        await tool.execute(BASE_FINDING_ARGS, ctx);
 
         expect(recordSpy).toHaveBeenCalledWith(
             expect.objectContaining({
-                disproof: { attempted: false, method: '', result: '' },
+                disproof: expect.objectContaining({ attempted: true }),
             })
         );
     });

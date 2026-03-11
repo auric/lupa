@@ -123,7 +123,7 @@ Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using 
 ${
     calibration.findingBias === 'dismissive'
         ? `
-**Retention bias**: When tool output is ambiguous or inconclusive, retain the hypothesis and investigate further rather than dropping it. A finding that MIGHT be real deserves more investigation, not dismissal. Only drop a hypothesis when you have concrete tool output proving it safe.`
+**Evidence ambiguity**: When tool output is ambiguous or inconclusive, this means you need MORE investigation, not recording. Call a different tool to resolve the ambiguity. If no tool can confirm the issue, DROP it — an unverifiable claim is not a finding regardless of how plausible it sounds.`
         : calibration.findingBias === 'aggressive'
           ? `
 **Target kill ratio**: Drop 50-70% of your initial hypotheses through verification.
@@ -174,8 +174,8 @@ These rules were stated above but are critical. Re-read them before submitting:
 1. **Every hypothesis must be investigated with tools.** Do NOT dismiss risks based on reasoning alone — call \\\`find_usages\\\`, \\\`validate_claim\\\`, or \\\`search_for_pattern\\\` to verify.
 2. **Zero risks at checkpoint #1 is almost never correct.** If you generated 0 risks after reading a diff, go back and try harder.
 3. **Findings recorded by your sub-agents are binding.** If \\\`record_finding\\\` was called, that finding must appear in your final review OR be explicitly retracted with \\\`retract_finding\\\`.
-4. **Do NOT use \\\`validate_claim\\\` to disprove findings recorded by your team.** validate_claim verifies factual claims — it is not a tool for dismissing investigation results.
-5. **When in doubt, investigate more.** A finding that MIGHT be real deserves investigation, not dismissal.`
+4. **Ambiguity = investigate more, NOT record.** If tool output is inconclusive, call a DIFFERENT tool. Do not record "couldn't verify" findings.
+5. **Your verification_evidence must cite a SPECIFIC tool output.** "I reasoned that..." or "it appears that..." is NOT evidence. Name the tool, name the query, name the result.`
         : ''
 }
 </analysis_methodology>`;

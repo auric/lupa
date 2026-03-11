@@ -84,7 +84,7 @@ describe('Calibration-aware prompt blocks', () => {
         it('should remove kill ratio for dismissive models', () => {
             const methodology = generateAnalysisMethodology(DISMISSIVE_PROFILE);
             expect(methodology).not.toContain('Target kill ratio');
-            expect(methodology).toContain('Retention bias');
+            expect(methodology).toContain('Evidence ambiguity');
         });
 
         it('should include stricter kill ratio for aggressive models', () => {
