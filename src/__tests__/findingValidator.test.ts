@@ -15,7 +15,7 @@ function createTestFinding(
         agentId: 'agent1',
         timestamp: Date.now(),
         severity: 'HIGH',
-        category: 'bug',
+        category: 'logic_error',
         title: 'Test finding',
         file: 'src/foo.ts',
         lineRange: [10, 20],

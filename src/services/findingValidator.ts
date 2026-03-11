@@ -5,6 +5,7 @@ import type {
     FindingSeverity,
     LspValidationStatus,
 } from '../types/findingTypes';
+import { ALLOWED_FINDING_CATEGORIES } from '../types/findingTypes';
 import type {
     ClaimValidationRequest,
     ClaimValidationResult,
@@ -81,6 +82,31 @@ export class FindingValidator {
                 verdict = 'drop';
             }
 
+            if (verdict !== 'drop') {
+                const categoryViolation = this.checkCategoryAllowed(finding);
+                if (categoryViolation) {
+                    violations.push(categoryViolation);
+                    verdict = 'drop';
+                }
+            }
+
+            if (verdict !== 'drop') {
+                const concurrencyViolation =
+                    this.checkConcurrencyFalsePositive(finding);
+                if (concurrencyViolation) {
+                    violations.push(concurrencyViolation);
+                    verdict = 'drop';
+                }
+            }
+
+            if (verdict !== 'drop') {
+                const patternViolation = this.checkExcludedPatterns(finding);
+                if (patternViolation) {
+                    violations.push(patternViolation);
+                    verdict = 'drop';
+                }
+            }
+
             if (!this.checkDisproof(finding)) {
                 violations.push(
                     'No disproof attempted for CRITICAL/HIGH/MEDIUM finding'
@@ -140,6 +166,66 @@ export class FindingValidator {
     private checkLineRange(finding: RecordedFinding): boolean {
         const [start, end] = finding.lineRange;
         return start > 0 && start <= end;
+    }
+
+    private checkCategoryAllowed(finding: RecordedFinding): string | undefined {
+        const allowed = ALLOWED_FINDING_CATEGORIES as readonly string[];
+        if (!allowed.includes(finding.category)) {
+            return `Finding category '${finding.category}' is not in the allowed taxonomy`;
+        }
+        return undefined;
+    }
+
+    private checkConcurrencyFalsePositive(
+        finding: RecordedFinding
+    ): string | undefined {
+        const text = `${finding.title} ${finding.description}`.toLowerCase();
+        const concurrencyPattern =
+            /race\s*condition|thread[\s-]*safe|mutex|deadlock|lock\s*contention|concurrent\s+access|synchroniz/;
+        if (
+            concurrencyPattern.test(text) &&
+            finding.category !== 'data_integrity'
+        ) {
+            return 'Concurrency issue flagged in single-threaded JavaScript runtime';
+        }
+        return undefined;
+    }
+
+    private checkExcludedPatterns(
+        finding: RecordedFinding
+    ): string | undefined {
+        const text = `${finding.title} ${finding.description}`.toLowerCase();
+
+        if (
+            /\bmissing\s+(unit\s+)?tests?\b|\bno\s+tests?\b|\bmissing\s+.*\btests?\b/.test(
+                text
+            )
+        ) {
+            return 'Findings about missing tests are excluded from automated review scope';
+        }
+
+        if (
+            /\bmissing\s+(api\s+)?documentation\b|\bundocumented\b|\bmissing\s+docs?\b/.test(
+                text
+            )
+        ) {
+            return 'Findings about missing documentation are excluded from automated review scope';
+        }
+
+        if (
+            /\bruntime\s+(type\s+)?validation\b|\bruntime\s+(input\s+)?check/.test(
+                text
+            )
+        ) {
+            if (
+                finding.category !== 'security_vulnerability' &&
+                finding.category !== 'error_handling_gap'
+            ) {
+                return 'Runtime validation findings on internal TypeScript code are excluded';
+            }
+        }
+
+        return undefined;
     }
 
     private checkDisproof(finding: RecordedFinding): boolean {
