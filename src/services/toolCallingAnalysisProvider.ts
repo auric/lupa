@@ -519,8 +519,6 @@ export class ToolCallingAnalysisProvider {
         token: vscode.CancellationToken
     ): Promise<{ removed: number; confirmed: number }> {
         const adversarialPromptGen = new AdversarialPromptGenerator();
-        const ADVERSARIAL_BUDGET_CRITICAL = 7;
-        const ADVERSARIAL_BUDGET_DEFAULT = 5;
         let removed = 0;
         let confirmed = 0;
 
@@ -534,9 +532,7 @@ export class ToolCallingAnalysisProvider {
                     adversarialPromptGen.generateSystemPrompt(finding);
 
                 const budget =
-                    finding.severity === 'CRITICAL'
-                        ? ADVERSARIAL_BUDGET_CRITICAL
-                        : ADVERSARIAL_BUDGET_DEFAULT;
+                    executionContext.calibrationProfile.adversarialBudget;
 
                 Log.info(
                     `Adversarial verification for ${finding.severity} finding: ${finding.title} in ${finding.file} (budget: ${budget})`

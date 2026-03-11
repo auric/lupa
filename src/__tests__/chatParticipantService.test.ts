@@ -164,7 +164,7 @@ describe('ChatParticipantService', () => {
                 getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(120),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
@@ -614,7 +614,7 @@ describe('ChatParticipantService', () => {
                 getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(120),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
@@ -1227,7 +1227,7 @@ describe('ChatParticipantService', () => {
                 getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(120),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
@@ -1780,7 +1780,7 @@ describe('ChatParticipantService', () => {
                 getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(120),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
@@ -2714,7 +2714,7 @@ describe('ChatParticipantService', () => {
                 getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(120),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(5),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),

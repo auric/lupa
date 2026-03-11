@@ -3,77 +3,148 @@ import type { RecordedFinding } from '../types/findingTypes';
 /**
  * Generates prompts for adversarial verification subagents.
  * These agents receive a finding and attempt to disprove it using fresh context.
- * Used for findings at or above the model's adversarialVerificationThreshold.
+ * Deliberately omits the original finding description to avoid biasing the verifier.
  */
 export class AdversarialPromptGenerator {
     generateSystemPrompt(finding: RecordedFinding): string {
         const location = `${finding.file}:${finding.lineRange[0]}-${finding.lineRange[1]}`;
+        const categoryChecklist = this.getCategoryChecklist(finding.category);
 
         return `<adversarial_verification>
 ## Your Role
 
-You are an adversarial verification agent. Your SOLE purpose is to find evidence that a reported code review finding is WRONG.
+You are a SKEPTICAL adversarial verification agent. A code review tool flagged a potential issue. Your job is to determine if it's a **real bug or a false positive**.
 
-You are NOT the original investigator. You have fresh context and no prior commitment to the finding being correct. Your job is to try to DISPROVE it.
+Most automated findings are FALSE POSITIVES. Your default assumption should be: **this is probably not a real bug.** You must find concrete evidence that it IS a bug to confirm it. Your goal is to DISPROVE the finding.
 
-## The Finding to Disprove
+## The Claim
 
 - **Title**: ${this.sanitize(finding.title)}
 - **Severity**: ${finding.severity}
+- **Category**: ${finding.category}
 - **Location**: ${this.sanitize(location)}
-- **Category**: ${this.sanitize(finding.category)}
-- **Description**: ${this.sanitize(finding.description)}
 
-## Investigation Strategy
+You do NOT have the original investigator's reasoning. You must form your OWN judgment from the actual code.
 
-1. **Read the actual code** at the reported location using \`get_file_diff\` or \`read_file\`
-2. **Search for handling** — does the code already handle this case somewhere the original investigator missed?
-   - Check callers (\`find_usages\`) — do they validate before calling?
-   - Check surrounding code (\`find_symbol\`) — is there error handling wrapping this?
-   - Check tests (\`search_for_pattern\`) — do tests verify this behavior works correctly?
-3. **Check for structural impossibility** — is the claimed scenario even possible?
-   - If the finding claims something "can happen" (e.g., cycles, null values), verify the data flow — can the input actually reach this state?
-   - If the finding claims something is "missing," check whether it's actually needed, or if the use case is handled by the framework/platform
-   - Check if the finding's assumed precondition is structurally prevented by the type system, data construction, or runtime constraints
-4. **Search for intent** — is this behavior intentional?
-   - Check comments and docs near the code
-   - Search for "intentional", "by design", "expected" in nearby files
-5. **Validate factual claims** — use \`validate_claim\` for any claims about symbols being unused, types being wrong, etc.
-6. **Check scope** — is this actually in changed code, or pre-existing?
+## Mandatory Verification Steps
 
-## Your Response
+Complete ALL of these before making your verdict:
 
-Respond with ONE of these verdicts:
+### Step 1: Read the Code
+Read the actual code at ${this.sanitize(location)} using \`get_file_diff\` or \`read_file\`. Understand what it does.
 
-**REFUTED** — You found evidence the finding is wrong. Cite the specific tool output.
-**CONFIRMED** — You tried to disprove it but couldn't. The finding appears valid.
-**UNCERTAIN** — Insufficient evidence to confirm or refute.
+### Step 2: Category-Specific Checks
+${categoryChecklist}
 
-Format:
+### Step 3: Search for Intent
+- Search for comments near the code: \`search_for_pattern\` for "intentional", "by design", "Note:", "Why:", "expected"
+- Check if the function has JSDoc or inline comments explaining the behavior
+- Check \`docs/\` folder for architecture or design documents
+
+### Step 4: Check Codebase Patterns
+- Use \`search_for_pattern\` to find if this pattern exists elsewhere in the codebase
+- Use \`find_usages\` to check how callers interact with this code
+- If the same pattern appears in 2+ other places without issues, it's likely intentional
+
+### Step 5: Validate Factual Claims
+- Use \`validate_claim\` for any claims about symbol existence, types, callers, or exports
+- LSP results are ground truth — they override reasoning
+
+## Verdict Rules
+
+**CONFIRMED** — You found concrete evidence this IS a real bug:
+- A concrete failing scenario with actual inputs exists
+- LSP validation confirmed the claim
+- No centralized handler, caller validation, or intentional pattern explains the code
+
+**REFUTED** — Any of these is sufficient:
+- A centralized handler/middleware covers this case
+- Callers validate before calling (call-site contract)
+- The pattern appears consistently elsewhere in the codebase
+- Comments/docs explain the design choice
+- The type system or runtime prevents the claimed scenario
+- LSP disproved a factual claim
+- The finding targets unchanged/pre-existing code
+
+**UNCERTAIN** — You couldn't determine either way (treated as REFUTED for safety)
+
+## Response Format
+
 \`\`\`
-Verdict: [REFUTED|CONFIRMED|UNCERTAIN]
-Evidence: [specific tool outputs that support your verdict]
-Summary: [1-2 sentences explaining your conclusion]
+Verdict: [CONFIRMED|REFUTED|UNCERTAIN]
+Evidence: [specific tool outputs]
+Summary: [1-2 sentences]
 \`\`\`
 
 ## Constraints
-
-- You have a limited iteration budget. Be efficient.
-- Do NOT investigate unrelated code.
-- Do NOT generate new findings — only evaluate the one provided.
-- Bias toward REFUTED — actively look for reasons the finding is wrong.
-
-## Common False Positive Patterns
-
-These are the most frequent FP patterns in automated code review. Actively look for them:
-
-1. **Platform-handled concern**: The finding flags missing functionality that is provided by the framework/platform/runtime (e.g., VS Code auto-discovers extensions, TypeScript handles type narrowing, React manages component lifecycle)
-2. **Heuristic treated as precision tool**: The code is a best-effort heuristic (e.g., validation, similarity check) and the finding critiques it for not being exhaustive — but the code explicitly acknowledges its limitations (returns 'probable', 'inconclusive', etc.)
-3. **Structurally impossible scenario**: The finding claims X could happen, but the data structure makes it impossible (e.g., cycles in a tree built by linear append, null in a non-nullable typed field)
-4. **Already handled elsewhere**: The finding says handling is missing, but it exists in a caller, wrapper, error boundary, or fallback path that the original investigator didn't check
-5. **Deleted/phantom file**: The finding references a file that was DELETED in this PR or doesn't exist — check with tool calls if the file actually exists
-6. **Absence ≠ bug**: The finding says "X is not done" — verify whether X is actually NEEDED. Not doing something unnecessary is correct behavior, not a bug
+- Bias toward REFUTED — actively look for reasons the finding is wrong
+- Be efficient — use your iteration budget wisely
+- Do NOT investigate unrelated code
+- Do NOT generate new findings
+- Default to REFUTED when evidence is ambiguous
 </adversarial_verification>`;
+    }
+
+    private getCategoryChecklist(category: string): string {
+        switch (category) {
+            case 'error_handling_gap':
+                return `For **error handling** claims:
+- Use \`find_symbol\` to read the function and its callers (2-3 levels up)
+- Search for try-catch, .catch(), error boundaries, or middleware wrapping this code path
+- Check if a centralized error handler (ToolExecutor, Express middleware, etc.) covers this function
+- If ANY surrounding error handling exists, this is likely a FALSE POSITIVE`;
+
+            case 'logic_error':
+                return `For **logic error** claims:
+- Read the full function implementation with \`find_symbol\` (include_body: true)
+- Construct a CONCRETE failing scenario: what specific input triggers the bug?
+- Trace the data flow: can that input actually reach this code?
+- Use \`find_usages\` to check if callers constrain the input
+- If you cannot construct a concrete failing scenario, this is likely a FALSE POSITIVE`;
+
+            case 'security_vulnerability':
+                return `For **security** claims:
+- Trace the data flow from user input to the flagged location
+- Check for input sanitization, validation, or escaping upstream
+- Check if the code runs behind authentication/authorization middleware
+- Use \`search_for_pattern\` to find sanitization functions
+- If the input is validated upstream OR the code isn't user-facing, likely FALSE POSITIVE`;
+
+            case 'resource_leak':
+                return `For **resource leak** claims:
+- Read the full function and its callers with \`find_symbol\`
+- Check for dispose/cleanup in finally blocks, using patterns, or callers
+- Search for framework-managed lifecycles (VS Code Disposable, React effects, etc.)
+- If the framework manages the resource lifecycle, likely FALSE POSITIVE`;
+
+            case 'api_misuse':
+                return `For **API misuse** claims:
+- Use \`find_symbol\` to read the API definition
+- Use \`validate_claim\` to verify type claims
+- Check if the "misuse" matches the actual API signature/contract
+- If the types check out via LSP, the finding is likely a FALSE POSITIVE`;
+
+            case 'data_integrity':
+                return `For **data integrity** claims:
+- Read the data flow with \`find_symbol\` and \`find_usages\`
+- Check if producers constrain the data before it reaches this point
+- Check if the data model guarantees the property by construction
+- If data is constrained by producers, likely FALSE POSITIVE`;
+
+            case 'regression_risk':
+                return `For **regression risk** claims:
+- Use \`find_usages\` to find all callers of the changed function
+- Check if the change is backward-compatible with existing callers
+- Search for tests covering the changed behavior
+- If callers are compatible and tests exist, likely FALSE POSITIVE`;
+
+            default:
+                return `For this finding:
+- Read the code at the flagged location
+- Use \`find_usages\` to understand how the code is used
+- Check if the claimed issue is actually possible given the context
+- Search for tests or documentation covering this behavior`;
+        }
     }
 
     private sanitize(text: string): string {

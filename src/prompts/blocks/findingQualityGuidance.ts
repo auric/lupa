@@ -248,5 +248,40 @@ Finding: "Lenient validation in RequestHandler is risky"
 Why FP: Intentional design, explicitly documented in code comments. Strict rejection causes retry loops. Soft warnings allow self-correction. The "leniency" IS the feature.
 Lesson: Before reporting a design choice as a bug, search for comments containing "intentional", "by design", "Note:", "TODO", or design docs explaining the rationale. Check CHANGELOG and commit messages too. This applies in any language.
 
+### Concrete Examples: Real Bug vs False Positive
+
+**Example 1: "Missing error handling"**
+\`\`\`typescript
+// Code under review:
+async function processItem(item: Item): Promise<void> {
+    const result = await transform(item);
+    store.save(result);
+}
+\`\`\`
+- ❌ FALSE POSITIVE if: ToolExecutor/middleware wraps all calls to processItem in try-catch. Check callers!
+- ✅ TRUE POSITIVE if: processItem is called directly from a user-facing endpoint with no surrounding error handling, AND transform() can throw on invalid input
+
+**Example 2: "Value can be negative"**
+\`\`\`typescript
+const remaining = total - completed;
+\`\`\`
+- ❌ FALSE POSITIVE if: \`completed\` is incremented from 0 and \`total\` is set once at start — remaining cannot go below 0 unless there's a bug in the increment logic. Prove that completed > total is reachable.
+- ✅ TRUE POSITIVE if: \`completed\` comes from external input or is modified concurrently (in multi-threaded runtime)
+
+**Example 3: "Inconsistent behavior"**
+\`\`\`typescript
+// Root agent: decomposes at 3+ files
+// Sub-agent: decomposes at 4+ files
+\`\`\`
+- ❌ FALSE POSITIVE: Different roles have different thresholds by design. Root is a coordinator (delegates early), sub-agent is a worker (handles more directly). Check if different roles justify different thresholds.
+
+**Example 4: "No callers validate return type"**
+\`\`\`typescript
+function getConfig(): Config | undefined { ... }
+// All callers: const config = getConfig(); if (!config) return;
+\`\`\`
+- ❌ FALSE POSITIVE: ALL callers already handle the undefined case. Use find_usages to verify.
+- ✅ TRUE POSITIVE if: find_usages reveals callers that use the result without null check
+
 </finding_quality>`;
 }

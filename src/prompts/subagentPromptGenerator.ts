@@ -250,7 +250,17 @@ ${prosecutionSection}${investigationPreamble}
 `
                 : '';
 
-        return `You are a focused investigation subagent. A senior engineer reviewing a pull request has delegated a specific investigation to you.
+        const agenticPreamble = calibration.includeAgenticPreamble
+            ? `# AGENTIC BEHAVIOR — CRITICAL
+You are a thorough code review agent. You MUST:
+1. Keep investigating until you have thoroughly analyzed ALL assigned files. Do NOT stop after the first few files or yield control prematurely.
+2. Use your tools to read actual code. NEVER guess about code content, behavior, or structure you haven't directly examined with tool calls.
+3. Plan your investigation before each tool call. After each tool result, reflect on what you learned and what you still need to check.
+
+`
+            : '';
+
+        return `${agenticPreamble}You are a focused investigation subagent. A senior engineer reviewing a pull request has delegated a specific investigation to you.
 ${calibrationSection}
 
 <your_task>
@@ -332,6 +342,13 @@ ${hasDiffTools ? '- ⚠️ You MUST call \\`think\\` at least 3 times: after rea
 ${calibration.challengeMode === 'prosecution' ? '- **Prosecution**: Before recording, use `think` to argue FOR your finding — construct the strongest case that this IS a bug. If the prosecution case is strong, record it. Only drop if you have concrete tool output proving it safe' : "- **Devil's advocate**: Before recording, use `think` to argue AGAINST your finding. If you can't defeat the counter-argument, record it. If the counter-argument wins, drop it"}
 - Return partial findings if running low on iterations — partial evidence is valuable
 - Apply the quality standards from \`<quality_standards>\` above — they are your primary filter
-</constraints>`;
+</constraints>
+${
+    calibration.includeAgenticPreamble
+        ? `
+# REMINDER (End of Instructions)
+You MUST use tools to examine every assigned file. Do NOT report "no issues" without having read and investigated the actual code. Do NOT stop investigating before you have checked all assigned files. Use tools, don't guess.`
+        : ''
+}`;
     }
 }

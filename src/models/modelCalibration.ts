@@ -81,6 +81,9 @@ export interface ModelCalibrationProfile {
      */
     readonly adversarialVerificationThreshold: FindingSeverity;
 
+    /** Iteration budget for adversarial verification subagents. Higher = more thorough but slower. */
+    readonly adversarialBudget: number;
+
     /**
      * Model-specific investigation protocol.
      * Defines minimum investigation depth, required tools, and structured instructions.
@@ -98,7 +101,8 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
     minValidateClaimBeforeSubmit: 1,
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
-    adversarialVerificationThreshold: 'MEDIUM',
+    adversarialVerificationThreshold: 'LOW',
+    adversarialBudget: 10,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 5,
         requiredToolsBeforeDone: [
@@ -124,7 +128,8 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
     minValidateClaimBeforeSubmit: 1,
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
-    adversarialVerificationThreshold: 'HIGH',
+    adversarialVerificationThreshold: 'LOW',
+    adversarialBudget: 10,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 3,
         requiredToolsBeforeDone: ['validate_claim'],
@@ -144,7 +149,8 @@ const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
     minValidateClaimBeforeSubmit: 0,
     includeAgenticPreamble: true,
     evidenceThreshold: 'high',
-    adversarialVerificationThreshold: 'HIGH',
+    adversarialVerificationThreshold: 'LOW',
+    adversarialBudget: 8,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: ['validate_claim'],
@@ -168,7 +174,8 @@ const RAPTOR_MINI_PROFILE: ModelCalibrationProfile = {
     minValidateClaimBeforeSubmit: 0,
     includeAgenticPreamble: true,
     evidenceThreshold: 'medium',
-    adversarialVerificationThreshold: 'CRITICAL',
+    adversarialVerificationThreshold: 'LOW',
+    adversarialBudget: 8,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: ['validate_claim'],
@@ -187,7 +194,8 @@ const CLAUDE_PROFILE: ModelCalibrationProfile = {
     minValidateClaimBeforeSubmit: 0,
     includeAgenticPreamble: false,
     evidenceThreshold: 'medium',
-    adversarialVerificationThreshold: 'CRITICAL',
+    adversarialVerificationThreshold: 'LOW',
+    adversarialBudget: 8,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: [],
