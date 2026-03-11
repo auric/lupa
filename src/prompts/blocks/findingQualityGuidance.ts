@@ -218,5 +218,35 @@ You are in prosecution mode: your job is to generate MORE hypotheses and investi
 **The rule: Investigate aggressively, record conservatively.**
 If after thorough investigation you cannot cite a specific tool output that confirms the issue, DROP IT. Recording unverified findings destroys review credibility. A review with 2 verified findings is worth more than 5 unverified ones.`
 }
+
+### FALSE POSITIVE EXAMPLES — Learn from Past Mistakes
+
+These are REAL findings that were recorded in previous reviews and turned out to be 100% false positives. Study them to avoid repeating the same mistakes:
+
+**Example 1 — Centralized Error Handling Misidentified as Gap:**
+Finding: "Missing error handling in ValidateClaimTool — execute() has no try-catch"
+Why FP: ToolExecutor is the centralized error handler. Per the architecture, tools intentionally omit try-catch because ToolExecutor wraps every execute() call and converts errors to toolError(). This is by design, not a gap.
+Lesson: Before reporting "missing error handling," trace the caller chain 2-3 levels up. If a centralized handler exists, the finding is invalid.
+
+**Example 2 — Concurrency in Single-Threaded Runtime:**
+Finding: "Missing concurrency tests for DiffEnricher — enrich() could have race conditions"
+Why FP: Node.js is single-threaded. DiffEnricher.enrich() uses only local variables and no shared mutable state. Race conditions are structurally impossible. The internal withConcurrency() is properly scoped per call.
+Lesson: In Node.js/browser, synchronous operations cannot race. Only report concurrency issues when you can prove (1) shared mutable state exists AND (2) an await/yield between read and write of that state.
+
+**Example 3 — TypeScript Types Treated as Needing Runtime Validation:**
+Finding: "Missing input validation in generateSystemPrompt — parameters are not validated at runtime"
+Why FP: This is internal code with TypeScript types. The function is NOT at an API boundary — it's called by other TypeScript code that already provides typed parameters. Runtime validation would be redundant. Per the architecture: "Only validate at system boundaries."
+Lesson: Runtime validation is only needed at SYSTEM BOUNDARIES (user input, external APIs, HTTP endpoints). Internal TypeScript functions are protected by the type system.
+
+**Example 4 — Existing Tests Reported as Missing:**
+Finding: "Missing non-standard file type tests in DiffEnricher"
+Why FP: Tests already exist: 'skips non-code files (.md, .json, .yaml, etc.)' and 'processes code files alongside non-code files' cover these exact scenarios.
+Lesson: Before reporting "missing tests," search the __tests__/ directory for the function name AND behavioral synonyms. If tests exist under a different name or description, the finding is invalid.
+
+**Example 5 — Intentional Design Flagged as Bug:**
+Finding: "Lenient validation in UpdatePlanTool is risky"
+Why FP: Intentional design, explicitly documented in code comments. Strict rejection causes LLM retry loops. Soft warnings let the LLM self-correct. The "leniency" IS the feature.
+Lesson: Before reporting a design choice as a bug, search for comments containing "intentional", "by design", "Note:", or design docs explaining the rationale.
+
 </finding_quality>`;
 }

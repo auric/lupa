@@ -10,7 +10,7 @@ function makeFinding(
         agentId: overrides.agentId ?? 'root',
         timestamp: overrides.timestamp ?? Date.now(),
         severity: overrides.severity ?? 'CRITICAL',
-        category: overrides.category ?? 'security',
+        category: overrides.category ?? 'security_vulnerability',
         title: overrides.title ?? 'SQL injection in query builder',
         file: overrides.file ?? 'src/db/queryBuilder.ts',
         lineRange: overrides.lineRange ?? [42, 55],

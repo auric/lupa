@@ -29,7 +29,7 @@ describe('RetractFindingTool', () => {
         const recorded = store.record({
             agentId: 'root',
             severity: 'HIGH',
-            category: 'error-handling',
+            category: 'error_handling_gap',
             title: 'Missing error handler',
             file: 'src/foo.ts',
             lineRange: [10, 20],
@@ -86,7 +86,7 @@ describe('RetractFindingTool', () => {
         store.record({
             agentId: 'root',
             severity: 'HIGH',
-            category: 'security',
+            category: 'security_vulnerability',
             title: 'SQL injection',
             file: 'src/db.ts',
             lineRange: [1, 5],
@@ -99,7 +99,7 @@ describe('RetractFindingTool', () => {
         const toRetract = store.record({
             agentId: 'root',
             severity: 'LOW',
-            category: 'style',
+            category: 'logic_error',
             title: 'Naming convention',
             file: 'src/utils.ts',
             lineRange: [10, 12],

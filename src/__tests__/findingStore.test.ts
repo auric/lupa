@@ -10,7 +10,7 @@ function makeFinding(
     return {
         agentId: overrides.agentId ?? 'agent-1',
         severity: overrides.severity ?? ('MEDIUM' as FindingSeverity),
-        category: overrides.category ?? 'bug',
+        category: overrides.category ?? 'logic_error',
         title: overrides.title ?? 'Test finding',
         file: overrides.file ?? 'src/foo.ts',
         lineRange: overrides.lineRange ?? ([10, 20] as [number, number]),

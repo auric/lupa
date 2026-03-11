@@ -426,4 +426,155 @@ describe('FindingValidator', () => {
         expect(result.kept).toBe(1);
         expect(result.validated[0]!.verdict).toBe('keep');
     });
+
+    describe('post-processing FP filters', () => {
+        it('drops finding with invalid category', async () => {
+            const findings = [
+                createTestFinding({
+                    category: 'style_issue' as never,
+                }),
+            ];
+            const diff = [createTestDiffHunk('src/foo.ts')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.dropped).toBe(1);
+            expect(result.validated[0]!.violations[0]).toContain(
+                'not in the allowed taxonomy'
+            );
+        });
+
+        it('keeps finding with valid category', async () => {
+            const findings = [
+                createTestFinding({ category: 'security_vulnerability' }),
+            ];
+            const diff = [createTestDiffHunk('src/foo.ts')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.kept).toBe(1);
+        });
+
+        it('drops concurrency finding in single-threaded JS', async () => {
+            const findings = [
+                createTestFinding({
+                    category: 'api_misuse',
+                    title: 'Race condition in event handler',
+                    description:
+                        'Concurrent access to shared state may cause data corruption',
+                }),
+            ];
+            const diff = [createTestDiffHunk('src/foo.ts')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.dropped).toBe(1);
+            expect(result.validated[0]!.violations[0]).toContain(
+                'single-threaded JavaScript'
+            );
+        });
+
+        it('keeps concurrency finding when category is data_integrity', async () => {
+            const findings = [
+                createTestFinding({
+                    category: 'data_integrity',
+                    title: 'Race condition in async write',
+                    description: 'Concurrent access may cause lost updates',
+                }),
+            ];
+            const diff = [createTestDiffHunk('src/foo.ts')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.kept).toBe(1);
+        });
+
+        it('drops "missing tests" finding', async () => {
+            const findings = [
+                createTestFinding({
+                    title: 'Missing unit tests for error paths',
+                    description: 'No tests cover the error handling branches',
+                }),
+            ];
+            const diff = [createTestDiffHunk('src/foo.ts')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.dropped).toBe(1);
+            expect(result.validated[0]!.violations[0]).toContain(
+                'missing tests'
+            );
+        });
+
+        it('drops "missing documentation" finding', async () => {
+            const findings = [
+                createTestFinding({
+                    title: 'Missing API documentation for public method',
+                    description: 'The method is undocumented and has no JSDoc',
+                }),
+            ];
+            const diff = [createTestDiffHunk('src/foo.ts')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.dropped).toBe(1);
+            expect(result.validated[0]!.violations[0]).toContain(
+                'missing documentation'
+            );
+        });
+
+        it('drops "runtime validation" finding on internal code', async () => {
+            const findings = [
+                createTestFinding({
+                    category: 'api_misuse',
+                    title: 'Missing input validation',
+                    description:
+                        'No runtime type validation for function parameters',
+                }),
+            ];
+            const diff = [createTestDiffHunk('src/foo.ts')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.dropped).toBe(1);
+            expect(result.validated[0]!.violations[0]).toContain(
+                'Runtime validation'
+            );
+        });
+
+        it('keeps "runtime validation" finding for security_vulnerability category', async () => {
+            const findings = [
+                createTestFinding({
+                    category: 'security_vulnerability',
+                    title: 'Missing input validation at API boundary',
+                    description:
+                        'No runtime type validation for user-provided data',
+                }),
+            ];
+            const diff = [createTestDiffHunk('src/foo.ts')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.kept).toBe(1);
+        });
+
+        it('drops thread-safety finding', async () => {
+            const findings = [
+                createTestFinding({
+                    category: 'logic_error',
+                    title: 'Thread-unsafe map access',
+                    description:
+                        'Map is not thread-safe for concurrent reads and writes',
+                }),
+            ];
+            const diff = [createTestDiffHunk('src/foo.ts')];
+
+            const result = await validator.validate(findings, diff, token);
+
+            expect(result.dropped).toBe(1);
+            expect(result.validated[0]!.violations[0]).toContain(
+                'single-threaded JavaScript'
+            );
+        });
+    });
 });

@@ -14,6 +14,7 @@ vi.mock('../services/loggingService', () => ({
 
 const BASE_FINDING_ARGS = {
     severity: 'HIGH' as const,
+    category: 'error_handling_gap' as const,
     title: 'Missing error handler',
     file: 'src/api.ts',
     line: 15,
@@ -77,7 +78,7 @@ describe('RecordFindingTool', () => {
         expect(recordSpy).toHaveBeenCalledWith({
             agentId: 'child-1',
             severity: 'HIGH',
-            category: 'general',
+            category: 'error_handling_gap',
             title: 'Missing error handler',
             file: 'src/api.ts',
             lineRange: [15, 15],

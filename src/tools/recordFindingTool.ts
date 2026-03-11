@@ -3,7 +3,10 @@ import { BaseTool } from './baseTool';
 import { toolSuccess, toolError } from '../types/toolResultTypes';
 import type { ToolResult } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
-import { FINDING_SEVERITIES } from '../types/findingTypes';
+import {
+    FINDING_SEVERITIES,
+    ALLOWED_FINDING_CATEGORIES,
+} from '../types/findingTypes';
 
 export class RecordFindingTool extends BaseTool {
     name = 'record_finding';
@@ -19,6 +22,20 @@ export class RecordFindingTool extends BaseTool {
             .transform((s) => s.toUpperCase())
             .pipe(z.enum(FINDING_SEVERITIES))
             .describe('Finding severity: CRITICAL, HIGH, MEDIUM, or LOW'),
+        category: z
+            .enum(ALLOWED_FINDING_CATEGORIES)
+            .describe(
+                'Finding category. ALLOWED: logic_error (wrong logic, off-by-one, null deref), ' +
+                    'security_vulnerability (injection, auth bypass, data exposure), ' +
+                    'resource_leak (unclosed handles, memory/listener leaks), ' +
+                    'api_misuse (wrong params, missing await, deprecated API), ' +
+                    'error_handling_gap (missing catch at SYSTEM BOUNDARY like external API/user input — NOT internal functions), ' +
+                    'data_integrity (lost data, silent truncation, wrong serialization), ' +
+                    'regression_risk (change breaks existing behavior). ' +
+                    'EXCLUDED categories that must NOT be reported: missing tests, missing documentation, ' +
+                    'code style/naming, runtime type validation on internal TypeScript code, ' +
+                    'concurrency guards in single-threaded JavaScript, design pattern suggestions.'
+            ),
         title: z.string().describe('Brief finding title'),
         file: z.string().describe('Primary file path affected'),
         line: z.coerce.number().describe('Primary line number (1-indexed)'),
@@ -57,7 +74,7 @@ export class RecordFindingTool extends BaseTool {
         const finding = store.record({
             agentId: context.currentAgentId ?? 'unknown',
             severity: args.severity,
-            category: 'general',
+            category: args.category,
             title: args.title,
             file: args.file,
             lineRange: [args.line, args.line],
