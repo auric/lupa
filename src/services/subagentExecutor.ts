@@ -98,10 +98,12 @@ export class SubagentExecutor {
         }
 
         // When recursive state is available, show aggregate agent progress
+        // Skip when all agents are done (e.g., during post-analysis adversarial phase)
+        // to avoid overwriting adversarial progress with stale "Agents: N/N done"
         if (this.recursiveState) {
             const { running, completed, total } =
                 this.recursiveState.getAgentProgress();
-            if (total > 0) {
+            if (total > 0 && (running > 0 || completed < total)) {
                 const mainIter = this.progressContext?.getCurrentIteration();
                 const mainMax = this.progressContext?.getMaxIterations();
                 const turnPrefix =

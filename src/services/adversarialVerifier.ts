@@ -91,9 +91,15 @@ export class AdversarialVerifier {
             if (verdict === 'CONFIRMED') {
                 this.confirmedFindingIds.add(finding.id);
                 confirmed.push(finding.title);
+                progressCallback?.(
+                    `Adversarial ${i + 1}/${findingsToVerify.length}: "${finding.title}" — CONFIRMED`
+                );
             } else {
                 findingStore.remove(finding.id);
                 refuted.push(finding.title);
+                progressCallback?.(
+                    `Adversarial ${i + 1}/${findingsToVerify.length}: "${finding.title}" — REFUTED`
+                );
             }
         }
 
