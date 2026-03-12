@@ -3,6 +3,12 @@ import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { Log } from '../services/loggingService';
+import { AdversarialPromptGenerator } from '../prompts/adversarialPromptGenerator';
+import { FINDING_SEVERITIES } from '../types/findingTypes';
+import { isCancellationError } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
+import type { FindingStore } from '../sessions/findingStore';
 
 /**
  * Explicit completion signal for PR review analysis.
@@ -108,6 +114,127 @@ export class SubmitReviewTool extends BaseTool {
             }
         }
 
+        // Adversarial verification gate: verify findings before accepting the review
+        if (store && store.size > 0 && context.subagentExecutor) {
+            const adversarialResult = await this.runAdversarialGate(
+                store,
+                context
+            );
+            if (adversarialResult) {
+                return adversarialResult;
+            }
+        }
+
         return toolSuccess(args.review_content, { isCompletion: true });
+    }
+
+    private async runAdversarialGate(
+        store: FindingStore,
+        context: ExecutionContext
+    ): Promise<ToolResult | undefined> {
+        const profile = context.calibrationProfile;
+        const threshold = profile.adversarialVerificationThreshold;
+
+        const thresholdIndex = FINDING_SEVERITIES.indexOf(threshold);
+        const findingsToVerify = FINDING_SEVERITIES.filter(
+            (_, i) => i <= thresholdIndex
+        ).flatMap((s) => store.getBySeverity(s));
+
+        if (findingsToVerify.length === 0) {
+            return undefined;
+        }
+
+        const adversarialGen = new AdversarialPromptGenerator();
+        const refutedTitles: string[] = [];
+
+        for (let i = 0; i < findingsToVerify.length; i++) {
+            const finding = findingsToVerify[i]!;
+            if (context.cancellationToken.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
+            try {
+                const adversarialTask =
+                    adversarialGen.generateSystemPrompt(finding);
+                const budget = profile.adversarialBudget;
+
+                const result = await context.subagentExecutor!.execute(
+                    {
+                        task: adversarialTask,
+                        context: `Finding to verify: "${finding.title}" in ${finding.file}:${finding.lineRange[0]}-${finding.lineRange[1]}`,
+                    },
+                    context.cancellationToken,
+                    i + 1,
+                    {
+                        agentId: `adversarial-${i + 1}`,
+                        childBudget: budget,
+                        calibrationProfile: profile,
+                    }
+                );
+
+                const verdict = this.parseAdversarialVerdict(result.response);
+                if (verdict !== 'CONFIRMED') {
+                    store.remove(finding.id);
+                    refutedTitles.push(finding.title);
+                    Log.info(
+                        `Adversarial ${verdict}: ${finding.title} — removed`
+                    );
+                } else {
+                    Log.info(`Adversarial CONFIRMED: ${finding.title}`);
+                }
+            } catch (error) {
+                if (isCancellationError(error)) {
+                    throw error;
+                }
+                Log.warn(
+                    `Adversarial verification failed for ${finding.title}: ${getErrorMessage(error)}`
+                );
+                store.remove(finding.id);
+                refutedTitles.push(finding.title);
+            }
+        }
+
+        if (refutedTitles.length > 0) {
+            const titles = refutedTitles.map((t) => `  - ${t}`).join('\n');
+            return toolError(
+                `Review rejected: adversarial verification refuted ${refutedTitles.length} finding(s):\n${titles}\n\n` +
+                    'These findings have been removed from the FindingStore. ' +
+                    'Rewrite your review WITHOUT these findings and call submit_review again. ' +
+                    'If no findings remain, submit an approval.'
+            );
+        }
+
+        return undefined;
+    }
+
+    private parseAdversarialVerdict(
+        response: string
+    ): 'REFUTED' | 'CONFIRMED' | 'UNCERTAIN' {
+        const upper = response.toUpperCase();
+        if (
+            upper.includes('VERDICT: REFUTED') ||
+            upper.includes('VERDICT:REFUTED')
+        ) {
+            return 'REFUTED';
+        }
+        if (
+            upper.includes('VERDICT: CONFIRMED') ||
+            upper.includes('VERDICT:CONFIRMED')
+        ) {
+            return 'CONFIRMED';
+        }
+        if (
+            upper.includes('VERDICT: UNCERTAIN') ||
+            upper.includes('VERDICT:UNCERTAIN')
+        ) {
+            return 'UNCERTAIN';
+        }
+        if (/\bREFUTED\b/.test(upper) && !/\bCONFIRMED\b/.test(upper)) {
+            return 'REFUTED';
+        }
+        if (/\bCONFIRMED\b/.test(upper) && !/\bREFUTED\b/.test(upper)) {
+            return 'CONFIRMED';
+        }
+        return 'UNCERTAIN';
     }
 }
