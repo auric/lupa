@@ -94,15 +94,15 @@ export interface ModelCalibrationProfile {
 
 const GPT_41_PROFILE: ModelCalibrationProfile = {
     name: 'gpt-4.1',
-    findingBias: 'dismissive',
-    challengeMode: 'prosecution',
-    includeFalsePositiveGuide: false,
-    includeRevertTest: false,
+    findingBias: 'aggressive',
+    challengeMode: 'devils-advocate',
+    includeFalsePositiveGuide: true,
+    includeRevertTest: true,
     minValidateClaimBeforeSubmit: 1,
     includeAgenticPreamble: true,
-    evidenceThreshold: 'low',
+    evidenceThreshold: 'high',
     adversarialVerificationThreshold: 'LOW',
-    adversarialBudget: 10,
+    adversarialBudget: 20,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 5,
         requiredToolsBeforeDone: [
@@ -129,7 +129,7 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
     adversarialVerificationThreshold: 'LOW',
-    adversarialBudget: 10,
+    adversarialBudget: 20,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 3,
         requiredToolsBeforeDone: ['validate_claim'],
@@ -150,7 +150,7 @@ const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
     includeAgenticPreamble: true,
     evidenceThreshold: 'high',
     adversarialVerificationThreshold: 'LOW',
-    adversarialBudget: 8,
+    adversarialBudget: 15,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: ['validate_claim'],
@@ -175,7 +175,7 @@ const RAPTOR_MINI_PROFILE: ModelCalibrationProfile = {
     includeAgenticPreamble: true,
     evidenceThreshold: 'medium',
     adversarialVerificationThreshold: 'LOW',
-    adversarialBudget: 8,
+    adversarialBudget: 15,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: ['validate_claim'],
@@ -195,7 +195,7 @@ const CLAUDE_PROFILE: ModelCalibrationProfile = {
     includeAgenticPreamble: false,
     evidenceThreshold: 'medium',
     adversarialVerificationThreshold: 'LOW',
-    adversarialBudget: 8,
+    adversarialBudget: 15,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: [],

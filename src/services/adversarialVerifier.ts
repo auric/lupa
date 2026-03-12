@@ -9,12 +9,14 @@ import type { DiffHunk } from '../types/contextTypes';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+import type { ToolCallRecord } from '../types/toolCallTypes';
 
 export type AdversarialProgressCallback = (message: string) => void;
 
 export interface AdversarialResult {
     confirmed: string[];
     refuted: string[];
+    toolCallRecords: ToolCallRecord[];
 }
 
 /**
@@ -46,60 +48,105 @@ export class AdversarialVerifier {
         );
 
         if (findingsToVerify.length === 0) {
-            return { confirmed: [], refuted: [] };
+            return { confirmed: [], refuted: [], toolCallRecords: [] };
         }
 
-        progressCallback?.(
-            `Adversarial verification of ${findingsToVerify.length} finding(s)...`
-        );
-        Log.info(
-            `Adversarial verification: ${findingsToVerify.length} finding(s) to verify`
-        );
-
-        const confirmed: string[] = [];
-        const refuted: string[] = [];
-
+        // Separate already-confirmed from new findings
+        const alreadyConfirmed: string[] = [];
+        const toVerify: { finding: RecordedFinding; index: number }[] = [];
         for (let i = 0; i < findingsToVerify.length; i++) {
             const finding = findingsToVerify[i]!;
-            if (token.isCancellationRequested) {
-                break;
-            }
-
-            // Skip re-verification of already-confirmed findings
             if (this.confirmedFindingIds.has(finding.id)) {
                 Log.info(
                     `Adversarial skip (already confirmed): ${finding.title}`
                 );
-                confirmed.push(finding.title);
+                alreadyConfirmed.push(finding.title);
+            } else {
+                toVerify.push({ finding, index: i });
+            }
+        }
+
+        if (toVerify.length === 0) {
+            return {
+                confirmed: alreadyConfirmed,
+                refuted: [],
+                toolCallRecords: [],
+            };
+        }
+
+        progressCallback?.(
+            `Adversarial verification of ${toVerify.length} finding(s) in parallel...`
+        );
+        Log.info(
+            `Adversarial verification: ${toVerify.length} finding(s) to verify in parallel`
+        );
+
+        let completed = 0;
+        const totalToVerify = toVerify.length;
+
+        // Launch all verifications in parallel
+        const results = await Promise.allSettled(
+            toVerify.map(async ({ finding, index }) => {
+                if (token.isCancellationRequested) {
+                    throw new Error('Cancelled');
+                }
+                const { verdict, toolCalls } = await this.verifyFinding(
+                    finding,
+                    index,
+                    calibrationProfile,
+                    subagentExecutor,
+                    parsedDiff,
+                    findingStore,
+                    token
+                );
+                completed++;
+                progressCallback?.(
+                    `Adversarial: ${completed}/${totalToVerify} verified`
+                );
+                return { finding, verdict, toolCalls };
+            })
+        );
+
+        // Process results sequentially after all complete
+        const confirmed: string[] = [...alreadyConfirmed];
+        const refuted: string[] = [];
+        const toolCallRecords: ToolCallRecord[] = [];
+
+        for (const result of results) {
+            if (result.status !== 'fulfilled') {
                 continue;
             }
+            const { finding, verdict, toolCalls } = result.value;
 
-            progressCallback?.(
-                `Verifying finding ${i + 1}/${findingsToVerify.length}: ${finding.title}`
-            );
-
-            const verdict = await this.verifyFinding(
-                finding,
-                i,
-                calibrationProfile,
-                subagentExecutor,
-                parsedDiff,
-                findingStore,
-                token
-            );
+            // Build a synthetic ToolCallRecord for this adversarial agent
+            const verdictLabel =
+                verdict === 'CONFIRMED'
+                    ? '✅ CONFIRMED'
+                    : verdict === 'REFUTED'
+                      ? '❌ REFUTED'
+                      : '❓ UNCERTAIN';
+            toolCallRecords.push({
+                id: `adversarial-${finding.id}`,
+                toolName: 'adversarial_verification',
+                arguments: {
+                    finding_title: finding.title,
+                    finding_severity: finding.severity,
+                    finding_file: finding.file,
+                },
+                result: `${verdictLabel}: ${finding.title}`,
+                success: true,
+                error: undefined,
+                durationMs: undefined,
+                timestamp: Date.now(),
+                nestedCalls: toolCalls,
+            });
 
             if (verdict === 'CONFIRMED') {
                 this.confirmedFindingIds.add(finding.id);
                 confirmed.push(finding.title);
-                progressCallback?.(
-                    `Adversarial ${i + 1}/${findingsToVerify.length}: "${finding.title}" — CONFIRMED`
-                );
             } else {
                 findingStore.remove(finding.id);
                 refuted.push(finding.title);
-                progressCallback?.(
-                    `Adversarial ${i + 1}/${findingsToVerify.length}: "${finding.title}" — REFUTED`
-                );
             }
         }
 
@@ -109,7 +156,7 @@ export class AdversarialVerifier {
             );
         }
 
-        return { confirmed, refuted };
+        return { confirmed, refuted, toolCallRecords };
     }
 
     private async verifyFinding(
@@ -120,7 +167,10 @@ export class AdversarialVerifier {
         parsedDiff: DiffHunk[] | undefined,
         findingStore: FindingStore,
         token: vscode.CancellationToken
-    ): Promise<'CONFIRMED' | 'REFUTED' | 'UNCERTAIN'> {
+    ): Promise<{
+        verdict: 'CONFIRMED' | 'REFUTED' | 'UNCERTAIN';
+        toolCalls: ToolCallRecord[];
+    }> {
         try {
             const adversarialTask =
                 this.adversarialGen.generateSystemPrompt(finding);
@@ -144,7 +194,7 @@ export class AdversarialVerifier {
 
             const verdict = this.parseVerdict(result.response);
             Log.info(`Adversarial ${verdict}: ${finding.title}`);
-            return verdict;
+            return { verdict, toolCalls: result.toolCalls };
         } catch (error) {
             if (isCancellationError(error)) {
                 throw error;
@@ -152,7 +202,7 @@ export class AdversarialVerifier {
             Log.warn(
                 `Adversarial verification failed for ${finding.title}: ${getErrorMessage(error)}`
             );
-            return 'UNCERTAIN';
+            return { verdict: 'UNCERTAIN', toolCalls: [] };
         }
     }
 

@@ -13,13 +13,13 @@ describe('modelCalibration', () => {
                 'gpt-4.1-2025-04-14'
             );
             expect(profile.name).toBe('gpt-4.1');
-            expect(profile.findingBias).toBe('dismissive');
-            expect(profile.challengeMode).toBe('prosecution');
-            expect(profile.includeFalsePositiveGuide).toBe(false);
-            expect(profile.includeRevertTest).toBe(false);
+            expect(profile.findingBias).toBe('aggressive');
+            expect(profile.challengeMode).toBe('devils-advocate');
+            expect(profile.includeFalsePositiveGuide).toBe(true);
+            expect(profile.includeRevertTest).toBe(true);
             expect(profile.minValidateClaimBeforeSubmit).toBe(1);
             expect(profile.includeAgenticPreamble).toBe(true);
-            expect(profile.evidenceThreshold).toBe('low');
+            expect(profile.evidenceThreshold).toBe('high');
         });
 
         it('returns GPT-4o profile for gpt-4o family', () => {
@@ -114,10 +114,10 @@ describe('modelCalibration', () => {
     });
 
     describe('isDismissiveModel', () => {
-        it('returns true for GPT-4.1', () => {
+        it('returns false for GPT-4.1', () => {
             expect(
                 isDismissiveModel(getCalibrationProfile('gpt-4.1', 'gpt-4.1'))
-            ).toBe(true);
+            ).toBe(false);
         });
 
         it('returns true for GPT-4o', () => {
@@ -146,10 +146,10 @@ describe('modelCalibration', () => {
             ).toBe(true);
         });
 
-        it('returns false for GPT-4.1', () => {
+        it('returns true for GPT-4.1', () => {
             expect(
                 isAggressiveModel(getCalibrationProfile('gpt-4.1', 'gpt-4.1'))
-            ).toBe(false);
+            ).toBe(true);
         });
 
         it('returns false for Claude', () => {

@@ -384,6 +384,9 @@ export class ToolCallingAnalysisProvider {
                             : undefined
                     );
 
+                    // Record adversarial tool calls in the webview report
+                    toolCallRecords.push(...adversarialResult.toolCallRecords);
+
                     if (adversarialResult.refuted.length > 0) {
                         Log.info(
                             `Adversarial refuted ${adversarialResult.refuted.length} finding(s), re-entering conversation for rewrite`
