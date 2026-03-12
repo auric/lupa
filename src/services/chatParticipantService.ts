@@ -27,7 +27,6 @@ import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { FindingStore } from '../sessions/findingStore';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
-
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
