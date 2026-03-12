@@ -394,7 +394,8 @@ export class ToolCallingAnalysisProvider {
                                 executionContext,
                                 subagentExecutor,
                                 findingStore,
-                                token
+                                token,
+                                progressCallback
                             );
                         if (adversarialResults.removed > 0) {
                             analysisText += `\n*Adversarial verification: ${adversarialResults.removed} finding(s) refuted and removed*`;
@@ -516,18 +517,29 @@ export class ToolCallingAnalysisProvider {
         executionContext: ExecutionContext,
         subagentExecutor: SubagentExecutor,
         findingStore: FindingStore,
-        token: vscode.CancellationToken
+        token: vscode.CancellationToken,
+        progressCallback?: AnalysisProgressCallback
     ): Promise<{ removed: number; confirmed: number }> {
         const adversarialPromptGen = new AdversarialPromptGenerator();
         let removed = 0;
         let confirmed = 0;
 
-        for (const finding of findings) {
+        for (
+            let findingIndex = 0;
+            findingIndex < findings.length;
+            findingIndex++
+        ) {
+            const finding = findings[findingIndex]!;
             if (token.isCancellationRequested) {
                 break;
             }
 
             try {
+                progressCallback?.(
+                    `Verifying finding ${findingIndex + 1}/${findings.length}: ${finding.title}`,
+                    0.5
+                );
+
                 const adversarialTask =
                     adversarialPromptGen.generateSystemPrompt(finding);
 
@@ -544,8 +556,9 @@ export class ToolCallingAnalysisProvider {
                         context: `Finding to verify: "${finding.title}" in ${finding.file}:${finding.lineRange[0]}-${finding.lineRange[1]}`,
                     },
                     token,
-                    -1, // negative ID to distinguish adversarial from regular subagents
+                    findingIndex + 1,
                     {
+                        agentId: `adversarial-${findingIndex + 1}`,
                         childBudget: budget,
                         calibrationProfile: executionContext.calibrationProfile,
                     }
