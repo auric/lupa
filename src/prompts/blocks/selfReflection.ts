@@ -20,8 +20,14 @@ export function generateSelfReflectionGuidance(
 
     const challengeCheckpoint =
         challengeMode === 'prosecution'
-            ? `3. Before conclusions → \`think\` with topic="prosecution checkpoint", what evidence supports each hypothesis
-   - For each issue: state (1) which tool output supports it, (2) construct the strongest argument that this IS a real bug, (3) what additional evidence would strengthen it. Retain issues where the prosecution case is plausible — only drop when you have concrete proof it is safe`
+            ? `3. Before conclusions → \`think\` with topic="evidence review":
+   List each hypothesis you investigated. For each one:
+   (1) What tool calls did you make to investigate it?
+   (2) What did the tool output actually show?
+   (3) Based on the TOOL OUTPUT (not your reasoning), is this a problem?
+   If a tool showed something unexpected (wrong type, missing handler, etc.) — that IS a finding. Record it.
+   If you investigated fewer than 3 hypotheses per file, go back and investigate more.
+   Do NOT dismiss tool findings based on "it probably works" reasoning.`
             : `3. Before conclusions → \`think\` with topic="task alignment", what issues you found (HYPOTHESES), what needs investigation
    - For each issue: state (1) which tool output supports it, (2) what disproof you attempted, (3) why disproof failed. Drop issues where you cannot answer all three`;
 

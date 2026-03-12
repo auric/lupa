@@ -43,7 +43,10 @@ Pre-existing code quality issues, tech debt, and architectural preferences are N
         evidenceThreshold === 'low'
             ? 'When evidence suggests a potential issue, investigate further and record if the concern is plausible'
             : evidenceThreshold === 'high'
-              ? 'Record ONLY with strong, concrete evidence from tool output — speculative concerns must be verified or dropped'
+              ? `Record findings when specific tool output reveals a concrete problem. The evidence bar is:
+- SUFFICIENT: A tool call showed unexpected behavior (e.g., validate_claim returned "not verified", find_usages showed missing callers, search_for_pattern found no error handling)
+- INSUFFICIENT: Your reasoning alone, without any tool output supporting the claim
+- A failed validate_claim IS evidence — it means the code doesn't match expectations. Investigate WHY, don't dismiss.`
               : 'Record when evidence confirms an issue';
 
     const fpPatternsSection = includeFPGuide
