@@ -54,6 +54,8 @@ export interface SubagentExecuteOptions {
     findingStore?: FindingStore;
     /** Model calibration profile inherited from parent — adjusts prompt behavior. */
     calibrationProfile: ModelCalibrationProfile;
+    /** Additional tools to exclude from this subagent (beyond standard filters). */
+    excludeTools?: readonly string[];
 }
 
 /**
@@ -171,6 +173,14 @@ export class SubagentExecutor {
 
             const conversation = new ConversationManager();
             let filteredTools = this.filterTools(canRecurse);
+
+            // Apply additional tool exclusions (e.g., adversarial agents shouldn't have record_finding)
+            if (options?.excludeTools?.length) {
+                const excludeSet = new Set(options.excludeTools);
+                filteredTools = filteredTools.filter(
+                    (t) => !excludeSet.has(t.name)
+                );
+            }
 
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
 

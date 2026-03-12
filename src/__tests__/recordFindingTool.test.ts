@@ -25,6 +25,14 @@ const BASE_FINDING_ARGS = {
         'Checked if error is logged elsewhere — no other error handling found',
 };
 
+/** Tool call counts that satisfy minToolCallsBeforeFirstFinding for the default profile */
+function investigatedToolCalls(): Map<string, number> {
+    return new Map([
+        ['get_file_diff', 3],
+        ['search_for_pattern', 2],
+    ]);
+}
+
 describe('RecordFindingTool', () => {
     let tool: RecordFindingTool;
 
@@ -42,6 +50,7 @@ describe('RecordFindingTool', () => {
         const ctx = createMockExecutionContext({
             findingStore: store,
             currentAgentId: 'root',
+            toolCallCounts: investigatedToolCalls(),
         });
 
         const result = await tool.execute(BASE_FINDING_ARGS, ctx);
@@ -71,6 +80,7 @@ describe('RecordFindingTool', () => {
         const ctx = createMockExecutionContext({
             findingStore: store,
             currentAgentId: 'child-1',
+            toolCallCounts: investigatedToolCalls(),
         });
 
         await tool.execute(BASE_FINDING_ARGS, ctx);
@@ -100,6 +110,7 @@ describe('RecordFindingTool', () => {
         const ctx = createMockExecutionContext({
             findingStore: store,
             currentAgentId: 'root',
+            toolCallCounts: investigatedToolCalls(),
         });
 
         await tool.execute(BASE_FINDING_ARGS, ctx);
@@ -114,7 +125,10 @@ describe('RecordFindingTool', () => {
     it('uses "unknown" agentId when currentAgentId is not set', async () => {
         const store = new FindingStore();
         const recordSpy = vi.spyOn(store, 'record');
-        const ctx = createMockExecutionContext({ findingStore: store });
+        const ctx = createMockExecutionContext({
+            findingStore: store,
+            toolCallCounts: investigatedToolCalls(),
+        });
 
         await tool.execute(BASE_FINDING_ARGS, ctx);
 
@@ -129,6 +143,7 @@ describe('RecordFindingTool', () => {
         const context = createMockExecutionContext({
             findingStore: store,
             currentAgentId: 'test-agent',
+            toolCallCounts: investigatedToolCalls(),
         });
 
         await tool.execute(
@@ -170,6 +185,7 @@ describe('RecordFindingTool', () => {
         const context = createMockExecutionContext({
             findingStore: store,
             currentAgentId: 'test-agent',
+            toolCallCounts: investigatedToolCalls(),
         });
 
         await tool.execute(BASE_FINDING_ARGS, context);
@@ -187,6 +203,7 @@ describe('RecordFindingTool', () => {
         const context = createMockExecutionContext({
             findingStore: store,
             currentAgentId: 'test-agent',
+            toolCallCounts: investigatedToolCalls(),
         });
 
         await tool.execute(
@@ -227,4 +244,105 @@ describe('RecordFindingTool', () => {
             })
         );
     });
+
+    describe('minToolCallsBeforeFirstFinding gate', () => {
+        it('rejects first finding when insufficient investigation tool calls', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: new Map([['get_file_diff', 1]]), // only 1, default requires 2
+            });
+
+            const result = await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('insufficient investigation');
+            expect(store.size).toBe(0);
+        });
+
+        it('accepts first finding when enough investigation tool calls', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: new Map([
+                    ['get_file_diff', 1],
+                    ['search_for_pattern', 1],
+                ]),
+            });
+
+            const result = await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            expect(result.success).toBe(true);
+            expect(store.size).toBe(1);
+        });
+
+        it('does not count record_finding/retract_finding/submit_review as investigation', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: new Map([
+                    ['record_finding', 5],
+                    ['retract_finding', 3],
+                    ['submit_review', 1],
+                ]),
+            });
+
+            const result = await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('insufficient investigation');
+        });
+
+        it('skips gate for subsequent findings (store not empty)', async () => {
+            const store = new FindingStore();
+            // Pre-populate with a finding
+            store.record({
+                agentId: 'root',
+                severity: 'LOW',
+                category: 'logic_error',
+                title: 'Existing finding',
+                file: 'a.ts',
+                lineRange: [1, 1],
+                description: 'test',
+                supportingToolCalls: [],
+                disproof: { attempted: false, method: '', result: '' },
+                verifiableClaims: [],
+            });
+
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: new Map(), // zero investigation calls
+            });
+
+            const result = await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            expect(result.success).toBe(true);
+            expect(store.size).toBe(2);
+        });
+
+        it('respects model-specific minToolCallsBeforeFirstFinding', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: new Map([['get_file_diff', 3]]),
+                calibrationProfile: {
+                    ...ctx_profile(),
+                    investigationProtocol: {
+                        minToolCallsBeforeFirstFinding: 5,
+                        requiredToolsBeforeDone: [],
+                        investigationPreamble: '',
+                    },
+                },
+            });
+
+            const result = await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('minimum 5 required');
+        });
+    });
 });
+
+function ctx_profile() {
+    return createMockExecutionContext().calibrationProfile;
+}

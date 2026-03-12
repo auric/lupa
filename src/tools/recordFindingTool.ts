@@ -99,6 +99,37 @@ export class RecordFindingTool extends BaseTool {
             return toolError('Finding store not available in this context');
         }
 
+        // Calibration gate: enforce minimum investigation before first finding.
+        // Only applies to the FIRST finding — once investigation is established,
+        // subsequent findings don't need the gate.
+        if (store.size === 0) {
+            const minCalls =
+                context.calibrationProfile.investigationProtocol
+                    .minToolCallsBeforeFirstFinding;
+            if (minCalls > 0) {
+                // Count all tool calls excluding record_finding and retract_finding
+                const excludedTools = new Set([
+                    'record_finding',
+                    'retract_finding',
+                    'submit_review',
+                ]);
+                let investigationCalls = 0;
+                for (const [toolName, count] of context.toolCallCounts) {
+                    if (!excludedTools.has(toolName)) {
+                        investigationCalls += count;
+                    }
+                }
+                if (investigationCalls < minCalls) {
+                    return toolError(
+                        `Finding rejected: insufficient investigation (${investigationCalls} tool calls, minimum ${minCalls} required before first finding). ` +
+                            'You must use investigation tools (get_file_diff, search_for_pattern, find_usages, validate_claim, etc.) ' +
+                            'to understand the codebase BEFORE recording findings. Premature findings have a 90%+ false positive rate. ' +
+                            'Go investigate more, then try again.'
+                    );
+                }
+            }
+        }
+
         const finding = store.record({
             agentId: context.currentAgentId ?? 'unknown',
             severity: args.severity,
