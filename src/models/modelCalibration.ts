@@ -94,8 +94,8 @@ export interface ModelCalibrationProfile {
 
 const GPT_41_PROFILE: ModelCalibrationProfile = {
     name: 'gpt-4.1',
-    findingBias: 'aggressive',
-    challengeMode: 'devils-advocate',
+    findingBias: 'dismissive',
+    challengeMode: 'prosecution',
     includeFalsePositiveGuide: true,
     includeRevertTest: true,
     minValidateClaimBeforeSubmit: 1,
