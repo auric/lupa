@@ -27,12 +27,8 @@ import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { FindingStore } from '../sessions/findingStore';
-import { AdversarialPromptGenerator } from '../prompts/adversarialPromptGenerator';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator, ValidatedFinding } from './findingValidator';
-import type { RecordedFinding, FindingSeverity } from '../types/findingTypes';
-import { FINDING_SEVERITIES } from '../types/findingTypes';
-
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
@@ -371,36 +367,6 @@ export class ToolCallingAnalysisProvider {
                             validation.validated
                         );
                     }
-
-                    // Adversarial verification for findings at or above the calibration threshold
-                    const threshold =
-                        executionContext.calibrationProfile
-                            .adversarialVerificationThreshold;
-                    const findingsToVerify = this.getFindingsAtOrAboveSeverity(
-                        findingStore,
-                        threshold
-                    );
-                    if (
-                        findingsToVerify.length > 0 &&
-                        !token.isCancellationRequested
-                    ) {
-                        progressCallback?.(
-                            `Adversarial verification of ${findingsToVerify.length} finding(s)...`,
-                            0.5
-                        );
-                        const adversarialResults =
-                            await this.runAdversarialVerification(
-                                findingsToVerify,
-                                executionContext,
-                                subagentExecutor,
-                                findingStore,
-                                token,
-                                progressCallback
-                            );
-                        if (adversarialResults.removed > 0) {
-                            analysisText += `\n*Adversarial verification: ${adversarialResults.removed} finding(s) refuted and removed*`;
-                        }
-                    }
                 }
 
                 progressCallback?.(
@@ -510,135 +476,6 @@ export class ToolCallingAnalysisProvider {
             },
             wasCancelled,
         };
-    }
-
-    private async runAdversarialVerification(
-        findings: RecordedFinding[],
-        executionContext: ExecutionContext,
-        subagentExecutor: SubagentExecutor,
-        findingStore: FindingStore,
-        token: vscode.CancellationToken,
-        progressCallback?: AnalysisProgressCallback
-    ): Promise<{ removed: number; confirmed: number }> {
-        const adversarialPromptGen = new AdversarialPromptGenerator();
-        let removed = 0;
-        let confirmed = 0;
-
-        for (
-            let findingIndex = 0;
-            findingIndex < findings.length;
-            findingIndex++
-        ) {
-            const finding = findings[findingIndex]!;
-            if (token.isCancellationRequested) {
-                break;
-            }
-
-            try {
-                progressCallback?.(
-                    `Verifying finding ${findingIndex + 1}/${findings.length}: ${finding.title}`,
-                    0.5
-                );
-
-                const adversarialTask =
-                    adversarialPromptGen.generateSystemPrompt(finding);
-
-                const budget =
-                    executionContext.calibrationProfile.adversarialBudget;
-
-                Log.info(
-                    `Adversarial verification for ${finding.severity} finding: ${finding.title} in ${finding.file} (budget: ${budget})`
-                );
-
-                const result = await subagentExecutor.execute(
-                    {
-                        task: adversarialTask,
-                        context: `Finding to verify: "${finding.title}" in ${finding.file}:${finding.lineRange[0]}-${finding.lineRange[1]}`,
-                    },
-                    token,
-                    findingIndex + 1,
-                    {
-                        agentId: `adversarial-${findingIndex + 1}`,
-                        childBudget: budget,
-                        calibrationProfile: executionContext.calibrationProfile,
-                    }
-                );
-
-                const verdict = this.parseAdversarialVerdict(result.response);
-
-                if (verdict === 'CONFIRMED') {
-                    confirmed++;
-                    Log.info(
-                        `Adversarial CONFIRMED: ${finding.title} — keeping`
-                    );
-                } else {
-                    // REFUTED or UNCERTAIN → remove.
-                    // If a dedicated adversarial agent can't confirm the finding,
-                    // it's not confirmed — precision over recall.
-                    findingStore.remove(finding.id);
-                    removed++;
-                    Log.info(
-                        `Adversarial ${verdict}: ${finding.title} — removed from findings`
-                    );
-                }
-            } catch (error) {
-                if (isCancellationError(error)) {
-                    throw error;
-                }
-                Log.warn(
-                    `Adversarial verification failed for ${finding.title}: ${getErrorMessage(error)}`
-                );
-                // Verification failure → can't confirm → remove
-                findingStore.remove(finding.id);
-                removed++;
-            }
-        }
-
-        return { removed, confirmed };
-    }
-
-    private parseAdversarialVerdict(
-        response: string
-    ): 'REFUTED' | 'CONFIRMED' | 'UNCERTAIN' {
-        const upper = response.toUpperCase();
-        // Look for explicit verdict markers
-        if (
-            upper.includes('VERDICT: REFUTED') ||
-            upper.includes('VERDICT:REFUTED')
-        ) {
-            return 'REFUTED';
-        }
-        if (
-            upper.includes('VERDICT: CONFIRMED') ||
-            upper.includes('VERDICT:CONFIRMED')
-        ) {
-            return 'CONFIRMED';
-        }
-        if (
-            upper.includes('VERDICT: UNCERTAIN') ||
-            upper.includes('VERDICT:UNCERTAIN')
-        ) {
-            return 'UNCERTAIN';
-        }
-        // Fallback: check for standalone keywords at word boundaries
-        if (/\bREFUTED\b/.test(upper) && !/\bCONFIRMED\b/.test(upper)) {
-            return 'REFUTED';
-        }
-        if (/\bCONFIRMED\b/.test(upper) && !/\bREFUTED\b/.test(upper)) {
-            return 'CONFIRMED';
-        }
-        return 'UNCERTAIN';
-    }
-
-    private getFindingsAtOrAboveSeverity(
-        findingStore: FindingStore,
-        threshold: FindingSeverity
-    ): RecordedFinding[] {
-        const thresholdIndex = FINDING_SEVERITIES.indexOf(threshold);
-        const severities = FINDING_SEVERITIES.filter(
-            (_, i) => i <= thresholdIndex
-        );
-        return severities.flatMap((s) => findingStore.getBySeverity(s));
     }
 
     private applyValidationResults(
