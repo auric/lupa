@@ -32,6 +32,7 @@ import type { FindingValidator, ValidatedFinding } from './findingValidator';
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
+import { AdversarialVerifier } from './adversarialVerifier';
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -365,6 +366,50 @@ export class ToolCallingAnalysisProvider {
                         // Append validation summary to analysis text
                         analysisText += this.formatValidationSummary(
                             validation.validated
+                        );
+                    }
+                }
+
+                // Adversarial verification: run visible subagents against surviving findings
+                if (findingStore.size > 0 && !token.isCancellationRequested) {
+                    const adversarialVerifier = new AdversarialVerifier();
+                    const adversarialResult = await adversarialVerifier.verify(
+                        findingStore,
+                        calibrationProfile,
+                        subagentExecutor,
+                        parsedDiff,
+                        token,
+                        progressCallback
+                            ? (msg) => progressCallback(msg, 0.5)
+                            : undefined
+                    );
+
+                    if (adversarialResult.refuted.length > 0) {
+                        Log.info(
+                            `Adversarial refuted ${adversarialResult.refuted.length} finding(s), re-entering conversation for rewrite`
+                        );
+                        const refutedList = adversarialResult.refuted
+                            .map((t) => `"${t}"`)
+                            .join(', ');
+                        conversationManager.addUserMessage(
+                            `Adversarial verification has refuted ${adversarialResult.refuted.length} finding(s): ${refutedList}. ` +
+                                'These findings have been removed. ' +
+                                'Rewrite your review WITHOUT these refuted findings, then call submit_review.'
+                        );
+
+                        // Re-enter conversation with small budget for rewrite
+                        const REWRITE_BUDGET = 10;
+                        analysisText = await conversationRunner.run(
+                            {
+                                systemPrompt,
+                                maxIterations: REWRITE_BUDGET,
+                                tools: availableTools,
+                                label: 'Rewrite Phase',
+                                requiresExplicitCompletion: true,
+                            },
+                            conversationManager,
+                            token,
+                            handler
                         );
                     }
                 }

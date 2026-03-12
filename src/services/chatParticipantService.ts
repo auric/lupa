@@ -27,6 +27,7 @@ import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { FindingStore } from '../sessions/findingStore';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
+import { AdversarialVerifier } from './adversarialVerifier';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
@@ -633,7 +634,7 @@ export class ChatParticipantService implements vscode.Disposable {
         const disabledToolNames = new Set<string>();
 
         try {
-            const analysisResult = await runner.run(
+            let analysisResult = await runner.run(
                 {
                     systemPrompt,
                     maxIterations:
@@ -690,6 +691,49 @@ export class ChatParticipantService implements vscode.Disposable {
                     Log.info(
                         `[ChatParticipantService]: FindingValidator: ${validation.kept} kept, ${validation.downgraded} downgraded, ${validation.dropped} dropped`
                     );
+                }
+            }
+
+            // Adversarial verification: run visible subagents against surviving findings
+            if (findingStore.size > 0 && !token.isCancellationRequested) {
+                const adversarialVerifier = new AdversarialVerifier();
+                const adversarialResult = await adversarialVerifier.verify(
+                    findingStore,
+                    calibrationProfile,
+                    subagentExecutor,
+                    parsedDiff,
+                    token,
+                    (msg) => stream.progress(`${ACTIVITY.analyzing} ${msg}`)
+                );
+
+                if (adversarialResult.refuted.length > 0) {
+                    Log.info(
+                        `[ChatParticipantService]: Adversarial refuted ${adversarialResult.refuted.length} finding(s), re-entering conversation for rewrite`
+                    );
+                    const refutedList = adversarialResult.refuted
+                        .map((t) => `"${t}"`)
+                        .join(', ');
+                    conversation.addUserMessage(
+                        `Adversarial verification has refuted ${adversarialResult.refuted.length} finding(s): ${refutedList}. ` +
+                            'These findings have been removed. ' +
+                            'Rewrite your review WITHOUT these refuted findings, then call submit_review.'
+                    );
+
+                    // Re-enter conversation with small budget for rewrite
+                    const REWRITE_BUDGET = 10;
+                    analysisResult = await runner.run(
+                        {
+                            systemPrompt,
+                            maxIterations: REWRITE_BUDGET,
+                            tools: availableTools,
+                            label: `Chat /${scopeLabel} Rewrite`,
+                            requiresExplicitCompletion: true,
+                        },
+                        conversation,
+                        token,
+                        adapter
+                    );
+                    debouncedHandler.flush();
                 }
             }
 
