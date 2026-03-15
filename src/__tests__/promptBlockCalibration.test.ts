@@ -43,7 +43,7 @@ describe('Calibration-aware prompt blocks', () => {
         it('should include agentic preamble for dismissive models', () => {
             const role = generatePRReviewerRole(DISMISSIVE_PROFILE);
             expect(role).toContain('autonomous agent');
-            expect(role).toContain('Persist until');
+            expect(role).toContain('PERSISTENCE');
         });
 
         it('should not include agentic preamble for balanced models', () => {
@@ -116,9 +116,9 @@ describe('Calibration-aware prompt blocks', () => {
         it('should use prosecution mode for dismissive models', () => {
             const reflection =
                 generateSelfReflectionGuidance(DISMISSIVE_PROFILE);
-            expect(reflection).toContain('prosecution checkpoint');
+            expect(reflection).toContain('evidence review');
             expect(reflection).toContain(
-                'strongest argument that this IS a real bug'
+                'What did the tool output actually show'
             );
         });
 
@@ -187,7 +187,9 @@ describe('Calibration-aware prompt blocks', () => {
 
         it('should use high evidence bar for aggressive models', () => {
             const guidance = generateFindingQualityGuidance(AGGRESSIVE_PROFILE);
-            expect(guidance).toContain('strong, concrete evidence');
+            expect(guidance).toContain(
+                'specific tool output reveals a concrete problem'
+            );
         });
 
         it('should produce balanced output with balanced profile', () => {
