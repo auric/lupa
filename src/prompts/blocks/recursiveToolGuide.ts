@@ -10,9 +10,9 @@ export function generateRecursiveToolGuide(): string {
 | Tool | When to Use |
 |------|-------------|
 | \`<diff_metadata>\` (in prompt) | **ALREADY PROVIDED** — all changed files and line counts are in your conversation |
-| \`get_pr_context\` | **ORIENTATION** — get branch name, commit messages, and changed file list to understand PR intent |
-| \`get_file_diff\` | **FIRST TOOL CALL** — read 1 key diff (largest/riskiest) to understand the PR's purpose |
-| \`update_plan\` | **SECOND** — decompose PR into concern groups |
+| \`get_pr_context\` | **FIRST** — get branch name, commit messages to understand PR intent before reviewing code |
+| \`get_file_diff\` | **SECOND** — read 1 key diff (largest/riskiest) to understand the PR's purpose |
+| \`update_plan\` | **THIRD** — decompose PR into concern groups |
 | \`run_subagent\` | **PRIMARY TOOL** — make multiple calls in one response (parallel execution) |
 | \`list_directory\` | Orient yourself — understand project structure |
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |

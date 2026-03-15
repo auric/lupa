@@ -96,6 +96,8 @@ describe('RecordFindingTool', () => {
             lineRange: [15, 15],
             description:
                 'The catch block is empty and swallows errors silently.',
+            verificationEvidence:
+                'search_for_pattern(catch, src/api.ts) showed empty catch block at line 15 with no logging or rethrow',
             supportingToolCalls: [],
             disproof: {
                 attempted: true,

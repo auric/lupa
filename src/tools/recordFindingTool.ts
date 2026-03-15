@@ -182,6 +182,7 @@ export class RecordFindingTool extends BaseTool {
             file: args.file,
             lineRange: [args.line, args.line],
             description: args.description,
+            verificationEvidence: args.verification_evidence,
             supportingToolCalls: [],
             disproof: {
                 attempted: true,

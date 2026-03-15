@@ -24,9 +24,9 @@ export function generateAnalysisMethodology(
 Before each tool call, briefly explain what you learned from the previous result and what you plan to do next. This keeps your analysis grounded in evidence.
 
 ### Step 1: Create Your Plan (MANDATORY - FIRST ACTION)
-⚠️ **Your first tool call MUST be \`update_plan\`.** Do not investigate before planning.
+⚠️ **Your first turn MUST call both \`get_pr_context\` and \`update_plan\`.** Call them in the same turn (parallel). Do not investigate before planning.
 
-After scanning the diff, immediately call \`update_plan\` with this structure:
+Read the PR commit messages from \`get_pr_context\` to understand the developer's intent, then call \`update_plan\` with this structure:
 \`\`\`markdown
 ## PR Review Plan
 
@@ -43,7 +43,6 @@ After scanning the diff, immediately call \`update_plan\` with this structure:
 \`\`\`
 
 ### Step 2: Gather Context
-- Call \`get_pr_context\` to learn the branch name, commit messages, and PR intent
 - Use \`find_symbol\` for unfamiliar functions
 - Use \`find_usages\` for changed signatures
 - Spawn subagents for complex areas (4+ files or security-sensitive)

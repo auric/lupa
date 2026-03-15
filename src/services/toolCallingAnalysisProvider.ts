@@ -33,6 +33,8 @@ import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
 import { AdversarialVerifier } from './adversarialVerifier';
+import { EvidenceAuditor } from './evidenceAuditor';
+import type { EvidenceAuditResult } from './evidenceAuditor';
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -343,12 +345,27 @@ export class ToolCallingAnalysisProvider {
             analysisCompleted = !conversationRunner.wasCancelled;
 
             if (analysisCompleted) {
-                // Post-analysis: validate findings programmatically
+                // Post-analysis: audit evidence trail against tool call records
                 const findings = findingStore.getAll();
-                if (findings.length > 0 && executionContext.parsedDiff) {
+                if (findings.length > 0) {
+                    progressCallback?.('Auditing evidence trail...', 0.3);
+                    const evidenceAuditor = new EvidenceAuditor();
+                    const auditResult = evidenceAuditor.audit(
+                        findings,
+                        toolCallRecords
+                    );
+                    this.applyEvidenceAuditResults(auditResult, findingStore);
+                }
+
+                // Post-analysis: validate findings programmatically
+                const survivingFindings = findingStore.getAll();
+                if (
+                    survivingFindings.length > 0 &&
+                    executionContext.parsedDiff
+                ) {
                     progressCallback?.('Validating findings...', 0.5);
                     const validation = await this.findingValidator.validate(
-                        findings,
+                        survivingFindings,
                         executionContext.parsedDiff,
                         token
                     );
@@ -525,6 +542,32 @@ export class ToolCallingAnalysisProvider {
             },
             wasCancelled,
         };
+    }
+
+    private applyEvidenceAuditResults(
+        auditResult: EvidenceAuditResult,
+        findingStore: FindingStore
+    ): void {
+        for (const entry of auditResult.entries) {
+            if (entry.verdict === 'drop') {
+                findingStore.remove(entry.finding.id);
+            } else if (entry.verdict === 'downgrade') {
+                // Step severity down by one level
+                const severityOrder = [
+                    'LOW',
+                    'MEDIUM',
+                    'HIGH',
+                    'CRITICAL',
+                ] as const;
+                const idx = severityOrder.indexOf(entry.finding.severity);
+                if (idx > 0) {
+                    findingStore.updateSeverity(
+                        entry.finding.id,
+                        severityOrder[idx - 1]!
+                    );
+                }
+            }
+        }
     }
 
     private applyValidationResults(
