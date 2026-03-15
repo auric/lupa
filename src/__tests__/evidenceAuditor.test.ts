@@ -72,6 +72,10 @@ describe('EvidenceAuditor', () => {
                     toolName: 'find_usages',
                     arguments: { file_path: 'src/foo.ts', symbol_name: 'bar' },
                 }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                }),
             ];
 
             const result = auditor.audit(findings, records);
@@ -163,7 +167,7 @@ describe('EvidenceAuditor', () => {
 
             expect(result.downgraded).toBe(1);
             expect(result.entries[0]!.verdict).toBe('downgrade');
-            expect(result.entries[0]!.reason).toContain('only read_file');
+            expect(result.entries[0]!.reason).toContain('depth score');
         });
 
         it('downgrades HIGH finding with no deep investigation tools', () => {
@@ -190,9 +194,7 @@ describe('EvidenceAuditor', () => {
 
             expect(result.downgraded).toBe(1);
             expect(result.entries[0]!.verdict).toBe('downgrade');
-            expect(result.entries[0]!.reason).toContain(
-                'no deep investigation tools'
-            );
+            expect(result.entries[0]!.reason).toContain('depth score');
         });
 
         it('keeps HIGH finding with ≥2 different deep tool types', () => {
@@ -215,6 +217,10 @@ describe('EvidenceAuditor', () => {
                 createToolCallRecord({
                     toolName: 'find_usages',
                     arguments: { file_path: 'src/foo.ts', symbol_name: 'x' },
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
                 }),
             ];
 
@@ -328,6 +334,10 @@ describe('EvidenceAuditor', () => {
                 createToolCallRecord({
                     toolName: 'find_usages',
                     arguments: { file_path: 'src/foo.ts', symbol_name: 'x' },
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',

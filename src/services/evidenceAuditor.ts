@@ -1,22 +1,17 @@
 import { Log } from './loggingService';
 import type { RecordedFinding, FindingSeverity } from '../types/findingTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
+import type { InvestigationDepth } from '../types/investigationTypes';
 import {
     INVESTIGATION_TOOLS,
     QUALITY_TOOLS,
     PR_CONTEXT_TOOLS,
     DIFF_TOOLS,
 } from '../models/toolConstants';
+import { buildInvestigationAudit } from '../utils/investigationAudit';
 
-/** Tools that represent deep investigation (not just viewing a diff) */
-const DEEP_INVESTIGATION_TOOLS = new Set([
-    'read_file',
-    'find_symbol',
-    'find_usages',
-    'validate_claim',
-    'search_for_pattern',
-    'get_symbols_overview',
-]);
+const DEPTH_THRESHOLD_HIGH = 4;
+const DEPTH_THRESHOLD_MEDIUM = 2;
 
 /**
  * All known tool names the model might reference in evidence text.
@@ -31,15 +26,6 @@ const ALL_TOOL_NAMES: readonly string[] = [
     'run_subagent',
     'think',
 ];
-
-/**
- * Severities that require deep investigation (multiple tool types) for a file.
- * CRITICAL and HIGH findings need more than just reading a file.
- */
-const DEEP_INVESTIGATION_SEVERITIES = new Set<FindingSeverity>([
-    'CRITICAL',
-    'HIGH',
-]);
 
 export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade';
 
@@ -79,9 +65,14 @@ export class EvidenceAuditor {
         toolCallRecords: ToolCallRecord[]
     ): EvidenceAuditResult {
         const entries: EvidenceAuditEntry[] = [];
+        const investigationAudit = buildInvestigationAudit(toolCallRecords);
 
         for (const finding of findings) {
-            const entry = this.auditFinding(finding, toolCallRecords);
+            const entry = this.auditFinding(
+                finding,
+                toolCallRecords,
+                investigationAudit.depthScores
+            );
             entries.push(entry);
         }
 
@@ -100,7 +91,8 @@ export class EvidenceAuditor {
 
     private auditFinding(
         finding: RecordedFinding,
-        toolCallRecords: ToolCallRecord[]
+        toolCallRecords: ToolCallRecord[],
+        depthScores: Map<string, InvestigationDepth>
     ): EvidenceAuditEntry {
         // Step 1: Find all tool calls that reference the finding's file
         const matchingCalls = this.findToolCallsForFile(
@@ -108,10 +100,6 @@ export class EvidenceAuditor {
             toolCallRecords
         );
 
-        // Separate deep vs shallow investigation
-        const deepCalls = matchingCalls.filter((tc) =>
-            DEEP_INVESTIGATION_TOOLS.has(tc.toolName)
-        );
         const supportingToolCallIds = matchingCalls.map((tc) => tc.id);
         const actualToolsOnFile = [
             ...new Set(matchingCalls.map((tc) => tc.toolName)),
@@ -147,28 +135,23 @@ export class EvidenceAuditor {
             }
         }
 
-        // Step 5: Check investigation depth for CRITICAL/HIGH findings
-        if (DEEP_INVESTIGATION_SEVERITIES.has(finding.severity)) {
-            const uniqueDeepToolTypes = new Set(
-                deepCalls.map((tc) => tc.toolName)
+        // Step 5: Check investigation depth using scored depth system
+        const fileScore = this.getFileDepthScore(finding.file, depthScores);
+        const requiredScore = this.getRequiredDepthScore(finding.severity);
+
+        if (requiredScore > 0 && fileScore < requiredScore) {
+            const reason = `${finding.severity} finding has depth score ${fileScore} but requires ≥${requiredScore}`;
+            Log.info(
+                `EvidenceAuditor DOWNGRADE [${finding.id}] "${finding.title}": ${reason}`
             );
-            if (uniqueDeepToolTypes.size < 2) {
-                const reason =
-                    uniqueDeepToolTypes.size === 0
-                        ? `${finding.severity} finding with no deep investigation tools on file`
-                        : `${finding.severity} finding verified with only ${[...uniqueDeepToolTypes][0]} — needs ≥2 different investigation tool types`;
-                Log.info(
-                    `EvidenceAuditor DOWNGRADE [${finding.id}] "${finding.title}": ${reason}`
-                );
-                return {
-                    finding,
-                    verdict: 'downgrade',
-                    reason,
-                    supportingToolCallIds,
-                    claimedTools,
-                    actualToolsOnFile,
-                };
-            }
+            return {
+                finding,
+                verdict: 'downgrade',
+                reason,
+                supportingToolCallIds,
+                claimedTools,
+                actualToolsOnFile,
+            };
         }
 
         return {
@@ -242,9 +225,38 @@ export class EvidenceAuditor {
         });
     }
 
-    /**
-     * Combine all evidence-containing text from a finding for tool name extraction.
-     */
+    private getFileDepthScore(
+        file: string,
+        depthScores: Map<string, InvestigationDepth>
+    ): number {
+        const normalized = file.replace(/\\/g, '/');
+
+        const exact = depthScores.get(normalized);
+        if (exact) {
+            return exact.score;
+        }
+
+        for (const [path, depth] of depthScores) {
+            if (path.endsWith(normalized) || normalized.endsWith(path)) {
+                return depth.score;
+            }
+        }
+
+        return 0;
+    }
+
+    private getRequiredDepthScore(severity: FindingSeverity): number {
+        switch (severity) {
+            case 'CRITICAL':
+            case 'HIGH':
+                return DEPTH_THRESHOLD_HIGH;
+            case 'MEDIUM':
+                return DEPTH_THRESHOLD_MEDIUM;
+            case 'LOW':
+                return 0;
+        }
+    }
+
     private getEvidenceText(finding: RecordedFinding): string {
         const parts: string[] = [finding.description];
         if (finding.verificationEvidence) {
