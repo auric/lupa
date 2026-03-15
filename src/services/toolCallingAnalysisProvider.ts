@@ -28,13 +28,17 @@ import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { FindingStore } from '../sessions/findingStore';
 import type { DiffEnricher } from './diffEnricher';
-import type { FindingValidator, ValidatedFinding } from './findingValidator';
+import type { FindingValidator } from './findingValidator';
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
-import { getCalibrationProfile } from '../models/modelCalibration';
-import { AdversarialVerifier } from './adversarialVerifier';
-import { EvidenceAuditor } from './evidenceAuditor';
-import type { EvidenceAuditResult } from './evidenceAuditor';
+import {
+    getCalibrationProfile,
+    type ModelCalibrationProfile,
+} from '../models/modelCalibration';
+import { PostAnalysisPipeline } from './postAnalysisPipeline';
+import { groupFilesForReview, type FileGroup } from './fileGrouper';
+import type { CodeIntelligenceBrief } from '../types/enrichedDiffTypes';
+import type { ITool } from '../tools/ITool';
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -219,6 +223,25 @@ export class ToolCallingAnalysisProvider {
             conversationManager.addUserMessage(userMessage);
             progressCallback?.('Starting conversation with AI model...', 0.5);
 
+            // Branch: decomposed review for dismissive models vs standard conversation
+            if (calibrationProfile.useDecomposedReview && isRecursiveMode) {
+                return this.runDecomposedAnalysis({
+                    parsedDiff,
+                    codeIntelBrief,
+                    findingStore,
+                    subagentExecutor,
+                    subagentSessionManager,
+                    calibrationProfile,
+                    conversationManager,
+                    executionContext,
+                    systemPrompt,
+                    availableTools,
+                    toolCallRecords,
+                    token,
+                    progressCallback,
+                });
+            }
+
             const tokenValidator = new TokenValidator(model);
 
             // Create context status function that captures local state
@@ -345,181 +368,32 @@ export class ToolCallingAnalysisProvider {
             analysisCompleted = !conversationRunner.wasCancelled;
 
             if (analysisCompleted) {
-                // Workflow enforcement: check required tools and self-reflection.
-                // Only enforced when findings are recorded (clean reviews pass through).
-                // Re-enters conversation with a small budget if checks fail.
-                if (findingStore.size > 0 && !token.isCancellationRequested) {
-                    const workflowGaps: string[] = [];
+                const pipeline = new PostAnalysisPipeline(
+                    this.findingValidator
+                );
+                const pipelineResult = await pipeline.run({
+                    findingStore,
+                    toolCallRecords,
+                    executionContext,
+                    parsedDiff,
+                    calibrationProfile,
+                    subagentExecutor,
+                    conversationManager,
+                    conversationRunner,
+                    systemPrompt,
+                    availableTools,
+                    token,
+                    handler,
+                    progressCallback: progressCallback
+                        ? (msg, inc) => progressCallback(msg, inc)
+                        : undefined,
+                });
 
-                    const thinkCalled =
-                        (executionContext.toolCallCounts.get(
-                            'think_about_completion'
-                        ) ?? 0) > 0;
-                    if (!thinkCalled) {
-                        workflowGaps.push(
-                            'You did not call think_about_completion to reflect on your findings'
-                        );
-                    }
-
-                    const requiredTools =
-                        calibrationProfile.investigationProtocol
-                            .requiredToolsBeforeDone;
-                    const missingTools = requiredTools.filter(
-                        (t: string) =>
-                            (executionContext.toolCallCounts.get(t) ?? 0) === 0
-                    );
-                    if (missingTools.length > 0) {
-                        workflowGaps.push(
-                            `Required investigation tools not used: ${missingTools.join(', ')}`
-                        );
-                    }
-
-                    if (
-                        executionContext.completionReadiness &&
-                        !executionContext.completionReadiness.ready
-                    ) {
-                        const cr = executionContext.completionReadiness;
-                        workflowGaps.push(
-                            `think_about_completion flagged ${cr.uninvestigatedFiles.length} uninvestigated file(s): ${cr.uninvestigatedFiles.join(', ')}. Investigate these files before submitting.`
-                        );
-                    }
-
-                    if (workflowGaps.length > 0) {
-                        Log.info(
-                            `Workflow enforcement: ${workflowGaps.length} gap(s) detected, re-entering for completion`
-                        );
-                        conversationManager.addUserMessage(
-                            `WORKFLOW INCOMPLETE — you recorded ${findingStore.size} finding(s) but skipped required steps:\n` +
-                                workflowGaps.map((g) => `• ${g}`).join('\n') +
-                                '\n\nComplete these steps NOW, then call submit_review again.'
-                        );
-
-                        const WORKFLOW_BUDGET = 10;
-                        analysisText = await conversationRunner.run(
-                            {
-                                systemPrompt,
-                                maxIterations: WORKFLOW_BUDGET,
-                                tools: availableTools,
-                                label: 'Workflow Completion',
-                                requiresExplicitCompletion: true,
-                            },
-                            conversationManager,
-                            token,
-                            handler
-                        );
-                    }
-                }
-
-                // Track all dropped findings across post-analysis stages for unified rewrite
-                const droppedTitles: string[] = [];
-
-                // Post-analysis: audit evidence trail against tool call records
-                const findings = findingStore.getAll();
-                if (findings.length > 0) {
-                    progressCallback?.('Auditing evidence trail...', 0.3);
-                    const evidenceAuditor = new EvidenceAuditor();
-                    const auditResult = evidenceAuditor.audit(
-                        findings,
-                        toolCallRecords
-                    );
-
-                    // Collect titles before applying drops
-                    for (const entry of auditResult.entries) {
-                        if (entry.verdict === 'drop') {
-                            droppedTitles.push(entry.finding.title);
-                        }
-                    }
-                    this.applyEvidenceAuditResults(auditResult, findingStore);
-                }
-
-                // Post-analysis: validate findings programmatically
-                const survivingFindings = findingStore.getAll();
-                if (
-                    survivingFindings.length > 0 &&
-                    executionContext.parsedDiff
-                ) {
-                    progressCallback?.('Validating findings...', 0.5);
-                    const validation = await this.findingValidator.validate(
-                        survivingFindings,
-                        executionContext.parsedDiff,
-                        token
-                    );
-
-                    // Collect titles before applying drops
-                    for (const v of validation.validated) {
-                        if (v.verdict === 'drop') {
-                            droppedTitles.push(v.finding.title);
-                        }
-                    }
-
-                    // Apply validation results to FindingStore
-                    this.applyValidationResults(
-                        validation.validated,
-                        findingStore
-                    );
-
-                    if (validation.dropped > 0 || validation.downgraded > 0) {
-                        Log.info(
-                            `FindingValidator: ${validation.kept} kept, ${validation.downgraded} downgraded, ${validation.dropped} dropped`
-                        );
-                    }
-                }
-
-                // Adversarial verification: run visible subagents against surviving findings
-                if (findingStore.size > 0 && !token.isCancellationRequested) {
-                    const adversarialVerifier = new AdversarialVerifier();
-                    const adversarialResult = await adversarialVerifier.verify(
-                        findingStore,
-                        calibrationProfile,
-                        subagentExecutor,
-                        parsedDiff,
-                        token,
-                        progressCallback
-                            ? (msg) => progressCallback(msg, 0.5)
-                            : undefined
-                    );
-
-                    // Record adversarial tool calls in the webview report
-                    toolCallRecords.push(...adversarialResult.toolCallRecords);
-
-                    if (adversarialResult.refuted.length > 0) {
-                        droppedTitles.push(...adversarialResult.refuted);
-                    }
-                }
-
-                // Unified rewrite: if ANY findings were dropped across any stage,
-                // re-enter conversation so the model rewrites its review without them.
-                // This prevents stale finding references in the final output.
-                if (
-                    droppedTitles.length > 0 &&
-                    !token.isCancellationRequested
-                ) {
-                    Log.info(
-                        `Post-analysis dropped ${droppedTitles.length} finding(s), re-entering conversation for rewrite`
-                    );
-                    const droppedList = droppedTitles
-                        .map((t) => `"${t}"`)
-                        .join(', ');
-                    conversationManager.addUserMessage(
-                        `Post-analysis verification has removed ${droppedTitles.length} finding(s): ${droppedList}. ` +
-                            'These findings failed evidence audit, programmatic validation, or adversarial verification. ' +
-                            'Rewrite your review WITHOUT these removed findings, then call submit_review.'
-                    );
-
-                    // Re-enter conversation with small budget for rewrite
-                    const REWRITE_BUDGET = 10;
-                    analysisText = await conversationRunner.run(
-                        {
-                            systemPrompt,
-                            maxIterations: REWRITE_BUDGET,
-                            tools: availableTools,
-                            label: 'Rewrite Phase',
-                            requiresExplicitCompletion: true,
-                        },
-                        conversationManager,
-                        token,
-                        handler
-                    );
+                toolCallRecords.push(
+                    ...pipelineResult.additionalToolCallRecords
+                );
+                if (pipelineResult.rewrittenAnalysis) {
+                    analysisText = pipelineResult.rewrittenAnalysis;
                 }
 
                 progressCallback?.(
@@ -560,6 +434,258 @@ export class ToolCallingAnalysisProvider {
             analysisError,
             conversationRunner.wasCancelled,
             conversationRunner.iterationsUsed
+        );
+    }
+
+    /**
+     * Decomposed review: orchestrator-driven file grouping and parallel investigation.
+     * Used for dismissive models (GPT-4.1, GPT-4o) that don't decompose work on their own.
+     *
+     * Flow: group files → spawn subagent per group → collect findings → synthesis → pipeline
+     */
+    private async runDecomposedAnalysis(params: {
+        parsedDiff: DiffHunk[];
+        codeIntelBrief: CodeIntelligenceBrief;
+        findingStore: FindingStore;
+        subagentExecutor: SubagentExecutor;
+        subagentSessionManager: SubagentSessionManager;
+        calibrationProfile: ModelCalibrationProfile;
+        conversationManager: ConversationManager;
+        executionContext: ExecutionContext;
+        systemPrompt: string;
+        availableTools: ITool[];
+        toolCallRecords: ToolCallRecord[];
+        token: vscode.CancellationToken;
+        progressCallback?: AnalysisProgressCallback;
+    }): Promise<ToolCallingAnalysisResult> {
+        const {
+            parsedDiff,
+            findingStore,
+            subagentExecutor,
+            subagentSessionManager,
+            calibrationProfile,
+            conversationManager,
+            executionContext,
+            systemPrompt,
+            availableTools,
+            toolCallRecords,
+            token,
+            progressCallback,
+        } = params;
+
+        // Group files for parallel investigation
+        const groups = groupFilesForReview(parsedDiff, {
+            maxFilesPerGroup: 5,
+            maxGroups: Math.min(
+                15,
+                this.workspaceSettings.getMaxSubagentsPerSession()
+            ),
+        });
+
+        Log.info(
+            `Decomposed review: ${groups.length} groups from ${parsedDiff.length} files`
+        );
+        progressCallback?.(
+            `Decomposing review into ${groups.length} investigation groups...`,
+            0.5
+        );
+
+        // Spawn investigation subagents in parallel
+        const childBudget = calibrationProfile.decomposedChildBudget;
+        const investigationResults = await Promise.allSettled(
+            groups.map((group, idx) => {
+                if (token.isCancellationRequested) {
+                    return Promise.reject(new vscode.CancellationError());
+                }
+
+                const fileList = group.files.join(', ');
+                const task = {
+                    task:
+                        `Investigate these files for code quality issues:\n\nFiles: ${fileList}\n\n` +
+                        `Focus: Read each file's diff with get_file_diff, trace symbols with find_symbol and find_usages, ` +
+                        `and record any genuine issues with record_finding. ` +
+                        `If no real issues exist, that's fine — do NOT fabricate findings.\n\n` +
+                        `Group: ${group.label} (${group.complexity})`,
+                };
+
+                progressCallback?.(
+                    `Investigating ${group.label} (${group.files.length} files)...`,
+                    0.3
+                );
+
+                const subagentId = idx + 1;
+                subagentSessionManager.recordSpawn();
+
+                return subagentExecutor.execute(task, token, subagentId, {
+                    childBudget,
+                    calibrationProfile,
+                    parsedDiff,
+                    findingStore,
+                    subagentSessionManager,
+                });
+            })
+        );
+
+        // Collect tool call records from all subagents
+        for (const result of investigationResults) {
+            if (result.status === 'fulfilled') {
+                toolCallRecords.push(
+                    ...result.value.toolCalls.map((tc) => ({
+                        ...tc,
+                        timestamp: tc.timestamp ?? Date.now(),
+                        durationMs: tc.durationMs ?? 0,
+                    }))
+                );
+            }
+        }
+
+        const succeededCount = investigationResults.filter(
+            (r) => r.status === 'fulfilled'
+        ).length;
+        Log.info(
+            `Decomposed review: ${succeededCount}/${groups.length} subagents completed, ${findingStore.size} findings recorded`
+        );
+
+        // Synthesis phase: root LLM writes review from FindingStore
+        progressCallback?.(
+            'Synthesizing review from investigation results...',
+            0.5
+        );
+        const synthesisPrompt = this.buildSynthesisPrompt(
+            findingStore,
+            groups,
+            parsedDiff
+        );
+        conversationManager.addUserMessage(synthesisPrompt);
+
+        const conversationRunner = new ConversationRunner(
+            this.copilotModelManager,
+            new ToolExecutor(this.toolRegistry, executionContext)
+        );
+
+        let toolCallCount = toolCallRecords.length;
+        let currentIteration = 0;
+        const handler: ToolCallHandler = {
+            onIterationStart: (current, max) => {
+                currentIteration = current;
+                progressCallback?.(`Synthesis turn ${current}/${max}...`, 0.2);
+            },
+            onToolCallComplete: (
+                toolCallId,
+                toolName,
+                args,
+                result,
+                success,
+                error,
+                durationMs,
+                metadata
+            ) => {
+                toolCallCount++;
+                toolCallRecords.push({
+                    id: toolCallId,
+                    toolName,
+                    arguments: args,
+                    result,
+                    success,
+                    error,
+                    durationMs: durationMs ?? 0,
+                    timestamp: Date.now(),
+                    nestedCalls: metadata?.nestedToolCalls,
+                    executionTimeMs: metadata?.executionTimeMs,
+                    iterationsUsed: metadata?.iterationsUsed,
+                });
+            },
+        };
+
+        const SYNTHESIS_BUDGET = 15;
+        const analysisText = await conversationRunner.run(
+            {
+                systemPrompt,
+                maxIterations: SYNTHESIS_BUDGET,
+                tools: availableTools,
+                label: 'Synthesis Phase',
+                requiresExplicitCompletion: true,
+            },
+            conversationManager,
+            token,
+            handler
+        );
+
+        // Run full post-analysis pipeline
+        const pipeline = new PostAnalysisPipeline(this.findingValidator);
+        const pipelineResult = await pipeline.run({
+            findingStore,
+            toolCallRecords,
+            executionContext,
+            parsedDiff,
+            calibrationProfile,
+            subagentExecutor,
+            conversationManager,
+            conversationRunner,
+            systemPrompt,
+            availableTools,
+            token,
+            handler,
+            progressCallback: progressCallback
+                ? (msg, inc) => progressCallback(msg, inc)
+                : undefined,
+        });
+
+        toolCallRecords.push(...pipelineResult.additionalToolCallRecords);
+        let finalAnalysisText = analysisText;
+        if (pipelineResult.rewrittenAnalysis) {
+            finalAnalysisText = pipelineResult.rewrittenAnalysis;
+        }
+
+        progressCallback?.(
+            `Analysis complete (${toolCallCount} tool calls)`,
+            2
+        );
+        Log.info('Decomposed analysis completed successfully');
+
+        return this.buildAnalysisResult(
+            toolCallRecords,
+            finalAnalysisText,
+            true,
+            undefined,
+            false,
+            currentIteration
+        );
+    }
+
+    private buildSynthesisPrompt(
+        findingStore: FindingStore,
+        groups: FileGroup[],
+        parsedDiff: DiffHunk[]
+    ): string {
+        const findings = findingStore.getAll();
+        const totalFiles = parsedDiff.length;
+        const groupSummary = groups
+            .map((g) => `• ${g.label}: ${g.files.join(', ')}`)
+            .join('\n');
+
+        if (findings.length === 0) {
+            return (
+                `Investigation subagents have examined all ${totalFiles} changed files across ${groups.length} groups:\n${groupSummary}\n\n` +
+                'No issues were found during investigation. ' +
+                'Write a brief approval review acknowledging the investigation was thorough, then call submit_review.'
+            );
+        }
+
+        const findingList = findings
+            .map(
+                (f) =>
+                    `[${f.id}] ${f.severity} — ${f.title}\n  File: ${f.file}:${f.lineRange[0]}-${f.lineRange[1]}\n  ${f.description}`
+            )
+            .join('\n\n');
+
+        return (
+            `Investigation subagents have examined all ${totalFiles} changed files across ${groups.length} groups:\n${groupSummary}\n\n` +
+            `They recorded ${findings.length} finding(s):\n\n${findingList}\n\n` +
+            'Write a structured code review based on these findings. ' +
+            'Each finding MUST appear in your review — do NOT silently drop any. ' +
+            'If you disagree with a finding, call retract_finding with your reason. ' +
+            'Then call submit_review.'
         );
     }
 
@@ -629,45 +755,6 @@ export class ToolCallingAnalysisProvider {
             },
             wasCancelled,
         };
-    }
-
-    private applyEvidenceAuditResults(
-        auditResult: EvidenceAuditResult,
-        findingStore: FindingStore
-    ): void {
-        for (const entry of auditResult.entries) {
-            if (entry.verdict === 'drop') {
-                findingStore.remove(entry.finding.id);
-            } else if (entry.verdict === 'downgrade') {
-                // Step severity down by one level
-                const severityOrder = [
-                    'LOW',
-                    'MEDIUM',
-                    'HIGH',
-                    'CRITICAL',
-                ] as const;
-                const idx = severityOrder.indexOf(entry.finding.severity);
-                if (idx > 0) {
-                    findingStore.updateSeverity(
-                        entry.finding.id,
-                        severityOrder[idx - 1]!
-                    );
-                }
-            }
-        }
-    }
-
-    private applyValidationResults(
-        validated: ValidatedFinding[],
-        findingStore: FindingStore
-    ): void {
-        for (const v of validated) {
-            if (v.verdict === 'drop') {
-                findingStore.remove(v.finding.id);
-            } else if (v.verdict === 'downgrade' && v.downgradedSeverity) {
-                findingStore.updateSeverity(v.finding.id, v.downgradedSeverity);
-            }
-        }
     }
 
     dispose(): void {

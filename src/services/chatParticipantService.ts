@@ -45,7 +45,13 @@ import type {
 import type { DiffHunk } from '../types/contextTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { ExecutionContext } from '../types/executionContext';
-import { getCalibrationProfile } from '../models/modelCalibration';
+import {
+    getCalibrationProfile,
+    type ModelCalibrationProfile,
+} from '../models/modelCalibration';
+import { groupFilesForReview } from './fileGrouper';
+import type { CodeIntelligenceBrief } from '../types/enrichedDiffTypes';
+import type { ITool } from '../tools/ITool';
 import { createFollowupProvider } from './chatFollowupProvider';
 
 /**
@@ -671,6 +677,43 @@ export class ChatParticipantService implements vscode.Disposable {
         );
         conversation.addUserMessage(userPrompt);
 
+        // Branch: decomposed review for dismissive models
+        if (calibrationProfile.useDecomposedReview && isRecursiveMode) {
+            try {
+                return await this.runDecomposedAnalysis({
+                    parsedDiff,
+                    codeIntelBrief,
+                    findingStore,
+                    subagentExecutor,
+                    subagentSessionManager,
+                    calibrationProfile,
+                    conversationManager: conversation,
+                    executionContext,
+                    systemPrompt,
+                    availableTools,
+                    toolCallRecords,
+                    token,
+                    stream,
+                    debouncedHandler,
+                    recordingHandler,
+                    scopeLabel,
+                    request,
+                    gitRootUri,
+                    client,
+                });
+            } catch (error) {
+                if (isCancellationError(error)) {
+                    throw error;
+                }
+                throw error;
+            } finally {
+                subagentSessionManager.setParentCancellationToken(undefined);
+                if (recursiveState) {
+                    recursiveState.completeAgent('root');
+                }
+            }
+        }
+
         let analysisCompleted = false;
         let analysisError: string | undefined;
 
@@ -770,6 +813,207 @@ export class ChatParticipantService implements vscode.Disposable {
                 }
             }
         }
+    }
+
+    private async runDecomposedAnalysis(params: {
+        parsedDiff: DiffHunk[];
+        codeIntelBrief: CodeIntelligenceBrief;
+        findingStore: FindingStore;
+        subagentExecutor: SubagentExecutor;
+        subagentSessionManager: SubagentSessionManager;
+        calibrationProfile: ModelCalibrationProfile;
+        conversationManager: ConversationManager;
+        executionContext: ExecutionContext;
+        systemPrompt: string;
+        availableTools: ITool[];
+        toolCallRecords: ToolCallRecord[];
+        token: vscode.CancellationToken;
+        stream: vscode.ChatResponseStream;
+        debouncedHandler: DebouncedStreamHandler;
+        recordingHandler: ToolCallHandler;
+        scopeLabel: string;
+        request: vscode.ChatRequest;
+        gitRootUri: vscode.Uri | undefined;
+        client: ILLMClient;
+    }): Promise<vscode.ChatResult> {
+        const {
+            parsedDiff,
+            findingStore,
+            subagentExecutor,
+            subagentSessionManager,
+            calibrationProfile,
+            conversationManager,
+            executionContext,
+            systemPrompt,
+            availableTools,
+            toolCallRecords,
+            token,
+            stream,
+            debouncedHandler,
+            recordingHandler,
+            scopeLabel,
+            request,
+            gitRootUri,
+            client,
+        } = params;
+
+        const groups = groupFilesForReview(parsedDiff, {
+            maxFilesPerGroup: 5,
+            maxGroups: Math.min(
+                15,
+                this.deps!.workspaceSettings.getMaxSubagentsPerSession()
+            ),
+        });
+
+        Log.info(
+            `[ChatParticipantService]: Decomposed review: ${groups.length} groups from ${parsedDiff.length} files`
+        );
+        stream.progress(
+            `${ACTIVITY.analyzing} Decomposing into ${groups.length} investigation groups...`
+        );
+
+        const childBudget = calibrationProfile.decomposedChildBudget;
+        const investigationResults = await Promise.allSettled(
+            groups.map((group, idx) => {
+                if (token.isCancellationRequested) {
+                    return Promise.reject(new vscode.CancellationError());
+                }
+
+                const fileList = group.files.join(', ');
+                const task = {
+                    task:
+                        `Investigate these files for code quality issues:\n\nFiles: ${fileList}\n\n` +
+                        `Focus: Read each file's diff with get_file_diff, trace symbols with find_symbol and find_usages, ` +
+                        `and record any genuine issues with record_finding. ` +
+                        `If no real issues exist, that's fine — do NOT fabricate findings.\n\n` +
+                        `Group: ${group.label} (${group.complexity})`,
+                };
+
+                stream.progress(
+                    `${ACTIVITY.analyzing} Investigating ${group.label}...`
+                );
+                subagentSessionManager.recordSpawn();
+
+                return subagentExecutor.execute(task, token, idx + 1, {
+                    childBudget,
+                    calibrationProfile,
+                    parsedDiff,
+                    findingStore,
+                    subagentSessionManager,
+                });
+            })
+        );
+
+        for (const result of investigationResults) {
+            if (result.status === 'fulfilled') {
+                toolCallRecords.push(
+                    ...result.value.toolCalls.map((tc) => ({
+                        ...tc,
+                        timestamp: tc.timestamp ?? Date.now(),
+                        durationMs: tc.durationMs ?? 0,
+                    }))
+                );
+            }
+        }
+
+        const succeededCount = investigationResults.filter(
+            (r) => r.status === 'fulfilled'
+        ).length;
+        Log.info(
+            `[ChatParticipantService]: Decomposed review: ${succeededCount}/${groups.length} subagents completed, ${findingStore.size} findings recorded`
+        );
+
+        // Synthesis phase
+        stream.progress(`${ACTIVITY.analyzing} Synthesizing review...`);
+        const findings = findingStore.getAll();
+        const groupSummary = groups
+            .map((g) => `• ${g.label}: ${g.files.join(', ')}`)
+            .join('\n');
+
+        let synthesisPrompt: string;
+        if (findings.length === 0) {
+            synthesisPrompt =
+                `Investigation subagents have examined all ${parsedDiff.length} changed files across ${groups.length} groups:\n${groupSummary}\n\n` +
+                'No issues were found during investigation. ' +
+                'Write a brief approval review acknowledging the investigation was thorough, then call submit_review.';
+        } else {
+            const findingList = findings
+                .map(
+                    (f) =>
+                        `[${f.id}] ${f.severity} — ${f.title}\n  File: ${f.file}:${f.lineRange[0]}-${f.lineRange[1]}\n  ${f.description}`
+                )
+                .join('\n\n');
+            synthesisPrompt =
+                `Investigation subagents have examined all ${parsedDiff.length} changed files across ${groups.length} groups:\n${groupSummary}\n\n` +
+                `They recorded ${findings.length} finding(s):\n\n${findingList}\n\n` +
+                'Write a structured code review based on these findings. ' +
+                'Each finding MUST appear in your review — do NOT silently drop any. ' +
+                'If you disagree with a finding, call retract_finding with your reason. ' +
+                'Then call submit_review.';
+        }
+
+        conversationManager.addUserMessage(synthesisPrompt);
+
+        const runner = new ConversationRunner(
+            client,
+            new ToolExecutor(this.deps!.toolRegistry, executionContext)
+        );
+
+        const SYNTHESIS_BUDGET = 15;
+        let analysisResult = await runner.run(
+            {
+                systemPrompt,
+                maxIterations: SYNTHESIS_BUDGET,
+                tools: availableTools,
+                label: `Chat /${scopeLabel} Synthesis`,
+                requiresExplicitCompletion: true,
+            },
+            conversationManager,
+            token,
+            recordingHandler
+        );
+        debouncedHandler.flush();
+
+        // Run full post-analysis pipeline
+        const pipeline = new PostAnalysisPipeline(this.deps!.findingValidator);
+        const pipelineResult = await pipeline.run({
+            findingStore,
+            toolCallRecords,
+            executionContext,
+            parsedDiff,
+            calibrationProfile,
+            subagentExecutor,
+            conversationManager,
+            conversationRunner: runner,
+            systemPrompt,
+            availableTools,
+            token,
+            handler: recordingHandler,
+            progressCallback: (msg) =>
+                stream.progress(`${ACTIVITY.analyzing} ${msg}`),
+        });
+
+        if (pipelineResult.rewrittenAnalysis) {
+            analysisResult = pipelineResult.rewrittenAnalysis;
+        }
+
+        debouncedHandler.flush();
+        streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
+
+        const contentAnalysis = this.analyzeResultContent(analysisResult);
+
+        return {
+            metadata: {
+                command: request.command as 'branch' | 'changes',
+                filesAnalyzed: parsedDiff.length,
+                issuesFound: contentAnalysis.issuesFound,
+                hasCriticalIssues: contentAnalysis.hasCriticalIssues,
+                hasSecurityIssues: contentAnalysis.hasSecurityIssues,
+                hasTestingSuggestions: contentAnalysis.hasTestingSuggestions,
+                cancelled: false,
+                analysisTimestamp: Date.now(),
+            } satisfies ChatAnalysisMetadata,
+        };
     }
 
     private createCoverageGapCallback(
