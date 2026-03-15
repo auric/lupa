@@ -31,7 +31,6 @@ import { FindingStore } from '../sessions/findingStore';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
-import { FeedbackStore } from './feedbackStore';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
@@ -574,10 +573,6 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         const findingStore = new FindingStore();
-        const feedbackStore = new FeedbackStore(
-            vscode.workspace.workspaceFolders?.[0]
-        );
-        await feedbackStore.load();
         const toolCallRecords: ToolCallRecord[] = [];
 
         // Create execution context as a mutable reference so parsedDiff can be
@@ -689,7 +684,6 @@ export class ChatParticipantService implements vscode.Disposable {
                     parsedDiff,
                     codeIntelBrief,
                     findingStore,
-                    feedbackStore,
                     subagentExecutor,
                     subagentSessionManager,
                     calibrationProfile,
@@ -775,7 +769,6 @@ export class ChatParticipantService implements vscode.Disposable {
                 availableTools,
                 token,
                 handler: recordingHandler,
-                feedbackStore,
                 progressCallback: (msg) =>
                     stream.progress(`${ACTIVITY.analyzing} ${msg}`),
             });
@@ -826,7 +819,6 @@ export class ChatParticipantService implements vscode.Disposable {
         parsedDiff: DiffHunk[];
         codeIntelBrief: CodeIntelligenceBrief;
         findingStore: FindingStore;
-        feedbackStore: FeedbackStore;
         subagentExecutor: SubagentExecutor;
         subagentSessionManager: SubagentSessionManager;
         calibrationProfile: ModelCalibrationProfile;
@@ -847,7 +839,6 @@ export class ChatParticipantService implements vscode.Disposable {
         const {
             parsedDiff,
             findingStore,
-            feedbackStore,
             subagentExecutor,
             subagentSessionManager,
             calibrationProfile,
@@ -977,7 +968,6 @@ export class ChatParticipantService implements vscode.Disposable {
             availableTools,
             token,
             handler: recordingHandler,
-            feedbackStore,
             progressCallback: (msg) =>
                 stream.progress(`${ACTIVITY.analyzing} ${msg}`),
         });

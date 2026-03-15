@@ -36,7 +36,6 @@ import {
     type ModelCalibrationProfile,
 } from '../models/modelCalibration';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
-import { FeedbackStore } from './feedbackStore';
 import { groupFilesForReview, buildSynthesisPrompt } from './fileGrouper';
 import type { CodeIntelligenceBrief } from '../types/enrichedDiffTypes';
 import type { ITool } from '../tools/ITool';
@@ -115,10 +114,6 @@ export class ToolCallingAnalysisProvider {
             : undefined;
 
         const findingStore = new FindingStore();
-        const feedbackStore = new FeedbackStore(
-            vscode.workspace.workspaceFolders?.[0]
-        );
-        await feedbackStore.load();
 
         // Wire recursive state to SubagentExecutor for aggregate progress reporting
         if (recursiveState) {
@@ -234,7 +229,6 @@ export class ToolCallingAnalysisProvider {
                     parsedDiff,
                     codeIntelBrief,
                     findingStore,
-                    feedbackStore,
                     subagentExecutor,
                     subagentSessionManager,
                     calibrationProfile,
@@ -390,7 +384,6 @@ export class ToolCallingAnalysisProvider {
                     availableTools,
                     token,
                     handler,
-                    feedbackStore,
                     progressCallback: progressCallback
                         ? (msg, inc) => progressCallback(msg, inc)
                         : undefined,
@@ -454,7 +447,6 @@ export class ToolCallingAnalysisProvider {
         parsedDiff: DiffHunk[];
         codeIntelBrief: CodeIntelligenceBrief;
         findingStore: FindingStore;
-        feedbackStore: FeedbackStore;
         subagentExecutor: SubagentExecutor;
         subagentSessionManager: SubagentSessionManager;
         calibrationProfile: ModelCalibrationProfile;
@@ -469,7 +461,6 @@ export class ToolCallingAnalysisProvider {
         const {
             parsedDiff,
             findingStore,
-            feedbackStore,
             subagentExecutor,
             subagentSessionManager,
             calibrationProfile,
@@ -635,7 +626,6 @@ export class ToolCallingAnalysisProvider {
             availableTools,
             token,
             handler,
-            feedbackStore,
             progressCallback: progressCallback
                 ? (msg, inc) => progressCallback(msg, inc)
                 : undefined,
