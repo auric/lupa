@@ -12,10 +12,11 @@ import { TokenConstants } from '../models/tokenConstants';
 
 describe('toolConstants', () => {
     describe('SubagentLimits.DISALLOWED_TOOLS', () => {
-        // get_file_diff is analysis-only but intentionally
-        // ALLOWED for subagents so they can access diff on demand (RLM approach).
+        // get_file_diff and get_pr_context are analysis-only but intentionally
+        // ALLOWED for subagents so they can access diff and PR context on demand (RLM approach).
         const SUBAGENT_ALLOWED_ANALYSIS_TOOLS = [
             'get_file_diff',
+            'get_pr_context',
             ...QUALITY_TOOLS,
         ];
 

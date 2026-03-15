@@ -116,6 +116,9 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             case 'submit_review':
                 return '🚀 Submitted code review';
 
+            case 'get_pr_context':
+                return `${ACTIVITY.reading} Fetching PR context...`;
+
             case 'get_file_diff': {
                 const raw = args.file_paths;
                 let paths: unknown[];

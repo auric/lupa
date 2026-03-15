@@ -43,7 +43,7 @@ After scanning the diff, immediately call \`update_plan\` with this structure:
 \`\`\`
 
 ### Step 2: Gather Context
-For each checklist item:
+- Call \`get_pr_context\` to learn the branch name, commit messages, and PR intent
 - Use \`find_symbol\` for unfamiliar functions
 - Use \`find_usages\` for changed signatures
 - Spawn subagents for complex areas (4+ files or security-sensitive)

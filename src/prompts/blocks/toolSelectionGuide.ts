@@ -20,6 +20,7 @@ export function generateToolSelectionGuide(): string {
 | List directory | \`list_directory\` |
 | Find files | \`find_files_by_pattern\` |
 | Read config/docs | \`read_file\` |
+| PR intent/commits | \`get_pr_context\` |
 | Track progress | \`update_plan\` |
 | Think through analysis | \`think\` |
 | Record confirmed issue | \`record_finding\` |
