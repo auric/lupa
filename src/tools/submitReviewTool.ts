@@ -50,14 +50,14 @@ export class SubmitReviewTool extends BaseTool {
             throw new vscode.CancellationError();
         }
 
-        // Calibration gate: dismissive models must call validate_claim before submitting.
-        // EXCEPTION: If subagents already recorded findings in FindingStore, they performed
-        // their own validation — waive the gate to prevent the parent from using forced
-        // validate_claim calls to disprove subagent findings.
         const profile = context.calibrationProfile;
         const store = context.findingStore;
         const subagentsRecordedFindings = store && store.size > 0;
 
+        // Calibration gate: dismissive models must call validate_claim before submitting.
+        // EXCEPTION: If subagents already recorded findings in FindingStore, they performed
+        // their own validation — waive the gate to prevent the parent from using forced
+        // validate_claim calls to disprove subagent findings.
         if (
             profile.minValidateClaimBeforeSubmit > 0 &&
             !subagentsRecordedFindings
@@ -73,7 +73,7 @@ export class SubmitReviewTool extends BaseTool {
             }
         }
 
-        // FindingStore gate: if subagents recorded findings, the review must address them
+        // Gate 4: FindingStore gate — if subagents recorded findings, the review must address them
         if (subagentsRecordedFindings) {
             const findings = store.getAll();
             const reviewLower = args.review_content.toLowerCase();

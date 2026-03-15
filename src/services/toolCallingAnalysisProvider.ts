@@ -345,6 +345,64 @@ export class ToolCallingAnalysisProvider {
             analysisCompleted = !conversationRunner.wasCancelled;
 
             if (analysisCompleted) {
+                // Workflow enforcement: check required tools and self-reflection.
+                // Only enforced when findings are recorded (clean reviews pass through).
+                // Re-enters conversation with a small budget if checks fail.
+                if (findingStore.size > 0 && !token.isCancellationRequested) {
+                    const workflowGaps: string[] = [];
+
+                    const thinkCalled =
+                        (executionContext.toolCallCounts.get(
+                            'think_about_completion'
+                        ) ?? 0) > 0;
+                    if (!thinkCalled) {
+                        workflowGaps.push(
+                            'You did not call think_about_completion to reflect on your findings'
+                        );
+                    }
+
+                    const requiredTools =
+                        calibrationProfile.investigationProtocol
+                            .requiredToolsBeforeDone;
+                    const missingTools = requiredTools.filter(
+                        (t: string) =>
+                            (executionContext.toolCallCounts.get(t) ?? 0) === 0
+                    );
+                    if (missingTools.length > 0) {
+                        workflowGaps.push(
+                            `Required investigation tools not used: ${missingTools.join(', ')}`
+                        );
+                    }
+
+                    if (workflowGaps.length > 0) {
+                        Log.info(
+                            `Workflow enforcement: ${workflowGaps.length} gap(s) detected, re-entering for completion`
+                        );
+                        conversationManager.addUserMessage(
+                            `WORKFLOW INCOMPLETE — you recorded ${findingStore.size} finding(s) but skipped required steps:\n` +
+                                workflowGaps.map((g) => `• ${g}`).join('\n') +
+                                '\n\nComplete these steps NOW, then call submit_review again.'
+                        );
+
+                        const WORKFLOW_BUDGET = 10;
+                        analysisText = await conversationRunner.run(
+                            {
+                                systemPrompt,
+                                maxIterations: WORKFLOW_BUDGET,
+                                tools: availableTools,
+                                label: 'Workflow Completion',
+                                requiresExplicitCompletion: true,
+                            },
+                            conversationManager,
+                            token,
+                            handler
+                        );
+                    }
+                }
+
+                // Track all dropped findings across post-analysis stages for unified rewrite
+                const droppedTitles: string[] = [];
+
                 // Post-analysis: audit evidence trail against tool call records
                 const findings = findingStore.getAll();
                 if (findings.length > 0) {
@@ -354,6 +412,13 @@ export class ToolCallingAnalysisProvider {
                         findings,
                         toolCallRecords
                     );
+
+                    // Collect titles before applying drops
+                    for (const entry of auditResult.entries) {
+                        if (entry.verdict === 'drop') {
+                            droppedTitles.push(entry.finding.title);
+                        }
+                    }
                     this.applyEvidenceAuditResults(auditResult, findingStore);
                 }
 
@@ -370,6 +435,13 @@ export class ToolCallingAnalysisProvider {
                         token
                     );
 
+                    // Collect titles before applying drops
+                    for (const v of validation.validated) {
+                        if (v.verdict === 'drop') {
+                            droppedTitles.push(v.finding.title);
+                        }
+                    }
+
                     // Apply validation results to FindingStore
                     this.applyValidationResults(
                         validation.validated,
@@ -379,11 +451,6 @@ export class ToolCallingAnalysisProvider {
                     if (validation.dropped > 0 || validation.downgraded > 0) {
                         Log.info(
                             `FindingValidator: ${validation.kept} kept, ${validation.downgraded} downgraded, ${validation.dropped} dropped`
-                        );
-
-                        // Append validation summary to analysis text
-                        analysisText += this.formatValidationSummary(
-                            validation.validated
                         );
                     }
                 }
@@ -406,33 +473,43 @@ export class ToolCallingAnalysisProvider {
                     toolCallRecords.push(...adversarialResult.toolCallRecords);
 
                     if (adversarialResult.refuted.length > 0) {
-                        Log.info(
-                            `Adversarial refuted ${adversarialResult.refuted.length} finding(s), re-entering conversation for rewrite`
-                        );
-                        const refutedList = adversarialResult.refuted
-                            .map((t) => `"${t}"`)
-                            .join(', ');
-                        conversationManager.addUserMessage(
-                            `Adversarial verification has refuted ${adversarialResult.refuted.length} finding(s): ${refutedList}. ` +
-                                'These findings have been removed. ' +
-                                'Rewrite your review WITHOUT these refuted findings, then call submit_review.'
-                        );
-
-                        // Re-enter conversation with small budget for rewrite
-                        const REWRITE_BUDGET = 10;
-                        analysisText = await conversationRunner.run(
-                            {
-                                systemPrompt,
-                                maxIterations: REWRITE_BUDGET,
-                                tools: availableTools,
-                                label: 'Rewrite Phase',
-                                requiresExplicitCompletion: true,
-                            },
-                            conversationManager,
-                            token,
-                            handler
-                        );
+                        droppedTitles.push(...adversarialResult.refuted);
                     }
+                }
+
+                // Unified rewrite: if ANY findings were dropped across any stage,
+                // re-enter conversation so the model rewrites its review without them.
+                // This prevents stale finding references in the final output.
+                if (
+                    droppedTitles.length > 0 &&
+                    !token.isCancellationRequested
+                ) {
+                    Log.info(
+                        `Post-analysis dropped ${droppedTitles.length} finding(s), re-entering conversation for rewrite`
+                    );
+                    const droppedList = droppedTitles
+                        .map((t) => `"${t}"`)
+                        .join(', ');
+                    conversationManager.addUserMessage(
+                        `Post-analysis verification has removed ${droppedTitles.length} finding(s): ${droppedList}. ` +
+                            'These findings failed evidence audit, programmatic validation, or adversarial verification. ' +
+                            'Rewrite your review WITHOUT these removed findings, then call submit_review.'
+                    );
+
+                    // Re-enter conversation with small budget for rewrite
+                    const REWRITE_BUDGET = 10;
+                    analysisText = await conversationRunner.run(
+                        {
+                            systemPrompt,
+                            maxIterations: REWRITE_BUDGET,
+                            tools: availableTools,
+                            label: 'Rewrite Phase',
+                            requiresExplicitCompletion: true,
+                        },
+                        conversationManager,
+                        token,
+                        handler
+                    );
                 }
 
                 progressCallback?.(

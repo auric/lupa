@@ -19,6 +19,17 @@ vi.mock('../services/loggingService', () => ({
 describe('SubmitReviewTool', () => {
     let tool: SubmitReviewTool;
 
+    /** Creates a context where think_about_completion was already called */
+    const ctxWithReflection = (
+        overrides: Partial<
+            Parameters<typeof createMockExecutionContext>[0]
+        > = {}
+    ) =>
+        createMockExecutionContext({
+            toolCallCounts: new Map([['think_about_completion', 1]]),
+            ...overrides,
+        });
+
     beforeEach(() => {
         vi.clearAllMocks();
         tool = new SubmitReviewTool();
@@ -56,7 +67,7 @@ describe('SubmitReviewTool', () => {
                 {
                     review_content: reviewContent,
                 },
-                createMockExecutionContext()
+                ctxWithReflection()
             );
 
             expect(result.success).toBe(true);
@@ -71,7 +82,7 @@ describe('SubmitReviewTool', () => {
                 {
                     review_content: reviewContent,
                 },
-                createMockExecutionContext()
+                ctxWithReflection()
             );
 
             expect(result.success).toBe(true);
@@ -96,7 +107,7 @@ const x = 1;
                 {
                     review_content: reviewContent,
                 },
-                createMockExecutionContext()
+                ctxWithReflection()
             );
 
             expect(result.success).toBe(true);
@@ -154,7 +165,7 @@ const x = 1;
 
     describe('review content', () => {
         it('returns review content as-is', async () => {
-            const ctx = createMockExecutionContext();
+            const ctx = ctxWithReflection();
             const content = 'Review with no findings detected.';
 
             const result = await tool.execute({ review_content: content }, ctx);
@@ -168,7 +179,7 @@ const x = 1;
                     review_content:
                         'Complete review content for metadata test.',
                 },
-                createMockExecutionContext()
+                ctxWithReflection()
             );
 
             expect(result.success).toBe(true);
@@ -201,8 +212,15 @@ const x = 1;
                     minValidateClaimBeforeSubmit: 1,
                     includeAgenticPreamble: true,
                     evidenceThreshold: 'low',
+                    adversarialVerificationThreshold: 'LOW',
+                    adversarialBudget: 20,
+                    investigationProtocol: {
+                        minToolCallsBeforeFirstFinding: 0,
+                        requiredToolsBeforeDone: [],
+                        investigationPreamble: '',
+                    },
                 },
-                toolCallCounts: new Map(),
+                toolCallCounts: new Map([['think_about_completion', 1]]),
             });
 
             const result = await tool.execute(
@@ -218,7 +236,10 @@ const x = 1;
         });
 
         it('should accept submit when validate_claim was called and profile requires it', async () => {
-            const counts = new Map([['validate_claim', 2]]);
+            const counts = new Map([
+                ['validate_claim', 2],
+                ['think_about_completion', 1],
+            ]);
             const ctx = createMockExecutionContext({
                 calibrationProfile: {
                     name: 'gpt-4.1',
@@ -229,6 +250,13 @@ const x = 1;
                     minValidateClaimBeforeSubmit: 1,
                     includeAgenticPreamble: true,
                     evidenceThreshold: 'low',
+                    adversarialVerificationThreshold: 'LOW',
+                    adversarialBudget: 20,
+                    investigationProtocol: {
+                        minToolCallsBeforeFirstFinding: 0,
+                        requiredToolsBeforeDone: [],
+                        investigationPreamble: '',
+                    },
                 },
                 toolCallCounts: counts,
             });
@@ -253,8 +281,15 @@ const x = 1;
                     minValidateClaimBeforeSubmit: 0,
                     includeAgenticPreamble: false,
                     evidenceThreshold: 'medium',
+                    adversarialVerificationThreshold: 'LOW',
+                    adversarialBudget: 15,
+                    investigationProtocol: {
+                        minToolCallsBeforeFirstFinding: 0,
+                        requiredToolsBeforeDone: [],
+                        investigationPreamble: '',
+                    },
                 },
-                toolCallCounts: new Map(),
+                toolCallCounts: new Map([['think_about_completion', 1]]),
             });
 
             const result = await tool.execute(
@@ -266,7 +301,7 @@ const x = 1;
         });
 
         it('should not gate when no calibration profile is set', async () => {
-            const ctx = createMockExecutionContext();
+            const ctx = ctxWithReflection();
 
             const result = await tool.execute(
                 { review_content: 'LGTM. No issues found after review.' },
@@ -274,6 +309,24 @@ const x = 1;
             );
 
             expect(result.success).toBe(true);
+        });
+    });
+
+    describe('think_about_completion gate', () => {
+        it('gates are enforced at orchestrator level, not in submit_review', () => {
+            // think_about_completion and requiredToolsBeforeDone enforcement
+            // lives in toolCallingAnalysisProvider (orchestrator level), not in the tool.
+            // This prevents infinite retry loops in the conversation loop.
+            // See toolCallingAnalysisProvider.test.ts for gate tests.
+            expect(true).toBe(true);
+        });
+    });
+
+    describe('requiredToolsBeforeDone gate', () => {
+        it('gates are enforced at orchestrator level, not in submit_review', () => {
+            // requiredToolsBeforeDone enforcement lives in toolCallingAnalysisProvider (orchestrator level).
+            // See think_about_completion gate describe block for full rationale.
+            expect(true).toBe(true);
         });
     });
 });

@@ -72,6 +72,28 @@ export class ThinkAboutCompletionTool extends BaseTool {
                 ? ` ⚠️ ${files_in_diff - files_analyzed.length} file(s) uncovered — investigate before submitting.`
                 : '';
 
+        // Cross-reference claimed files_analyzed against actual tool call records.
+        // The model may claim to have analyzed files it never investigated with tools.
+        let investigationNote = '';
+        if (context.investigatedFiles && context.investigatedFiles.size > 0) {
+            const uninvestigated = files_analyzed.filter((claimed) => {
+                const normalizedClaimed = claimed.replace(/\\/g, '/');
+                return ![...context.investigatedFiles!].some(
+                    (actual) =>
+                        normalizedClaimed.endsWith(actual) ||
+                        actual.endsWith(normalizedClaimed) ||
+                        normalizedClaimed === actual
+                );
+            });
+            if (uninvestigated.length > 0) {
+                investigationNote =
+                    `\n\n⚠️ INVESTIGATION GAP: You claimed to analyze ${uninvestigated.length} file(s) that have NO tool call records: ` +
+                    `${uninvestigated.join(', ')}. ` +
+                    `You must use read_file, find_symbol, find_usages, or validate_claim on a file before claiming you analyzed it. ` +
+                    `Go investigate these files before calling submit_review.`;
+            }
+        }
+
         // Inject FindingStore summary with CoVe-style verification prompts
         const store = context.findingStore;
         let findingStoreNote = '';
@@ -98,7 +120,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
 
         return toolSuccess(
             `✅ Reflection recorded. ${files_analyzed.length}/${files_in_diff} files (${coveragePercent}%), ` +
-                `${issues_count} issue(s), recommendation: ${recommendation}.${coverageNote} ` +
+                `${issues_count} issue(s), recommendation: ${recommendation}.${coverageNote}${investigationNote} ` +
                 `Pre-submit: for each finding, verify it's MECHANICAL (not intent-based), name the confirming tool call, ` +
                 `confirm disproof was attempted. Drop anything "by design." Now call submit_review.${findingStoreNote}`
         );
