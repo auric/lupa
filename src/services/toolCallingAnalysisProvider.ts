@@ -670,28 +670,6 @@ export class ToolCallingAnalysisProvider {
         }
     }
 
-    private formatValidationSummary(validated: ValidatedFinding[]): string {
-        const dropped = validated.filter((v) => v.verdict === 'drop');
-        const downgraded = validated.filter((v) => v.verdict === 'downgrade');
-
-        if (dropped.length === 0 && downgraded.length === 0) {
-            return '';
-        }
-
-        let summary = '\n\n---\n*Post-analysis validation:';
-        if (dropped.length > 0) {
-            summary += ` ${dropped.length} finding(s) removed (${dropped.map((d) => d.violations[0]).join('; ')})`;
-        }
-        if (downgraded.length > 0) {
-            if (dropped.length > 0) {
-                summary += ',';
-            }
-            summary += ` ${downgraded.length} finding(s) downgraded`;
-        }
-        summary += '*';
-        return summary;
-    }
-
     dispose(): void {
         // No resources to dispose of currently
     }

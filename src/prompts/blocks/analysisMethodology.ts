@@ -169,5 +169,12 @@ ${
 Many well-written PRs have zero reportable findings. That outcome is valid — quality means accuracy, not volume.`
         : ''
 }
+${
+    calibration.investigationProtocol?.investigationPreamble
+        ? `
+### Investigation Persistence
+${calibration.investigationProtocol.investigationPreamble}`
+        : ''
+}
 </analysis_methodology>`;
 }

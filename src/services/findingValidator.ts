@@ -229,14 +229,31 @@ export class FindingValidator {
         finding: RecordedFinding,
         changedFiles: Set<string>
     ): boolean {
-        return changedFiles.has(finding.file);
+        return this.fuzzyFileMatch(finding.file, changedFiles);
     }
 
     private checkFileDeleted(
         finding: RecordedFinding,
         deletedFiles: Set<string>
     ): boolean {
-        return deletedFiles.has(finding.file);
+        return this.fuzzyFileMatch(finding.file, deletedFiles);
+    }
+
+    private fuzzyFileMatch(file: string, fileSet: Set<string>): boolean {
+        const normalized = file.replace(/\\/g, '/');
+        if (fileSet.has(normalized)) {
+            return true;
+        }
+        for (const entry of fileSet) {
+            const normalizedEntry = entry.replace(/\\/g, '/');
+            if (
+                normalizedEntry.endsWith(normalized) ||
+                normalized.endsWith(normalizedEntry)
+            ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private checkLineRange(finding: RecordedFinding): boolean {
