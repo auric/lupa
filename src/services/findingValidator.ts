@@ -278,7 +278,15 @@ export class FindingValidator {
                 text
             )
         ) {
-            return 'Findings about missing tests are excluded from automated review scope';
+            return 'Test coverage suggestions are out of scope for code review';
+        }
+
+        if (
+            /\binsufficient\s+(edge\s+)?cas(e|es)\b|\binsufficient\s+test\s+coverage\b|\b(should|need(s)?|must)\s+(add|write|include|have)\s+(more\s+)?(unit\s+|integration\s+|edge\s*case\s+)?tests?\b|\btest\s+coverage\s+(gap|missing|insufficient|incomplete)\b|\buntested\s+(code\s+)?path/.test(
+                text
+            )
+        ) {
+            return 'Test coverage suggestions are out of scope for code review';
         }
 
         if (

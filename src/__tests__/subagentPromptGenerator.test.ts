@@ -517,7 +517,7 @@ describe('SubagentPromptGenerator', () => {
                 );
 
                 expect(prompt).toContain('Finding Quality');
-                expect(prompt).toContain('Required Verification');
+                expect(prompt).toContain('Verification Gates');
                 expect(prompt).toContain('Revert Test');
                 expect(prompt).toContain('Counterexample Requirement');
                 expect(prompt).toContain('SPECULATIVE');
@@ -555,10 +555,12 @@ describe('SubagentPromptGenerator', () => {
                     DEFAULT_PROFILE
                 );
 
-                expect(prompt).toContain('layered architecture');
+                expect(prompt).toContain(
+                    'caller or middleware already validates'
+                );
                 expect(prompt).toContain('surrounding layer');
                 expect(prompt).toContain('trace ALL callers');
-                expect(prompt).toContain('concrete regression');
+                expect(prompt).toContain('concrete failing scenario');
             });
 
             it('should include production caller and performance gates in subagent prompt', () => {
@@ -574,7 +576,7 @@ describe('SubagentPromptGenerator', () => {
                     DEFAULT_PROFILE
                 );
 
-                expect(prompt).toContain('production callers');
+                expect(prompt).toContain('Every Finding MUST Have');
                 expect(prompt).toContain('Confidence Levels');
             });
 
@@ -591,8 +593,8 @@ describe('SubagentPromptGenerator', () => {
                     DEFAULT_PROFILE
                 );
 
-                expect(prompt).toContain('call-site contract');
-                expect(prompt).toContain('centralized error handlers');
+                expect(prompt).toContain('Design Intent Blindness');
+                expect(prompt).toContain('centralized error handler');
             });
         });
 

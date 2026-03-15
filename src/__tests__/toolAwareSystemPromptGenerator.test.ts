@@ -186,17 +186,17 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('Would reverting this PR fix');
         });
 
-        it('should include false positive cost statement', () => {
+        it('should include precision over recall statement', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
-            expect(prompt).toContain('False Positive Cost');
+            expect(prompt).toContain('Precision > Recall');
             expect(prompt).toContain('zero reportable findings');
         });
 
-        it('should include design flaw and feature request verification gates', () => {
+        it('should include design inconsistency and feature request verification gates', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
-            expect(prompt).toContain('Design flaw / should refactor');
+            expect(prompt).toContain('Design inconsistency');
             expect(prompt).toContain('Should add X feature');
-            expect(prompt).toContain('Pre-existing issue');
+            expect(prompt).toContain('Pre-existing code quality issues');
         });
 
         it('should cap feature suggestions at LOW severity', () => {
@@ -206,16 +206,18 @@ describe('ToolAwareSystemPromptGenerator', () => {
 
         it('should include layered validation awareness', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
-            expect(prompt).toContain('Layered Validation Awareness');
-            expect(prompt).toContain('Middleware/executor catches errors');
-            expect(prompt).toContain('Caller validates before calling');
+            expect(prompt).toContain('Should validate X');
+            expect(prompt).toContain(
+                'outer scope already catches and handles the error'
+            );
+            expect(prompt).toContain('caller or middleware already validates');
             expect(prompt).toContain('surrounding layer already provides it');
         });
 
         it('should include try-catch verification gate', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
             expect(prompt).toContain('Should add try-catch');
-            expect(prompt).toContain('redundant error handling');
+            expect(prompt).toContain('outer scope already catches');
         });
 
         it('should require caller trace in counterexample requirement', () => {
@@ -224,50 +226,58 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('unreachable');
         });
 
-        it('should include expanded false positive patterns for tests and docs', () => {
+        it('should include false positive patterns for tests and docs', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
             expect(prompt).toContain('Missing test');
-            expect(prompt).toContain('trivial pass-through');
-            expect(prompt).toContain('Missing integration test');
-            expect(prompt).toContain('Should document rationale');
+            expect(prompt).toContain('No tests for X');
+            expect(prompt).toContain(
+                'Documentation that contradicts the implementation'
+            );
+            expect(prompt).toContain('IS a valid finding');
             expect(prompt).toContain('unreachable');
         });
 
-        it('should include integration test complexity gate', () => {
+        it('should include every-finding-must-have requirements', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
-            expect(prompt).toContain('Missing integration test');
-            expect(prompt).toContain('3+ mocked layers');
-        });
-
-        it('should include production caller verification gate', () => {
-            const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
-            expect(prompt).toContain('production callers');
-            expect(prompt).toContain('future API surface');
-        });
-
-        it('should include role-aware asymmetry in FP patterns', () => {
-            const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
+            expect(prompt).toContain('Every Finding MUST Have');
             expect(prompt).toContain(
-                'Verify the ROLE before claiming inconsistency'
+                'Specific tool output showing the problem'
             );
         });
 
-        it('should include performance quantification in FP patterns', () => {
+        it('should include concrete scenario requirements in FP guidance', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
-            expect(prompt).toContain('quantifying actual n and m');
-            expect(prompt).toContain('Premature optimization is not a finding');
+            expect(prompt).toContain(
+                'concrete failing scenario with actual values'
+            );
+            expect(prompt).toContain("Proof it's caused by THIS PR");
         });
 
-        it('should include defense-in-depth boundary clarification', () => {
+        it('should include design intent blindness in FP patterns', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
-            expect(prompt).toContain('trust boundaries');
-            expect(prompt).toContain('internal method calls');
+            expect(prompt).toContain('Design Intent Blindness');
         });
 
-        it('should include call-site contract verification gate', () => {
+        it('should include intended-scope awareness in FP patterns', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
-            expect(prompt).toContain('call-site contract');
-            expect(prompt).toContain('Method X lacks guard Y');
+            expect(prompt).toContain('DESIGNED to only handle X');
+            expect(prompt).toContain('intended scope');
+        });
+
+        it('should include runtime-aware FP patterns', () => {
+            const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
+            expect(prompt).toContain(
+                'synchronous operations in single-threaded runtimes'
+            );
+            expect(prompt).toContain('type system already guarantees');
+        });
+
+        it('should include design intent checking guidance', () => {
+            const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
+            expect(prompt).toContain(
+                'checking for comments or docs explaining why'
+            );
+            expect(prompt).toContain('Fabricating examples');
         });
 
         it('should include centralized error handler FP pattern', () => {
@@ -276,10 +286,12 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('ToolExecutor');
         });
 
-        it('should include construction-guaranteed invariant FP pattern', () => {
+        it('should include internal-state constraint FP pattern', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
-            expect(prompt).toContain('Missing filtering/dedup');
-            expect(prompt).toContain('guarantees the property by construction');
+            expect(prompt).toContain(
+                'internal state already constrained by producers'
+            );
+            expect(prompt).toContain('ALL callers validate before calling');
         });
 
         it('should include finding quality in recursive root prompt', () => {

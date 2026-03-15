@@ -130,6 +130,27 @@ export class RecordFindingTool extends BaseTool {
             }
         }
 
+        if (context.parsedDiff) {
+            const changedFiles = new Set(
+                context.parsedDiff.map((d) => d.filePath)
+            );
+            const normalizedFile = args.file.replace(/\\/g, '/');
+            const isInDiff =
+                changedFiles.has(normalizedFile) ||
+                [...changedFiles].some(
+                    (f) =>
+                        normalizedFile.endsWith(f) || f.endsWith(normalizedFile)
+                );
+
+            if (!isInDiff) {
+                return toolError(
+                    `Finding rejected: "${args.file}" is not in the changed files for this PR. ` +
+                        'Only report issues in files that were modified in this PR. ' +
+                        `Changed files: ${[...changedFiles].join(', ')}`
+                );
+            }
+        }
+
         const finding = store.record({
             agentId: context.currentAgentId ?? 'unknown',
             severity: args.severity,

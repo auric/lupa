@@ -502,7 +502,7 @@ describe('FindingValidator', () => {
 
             expect(result.dropped).toBe(1);
             expect(result.validated[0]!.violations[0]).toContain(
-                'missing tests'
+                'Test coverage suggestions'
             );
         });
 
