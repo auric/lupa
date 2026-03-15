@@ -127,29 +127,29 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(systemPrompt).toContain('Missing test');
         });
 
-        it('should include production caller and performance filters in finding quality guidance', () => {
+        it('should include FP example patterns in finding quality guidance', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             // Filters are in the <finding_quality> block
-            expect(systemPrompt).toContain('zero production callers');
-            expect(systemPrompt).toContain('performance concerns');
+            expect(systemPrompt).toContain('Design Intent Blindness');
+            expect(systemPrompt).toContain('runtime');
         });
 
-        it('should include call-site contract and centralized handler filters in finding quality guidance', () => {
+        it('should include centralized handler filters in finding quality guidance', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             // Filters are in the <finding_quality> block
-            expect(systemPrompt).toContain('call-site contract');
+            expect(systemPrompt).toContain('outer scope');
             expect(systemPrompt).toContain('centralized error handler');
         });
 
-        it('should include call-site contract in self-reflection aggregation checkpoint', () => {
+        it('should include centralized handler in self-reflection aggregation checkpoint', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
-            expect(systemPrompt).toContain('call-site contract');
+            expect(systemPrompt).toContain('outer scope');
             expect(systemPrompt).toContain('centralized error handler');
         });
 

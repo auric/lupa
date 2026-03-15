@@ -51,41 +51,26 @@ Pre-existing code quality issues, tech debt, and architectural preferences are N
 
     const fpPatternsSection = includeFPGuide
         ? `
-### False Positive Patterns — Avoid These
+### Every Finding MUST Have
+
+1. **Specific tool output showing the problem** — not just reasoning. Name the tool, the query, and the result.
+2. **A concrete failing scenario with actual values** — what input, what code path, what breaks.
+3. **Proof it's caused by THIS PR's changes** — not pre-existing.
+
+### Top False Positive Patterns — Avoid These
 
 **Design Intent Blindness** — the #1 source of false positives:
 - ❌ Claiming "inconsistent behavior" without checking for comments or docs explaining why — search for \`// Note:\`, \`// Intentional\`, \`// Why:\`, design docs, and the function's JSDoc BEFORE reporting
 - ❌ Reporting that a function "only handles X" when it was DESIGNED to only handle X — check the function's name, docstring, and callers to understand its intended scope
-- ❌ Claiming a counter/metric "miscounts" without understanding what it's tracking — "completed" may mean "finished" (including failures), not "succeeded". Read the callers and UI that consumes the value
-- ❌ Flagging standard CS primitives as "risky" (e.g., semaphores deadlock on reentrant acquire, hash maps don't preserve insertion order) — these are known properties of the data structure, not bugs
-- ❌ Fabricating examples that don't match the actual code — if a log says \`#5 spawned (5/10, 5 remaining)\`, don't claim it shows \`#5 spawned (2/10)\`
+- ❌ Fabricating examples that don't match the actual code
 
 **Other common false positives:**
-- ❌ "Can go negative" without proving a concrete input exists that causes it
+- ❌ "Missing try-catch" when an outer scope, middleware, or executor already catches and converts errors — check the full call chain before suggesting error handling
+- ❌ "Should validate X" when X is internal state already constrained by producers, or ALL callers validate before calling
+- ❌ "Race condition" without verifying the runtime's concurrency model — synchronous operations in single-threaded runtimes cannot race
+- ❌ "Value could be undefined/null" when the language's type system already guarantees the type at that point
 - ❌ "No tests for X" without searching the test directory first
-- ❌ "Inconsistent thresholds" for intentionally asymmetric designs — different roles may have different thresholds by design (e.g., coordinator delegates at 3+ files, workers decompose at 4+). Verify the ROLE before claiming inconsistency
-- ❌ "Missing cleanup" when the test framework config handles it globally
-- ❌ "Unused callback/dead code" when the interface is an extension point
-- ❌ "Should validate X" when X is internal state already constrained by producers
-- ❌ "Missing try-catch" / "Should add try-catch" when an outer scope, middleware, or executor already catches and converts errors — this includes centralized error handlers (e.g., ToolExecutor, Express middleware, Redux middleware) that wrap all callees. Check the full call chain before suggesting error handling
-- ❌ "Method X doesn't validate Y" when ALL callers of X already validate Y before calling — the method is safe by call-site contract. This applies to pre-flight guards (e.g., \`canSpawn\` before \`register\`), schema validation before processing, and permission checks before action
-- ❌ "Missing filtering/dedup" in data aggregation when the data model guarantees the property by construction — e.g., if only one method populates a field and it runs only for completed items, aggregating all items is already correct without runtime filtering
-- ❌ "Should add X" (logging, metrics, retry logic) as MEDIUM or higher — suggestions are 🟢 LOW at most
-- ❌ "Missing test" when the test exists under a different name, or the proposed test only exercises trivial pass-through logic (e.g., testing that a spread operator works, that a mock factory returns defaults)
-- ❌ "Missing integration test" when each layer has unit tests covering the same code paths — if the proposed test spans 3+ mocked layers, it primarily exercises mock infrastructure, not real logic
-- ❌ "O(n*m) is slow" or similar performance concerns without quantifying actual n and m — for bounded inputs (schema-capped arrays, typical PR sizes), linear scans are often optimal. Premature optimization is not a finding
-- ❌ Reporting a public method's behavior as incorrect when the method has zero production callers — it may be future API surface. Check for actual usage before reporting
-- ❌ "Should document rationale" when the rationale is in CHANGELOG, commit messages, or design docs — not every constant needs inline comments
-- ❌ Issues in unchanged code that the PR doesn't make worse
-- ✅ Documentation that contradicts the implementation IS a valid finding — if a doc claims a tool/setting/behavior works one way but the code does the opposite, report it. Docs ship with the product
-- ❌ "Architecture should use X pattern" without evidence the current approach causes concrete problems
-- ❌ Reporting pre-existing tech debt as a PR finding
-- ❌ Flagging an untested code path that is unreachable — if no caller can produce the input, there's nothing to test
-- ❌ "Race condition" without verifying the runtime's concurrency model — in single-threaded runtimes (Node.js, Python GIL), synchronous operations cannot race. Verify the runtime allows concurrent access AND shared state is accessed without synchronization before reporting
-- ❌ "Value could be undefined/null" when the language's type system already guarantees the type at that point — check what the compiler enforces (e.g., TypeScript narrowing, Rust ownership, Kotlin null safety) before suggesting redundant runtime checks
-- ❌ "Math.max(x, 0) can return 0" or similar bounded arithmetic — the bounded value IS the designed behavior. \`Math.max\`, \`Math.min\`, and clamping produce edge values by design. Unless the edge value causes a concrete downstream failure (prove it with a code path), this is not a finding
-- ❌ "Property X is set but not immediately used" when the property follows a set-at-start, read-at-end lifecycle (timers, session state, accumulators). The gap between set and use is by design
-- ❌ "Method should be called X instead of Y" or similar naming/style preferences — unless the name causes demonstrable confusion or bugs, naming is a style preference, not a defect
+- ✅ Documentation that contradicts the implementation IS a valid finding
 `
         : '';
 
@@ -122,41 +107,22 @@ If ANY of these return a plausible explanation, DROP the finding. In your "Dispr
 
 ### Verification Gates
 
-Before reporting a finding, complete the verification for its claim type:
+Before reporting a finding, verify it matches its claim type:
 
-| Claim Type | Required Verification |
-|---|---|
-| "Missing error handling" | Trace callers 2-3 levels up for outer try-catch or error boundaries |
-| "Value can be negative/zero/null" | Trace the variable to its source; prove a concrete input produces the bad value |
-| "Missing test for X" | Search \`__tests__/\` for function name AND behavioral synonyms. Then verify the proposed test would catch a **concrete regression** — not just exercise a code path |
-| "Missing documentation" | Search README, \`docs/\`, and CHANGELOG for the concept by keyword |
-| "Design inconsistency" | Check for comments/docs explaining rationale; if plausible intent exists, **drop it** |
-| "Should validate X" | Trace all producers of X to prove an invalid value is reachable. Check if a **caller or middleware** already validates — redundant validation is not a finding |
-| "Should add try-catch" | Check if an outer scope (middleware, executor, framework) already catches and handles the error — redundant error handling is not a finding |
-| "Method X lacks guard Y" | Before reporting, find ALL callers of X. If every call-site already performs Y before calling X, the method is safe by **call-site contract**. Single-entry-point methods protected by their caller do not need redundant internal guards |
-| "Missing integration test" | Check if each layer already has unit tests covering the code paths. Estimate test complexity: if the test spans 3+ mocked layers and primarily exercises mock wiring rather than real logic, it is likely not worth adding |
-| "Unused / incorrect public method" | Before reporting an issue about a public method's behavior, verify it has **production callers** (not just test consumers). Methods with zero production callers are NOT findings — they are future API surface or test infrastructure |
-| "Missing cleanup/disposal" | Check framework config (vitest.config, jest.config) for global settings |
-| "Design flaw / should refactor" | Search for comments, docs, tests, or commit history explaining the design. If ANY plausible rationale exists, drop the finding |
-| "Symbol unused/no callers/type wrong" | Call \`validate_claim\` for LSP-grounded verification — the result is compiler-grade and overrides LLM reasoning |
-| "Documentation claims X" | Verify the claim against the actual code — search for the referenced constants, tool lists, settings, API behavior. If the documentation contradicts the implementation, this IS a valid finding |
-| "Should add X feature" | This is a suggestion, not a bug. Only report as 🟢 LOW if directly relevant to changed code |
-| "Race condition" | Verify (1) shared mutable state exists, (2) a yield point (e.g., \`await\`, thread switch, \`yield\`) separates the read and write of that state, and (3) the runtime's concurrency model allows interleaving at that point. In single-threaded runtimes, two synchronous operations without a yield point between them CANNOT race — drop it |
-| "Pre-existing issue" | Focus on issues in changed code. If it existed before this PR, it's not a PR finding |
+- **"Missing error handling"**: Trace callers 2-3 levels up for outer try-catch or error boundaries.
+- **"Value can be negative/zero/null"**: Trace the variable to its source; prove a concrete input produces the bad value.
+- **"Missing test for X"**: Search \`__tests__/\` for function name AND behavioral synonyms.
+- **"Design inconsistency"**: Check for comments/docs explaining rationale; if plausible intent exists, drop it.
+- **"Should validate X"**: Trace all producers of X to prove an invalid value is reachable. Check if a caller or middleware already validates.
+- **"Should add try-catch"**: Check if an outer scope already catches and handles the error.
+- **"Symbol unused/no callers/type wrong"**: Call \`validate_claim\` for LSP-grounded verification.
+- **"Documentation claims X"**: Verify against the actual code — if the doc contradicts the implementation, this IS a valid finding.
+- **"Should add X feature"**: This is a suggestion, not a bug. Only report as 🟢 LOW.
+- **"Race condition"**: Verify shared mutable state, a yield point between read and write, and that the runtime allows interleaving.
 
 If you cannot complete verification: flag as 🔍 **Verify** or drop the finding.
 
-### Layered Validation Awareness
-
-Many codebases use layered architecture where validation happens at specific boundaries:
-- **Middleware/executor catches errors** → individual functions don't need try-catch
-- **Caller validates before calling** → callee doesn't need to re-validate inputs
-- **Framework handles lifecycle** → components don't need manual cleanup
-- **Type system constrains values** → runtime validation is redundant for typed internals
-
-Before suggesting "add validation/error handling at X", check whether a **surrounding layer already provides it**. Redundant defensive code is not an improvement — it's noise.
-
-**Defense-in-depth is for trust boundaries**, not internal method calls. Adding redundant validation between two methods in the same module is noise, not safety. Reserve defensive checks for system boundaries: user input, external APIs, plugin interfaces.
+Before suggesting "add validation/error handling at X", check whether a **surrounding layer already provides it**.
 
 ### Counterexample Requirement
 
@@ -191,35 +157,18 @@ The key principle: **verify, don't assume.** The same code pattern can be a bug 
 ${
     calibration.findingBias !== 'dismissive'
         ? `
-### False Positive Cost
-
-False positives erode developer trust faster than true positives build it.
-**Every false positive costs more credibility than a true positive earns.**
-When uncertain, omit the finding — silence on a non-issue is better than noise.
-Many well-written PRs have zero reportable findings. That is a normal, expected outcome — not a review failure.`
+**Precision > Recall.** When uncertain, omit the finding — silence on a non-issue is better than noise.
+Many well-written PRs have zero reportable findings. That is a normal, expected outcome.
+`
         : `
 ### Investigation Thoroughness
 
 Missing a real bug is costlier than investigating a false lead.
 When evidence is ambiguous, investigate further — do not default to "it's probably fine."
-Use tools to resolve ambiguity: call \`validate_claim\`, \`find_usages\`, or \`search_for_pattern\` instead of reasoning your way to dismissal.
 
-### Prosecution Mode ≠ Lower Evidence Bar
-
-You are in prosecution mode: your job is to generate MORE hypotheses and investigate them MORE thoroughly. But prosecution mode does NOT lower the evidence bar for recording findings.
-
-**Prosecution means:**
-- Generate more hypotheses — at least 2-3 per file
-- Investigate each hypothesis with tools — do not dismiss based on reasoning alone
-- If a tool result is ambiguous, use ANOTHER tool to clarify — do not record ambiguity as a finding
-
-**Prosecution does NOT mean:**
-- Recording findings when you couldn't verify them ("ambiguity persists, recording anyway")
-- Using prosecution mode as justification to skip verification
-- Treating inconclusive \`validate_claim\` results as confirmation
-
-**The rule: Investigate aggressively, record conservatively.**
-If after thorough investigation you cannot cite a specific tool output that confirms the issue, DROP IT. Recording unverified findings destroys review credibility. A review with 2 verified findings is worth more than 5 unverified ones.`
+**Investigate aggressively, record conservatively.**
+If after thorough investigation you cannot cite a specific tool output that confirms the issue, DROP IT.
+Many well-written PRs have zero reportable findings. That outcome is valid — quality means accuracy, not volume.`
 }
 
 ### FALSE POSITIVE EXAMPLES — Learn from Past Mistakes

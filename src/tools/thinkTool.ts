@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
-import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { flexibleStringArray } from './schemaHelpers';
 
@@ -71,12 +71,10 @@ export class ThinkTool extends BaseTool {
         // Dismissive models tend to generate empty risks and proceed without investigating.
         // This forces them to generate hypotheses before moving on.
         if (isDismissive && isEarlyCheckpoint && riskCount === 0) {
-            return toolError(
-                `Checkpoint rejected: you identified 0 risks for "${topic}". ` +
-                    'This is not credible for a code change checkpoint. Real code changes have edge cases. ' +
-                    'Call think again with at least 2-3 items in identified_risks: ' +
-                    'error handling gaps, type safety issues, missing validation, caller inconsistencies, race conditions. ' +
-                    'These are HYPOTHESES to investigate — they may be fine, but you must generate them before dismissing.'
+            return toolSuccess(
+                `Checkpoint noted: 0 risks identified for "${topic}". ` +
+                    'This may be valid for clean code. However, double-check: have you read the diff for this file? ' +
+                    'Have you looked for null handling, error propagation, and logic issues?'
             );
         }
 

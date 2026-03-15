@@ -54,7 +54,7 @@ describe('Calibration-aware prompt blocks', () => {
         it('should emphasize persistence for dismissive models', () => {
             const role = generatePRReviewerRole(DISMISSIVE_PROFILE);
             expect(role).toContain('Persistence');
-            expect(role).toContain('bug hunter');
+            expect(role).toContain('disciplined investigator');
         });
 
         it('should not mention "zero findings" for dismissive models', () => {
@@ -102,7 +102,7 @@ describe('Calibration-aware prompt blocks', () => {
         it('should strengthen skepticism for dismissive models', () => {
             const methodology = generateAnalysisMethodology(DISMISSIVE_PROFILE);
             expect(methodology).toContain('submit_review will reject');
-            expect(methodology).toContain('almost never correct');
+            expect(methodology).toContain('quality means accuracy, not volume');
         });
 
         it('should produce balanced output with balanced profile', () => {
@@ -156,15 +156,15 @@ describe('Calibration-aware prompt blocks', () => {
 
         it('should omit FP anti-patterns for dismissive models', () => {
             const guidance = generateFindingQualityGuidance(DISMISSIVE_PROFILE);
-            expect(guidance).not.toContain(
-                'False Positive Patterns — Avoid These'
-            );
+            expect(guidance).not.toContain('Top False Positive Patterns');
             expect(guidance).not.toContain('Design Intent Blindness');
         });
 
         it('should include FP anti-patterns for aggressive models', () => {
             const guidance = generateFindingQualityGuidance(AGGRESSIVE_PROFILE);
-            expect(guidance).toContain('False Positive Patterns — Avoid These');
+            expect(guidance).toContain(
+                'Top False Positive Patterns — Avoid These'
+            );
             expect(guidance).toContain('Design Intent Blindness');
         });
 
@@ -174,10 +174,10 @@ describe('Calibration-aware prompt blocks', () => {
             expect(guidance).toContain('Missing a real bug is costlier');
         });
 
-        it('should include false positive cost for balanced models', () => {
+        it('should include precision statement for balanced models', () => {
             const guidance = generateFindingQualityGuidance(BALANCED_PROFILE);
-            expect(guidance).toContain('False Positive Cost');
-            expect(guidance).toContain('erode developer trust');
+            expect(guidance).toContain('Precision > Recall');
+            expect(guidance).toContain('zero reportable findings');
         });
 
         it('should use low evidence bar for dismissive models', () => {
@@ -198,7 +198,7 @@ describe('Calibration-aware prompt blocks', () => {
             expect(guidance).toContain('Verification Gates');
             // Balanced profile includes revert test and FP patterns
             expect(guidance).toContain('Revert Test');
-            expect(guidance).toContain('False Positive Patterns');
+            expect(guidance).toContain('Top False Positive Patterns');
         });
     });
 });
