@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-    getCalibrationProfile,
-    isDismissiveModel,
-    isAggressiveModel,
-} from '../models/modelCalibration';
+import { getCalibrationProfile } from '../models/modelCalibration';
 
 describe('modelCalibration', () => {
     describe('getCalibrationProfile', () => {
@@ -107,52 +103,6 @@ describe('modelCalibration', () => {
                 'gpt-4.1-preview'
             );
             expect(profile.name).toBe('gpt-4.1');
-        });
-    });
-
-    describe('isDismissiveModel', () => {
-        it('returns true for GPT-4.1', () => {
-            expect(
-                isDismissiveModel(getCalibrationProfile('gpt-4.1', 'gpt-4.1'))
-            ).toBe(true);
-        });
-
-        it('returns true for GPT-4o', () => {
-            expect(
-                isDismissiveModel(getCalibrationProfile('gpt-4o', 'gpt-4o'))
-            ).toBe(true);
-        });
-
-        it('returns false for Claude', () => {
-            expect(
-                isDismissiveModel(getCalibrationProfile('claude', 'claude'))
-            ).toBe(false);
-        });
-
-        it('returns false for GPT-5 mini', () => {
-            expect(
-                isDismissiveModel(getCalibrationProfile('gpt-5', 'gpt-5-mini'))
-            ).toBe(false);
-        });
-    });
-
-    describe('isAggressiveModel', () => {
-        it('returns true for GPT-5 mini', () => {
-            expect(
-                isAggressiveModel(getCalibrationProfile('gpt-5', 'gpt-5-mini'))
-            ).toBe(true);
-        });
-
-        it('returns false for GPT-4.1', () => {
-            expect(
-                isAggressiveModel(getCalibrationProfile('gpt-4.1', 'gpt-4.1'))
-            ).toBe(false);
-        });
-
-        it('returns false for Claude', () => {
-            expect(
-                isAggressiveModel(getCalibrationProfile('claude', 'claude'))
-            ).toBe(false);
         });
     });
 

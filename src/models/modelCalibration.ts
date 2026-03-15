@@ -242,11 +242,3 @@ export function getCalibrationProfile(
 
     return DEFAULT_PROFILE;
 }
-
-export function isDismissiveModel(profile: ModelCalibrationProfile): boolean {
-    return profile.findingBias === 'dismissive';
-}
-
-export function isAggressiveModel(profile: ModelCalibrationProfile): boolean {
-    return profile.findingBias === 'aggressive';
-}

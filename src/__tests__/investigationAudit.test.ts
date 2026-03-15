@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-    buildInvestigationAudit,
-    formatAuditSection,
-} from '../utils/investigationAudit';
+import { buildInvestigationAudit } from '../utils/investigationAudit';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 
 function makeToolCall(overrides: Partial<ToolCallRecord>): ToolCallRecord {
@@ -282,40 +279,5 @@ describe('buildInvestigationAudit', () => {
         const audit = buildInvestigationAudit(calls);
         expect(audit.filesRead).toHaveLength(1);
         expect(audit.filesRead[0].path).toBe('deep.ts');
-    });
-});
-
-describe('formatAuditSection', () => {
-    it('returns empty string for empty audit', () => {
-        const audit = buildInvestigationAudit([]);
-        expect(formatAuditSection(audit)).toBe('');
-    });
-
-    it('returns formatted string with depth scores', () => {
-        const calls: ToolCallRecord[] = [
-            makeToolCall({
-                toolName: 'read_file',
-                arguments: {
-                    file_path: 'src/app.ts',
-                    start_line: 1,
-                    end_line: 50,
-                },
-            }),
-            makeToolCall({
-                toolName: 'get_file_diff',
-                arguments: { file_paths: ['src/app.ts'] },
-            }),
-        ];
-
-        const audit = buildInvestigationAudit(calls);
-        const section = formatAuditSection(audit);
-
-        expect(section).toContain('## Investigation Audit');
-        expect(section).toContain('Files examined:');
-        expect(section).toContain('src/app.ts');
-        expect(section).toContain('Depth scores:');
-        expect(section).toContain('**Symbols resolved:** 0');
-        expect(section).toContain('**Usages checked:** 0');
-        expect(section).toContain('**Patterns searched:** 0');
     });
 });

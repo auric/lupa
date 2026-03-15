@@ -295,43 +295,6 @@ export function buildInvestigationAudit(
     };
 }
 
-export function formatAuditSection(audit: InvestigationAudit): string {
-    const fileCount = new Set([
-        ...audit.filesRead.map((f) => f.path),
-        ...audit.diffsExamined,
-    ]).size;
-
-    if (fileCount === 0 && audit.depthScores.size === 0) {
-        return '';
-    }
-
-    const scores = [...audit.depthScores.entries()];
-    const avgDepth =
-        scores.length > 0
-            ? (
-                  scores.reduce((sum, [, d]) => sum + d.score, 0) /
-                  scores.length
-              ).toFixed(1)
-            : '0.0';
-
-    const sortedScores = scores.sort(([, a], [, b]) => b.score - a.score);
-    const depthLines = sortedScores
-        .map(
-            ([file, depth]) =>
-                `- ${file}: ${depth.score}/${MAX_DEPTH} (${depth.breakdown})`
-        )
-        .join('\n');
-
-    return (
-        `\n\n## Investigation Audit\n\n` +
-        `**Files examined:** ${fileCount} files, avg depth ${avgDepth}/${MAX_DEPTH}\n` +
-        `**Depth scores:**\n${depthLines}\n` +
-        `**Symbols resolved:** ${audit.symbolsResolved.length} | ` +
-        `**Usages checked:** ${audit.usagesChecked.length} | ` +
-        `**Patterns searched:** ${audit.patternsSearched.length}`
-    );
-}
-
 /**
  * Return a one-line audit summary without per-file breakdown.
  * Used for subagent results where the parent already knows which files were assigned.

@@ -12,42 +12,6 @@ export enum AnalysisMode {
 }
 
 /**
- * Model provider types
- */
-export type ModelProvider =
-    | 'copilot'
-    | 'openai'
-    | 'ollama'
-    | 'anthropic'
-    | 'mistral';
-
-/**
- * Severity levels for issues
- */
-export type IssueSeverity = 'error' | 'warning' | 'info';
-
-/**
- * Analysis options
- */
-export interface AnalysisOptions {
-    mode: AnalysisMode;
-    modelFamily?: string;
-    modelVersion?: string;
-    provider?: ModelProvider;
-}
-
-/**
- * Issue identified in code
- */
-export interface CodeIssue {
-    file: string;
-    line: number;
-    message: string;
-    severity: IssueSeverity;
-    code?: string;
-}
-
-/**
  * Message roles for LLM conversation and tool-calling
  * Shared type to ensure consistency across conversation and model types
  */
@@ -56,7 +20,7 @@ export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 /**
  * Tool call function definition
  */
-export interface ToolCallFunction {
+interface ToolCallFunction {
     name: string;
     arguments: string;
 }

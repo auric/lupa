@@ -4,53 +4,6 @@ import { Log } from '../services/loggingService';
 import { getErrorMessage } from './errorUtils';
 
 /**
- * Wraps a promise with a timeout and proper resource cleanup.
- * The timer is always cleared when the promise settles (success, error, or timeout).
- * Logs when requests are abandoned due to timeout.
- *
- * @param promise The promise to wrap
- * @param timeoutMs Timeout in milliseconds
- * @param operation Description of the operation for error messages
- * @returns The promise result or throws TimeoutError on timeout
- */
-export async function withTimeout<T>(
-    promise: Promise<T>,
-    timeoutMs: number,
-    operation: string
-): Promise<T> {
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-    const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-            Log.warn(
-                `[Timeout] ${operation} abandoned after ${timeoutMs}ms - underlying operation may continue running`
-            );
-            reject(TimeoutError.create(operation, timeoutMs));
-        }, timeoutMs);
-    });
-
-    // Suppress late rejections from underlying promise after timeout wins.
-    // Log at debug level for diagnostics, but don't fail if logging unavailable (e.g., in tests).
-    promise.catch((error) => {
-        try {
-            Log.debug(
-                `[Timeout] Late rejection from ${operation}: ${getErrorMessage(error)}`
-            );
-        } catch {
-            // Logging service unavailable (e.g., test teardown) - silently ignore
-        }
-    });
-
-    try {
-        return await Promise.race([promise, timeoutPromise]);
-    } finally {
-        if (timeoutId !== undefined) {
-            clearTimeout(timeoutId);
-        }
-    }
-}
-
-/**
  * Wraps a promise with timeout AND CancellationToken support.
  * Use this when the operation should be abortable by user action (e.g., stopping analysis).
  *

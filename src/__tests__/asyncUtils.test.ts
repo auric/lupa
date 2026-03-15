@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import {
-    withTimeout,
     withCancellableTimeout,
     isTimeoutError,
     isCancellationError,
@@ -16,98 +15,6 @@ describe('asyncUtils', () => {
 
     afterEach(() => {
         vi.useRealTimers();
-    });
-
-    describe('withTimeout', () => {
-        it('should resolve when promise completes before timeout', async () => {
-            const promise = Promise.resolve('success');
-            const result = await withTimeout(promise, 1000, 'test operation');
-            expect(result).toBe('success');
-        });
-
-        it('should throw TimeoutError when promise exceeds timeout', async () => {
-            const slowPromise = new Promise((resolve) => {
-                setTimeout(() => resolve('too late'), 5000);
-            });
-
-            const timeoutPromise = withTimeout(
-                slowPromise,
-                1000,
-                'test operation'
-            );
-            vi.advanceTimersByTime(1001);
-
-            await expect(timeoutPromise).rejects.toThrow(TimeoutError);
-        });
-
-        it('should include operation name in TimeoutError', async () => {
-            const slowPromise = new Promise((resolve) => {
-                setTimeout(() => resolve('too late'), 5000);
-            });
-
-            const timeoutPromise = withTimeout(
-                slowPromise,
-                1000,
-                'MyOperation'
-            );
-            vi.advanceTimersByTime(1001);
-
-            await expect(timeoutPromise).rejects.toMatchObject({
-                operation: 'MyOperation',
-                timeoutMs: 1000,
-            });
-        });
-
-        it('should not cause unhandled rejection when underlying promise rejects after timeout', async () => {
-            // Track unhandled rejections
-            const unhandledRejections: unknown[] = [];
-            const originalListener = process.listeners('unhandledRejection');
-            process.removeAllListeners('unhandledRejection');
-            process.on('unhandledRejection', (reason) => {
-                unhandledRejections.push(reason);
-            });
-
-            try {
-                // Create a promise that rejects AFTER the timeout
-                const slowRejectingPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('late rejection')), 2000);
-                });
-
-                const timeoutPromise = withTimeout(
-                    slowRejectingPromise,
-                    1000,
-                    'test operation'
-                );
-
-                // Trigger timeout
-                vi.advanceTimersByTime(1001);
-                await expect(timeoutPromise).rejects.toThrow(TimeoutError);
-
-                // Trigger the late rejection
-                vi.advanceTimersByTime(1000);
-
-                // Allow microtasks to process
-                await vi.runAllTimersAsync();
-
-                // No unhandled rejections should have occurred
-                expect(unhandledRejections).toHaveLength(0);
-            } finally {
-                // Restore original listeners
-                process.removeAllListeners('unhandledRejection');
-                for (const listener of originalListener) {
-                    process.on('unhandledRejection', listener);
-                }
-            }
-        });
-
-        it('should clean up timer when promise resolves', async () => {
-            const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
-
-            const promise = Promise.resolve('success');
-            await withTimeout(promise, 1000, 'test operation');
-
-            expect(clearTimeoutSpy).toHaveBeenCalled();
-        });
     });
 
     describe('withCancellableTimeout', () => {

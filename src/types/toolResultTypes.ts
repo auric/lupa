@@ -31,18 +31,6 @@ export interface ToolResultMetadata {
 }
 
 /**
- * Type guard to check if a value is a ToolResult object
- */
-export function isToolResult(value: unknown): value is ToolResult {
-    if (typeof value !== 'object' || value === null) {
-        return false;
-    }
-    return (
-        'success' in value && typeof (value as ToolResult).success === 'boolean'
-    );
-}
-
-/**
  * Helper to create a successful ToolResult
  */
 export function toolSuccess(
