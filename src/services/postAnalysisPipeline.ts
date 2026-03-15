@@ -51,17 +51,17 @@ export class PostAnalysisPipeline {
         const additionalToolCallRecords: ToolCallRecord[] = [];
         let rewrittenAnalysis: string | undefined;
 
-        // Stage 1: Workflow enforcement
-        if (
-            options.findingStore.size > 0 &&
-            !options.token.isCancellationRequested
-        ) {
+        // Stage 1: Workflow enforcement (runs regardless of finding count)
+        if (!options.token.isCancellationRequested) {
             const workflowGaps: string[] = [];
             const ec = options.executionContext;
 
+            const thinkToolAvailable = options.availableTools.some(
+                (t) => t.name === 'think_about_completion'
+            );
             const thinkCalled =
                 (ec.toolCallCounts.get('think_about_completion') ?? 0) > 0;
-            if (!thinkCalled) {
+            if (thinkToolAvailable && !thinkCalled) {
                 workflowGaps.push(
                     'You did not call think_about_completion to reflect on your findings'
                 );
@@ -70,8 +70,13 @@ export class PostAnalysisPipeline {
             const requiredTools =
                 options.calibrationProfile.investigationProtocol
                     .requiredToolsBeforeDone;
+            const availableToolNames = new Set(
+                options.availableTools.map((t) => t.name)
+            );
             const missingTools = requiredTools.filter(
-                (t: string) => (ec.toolCallCounts.get(t) ?? 0) === 0
+                (t: string) =>
+                    availableToolNames.has(t) &&
+                    (ec.toolCallCounts.get(t) ?? 0) === 0
             );
             if (missingTools.length > 0) {
                 workflowGaps.push(
@@ -90,8 +95,9 @@ export class PostAnalysisPipeline {
                 Log.info(
                     `Workflow enforcement: ${workflowGaps.length} gap(s) detected, re-entering for completion`
                 );
+                const findingCount = options.findingStore.size;
                 options.conversationManager.addUserMessage(
-                    `WORKFLOW INCOMPLETE — you recorded ${options.findingStore.size} finding(s) but skipped required steps:\n` +
+                    `WORKFLOW INCOMPLETE — you recorded ${findingCount} finding(s) but skipped required steps:\n` +
                         workflowGaps.map((g) => `• ${g}`).join('\n') +
                         '\n\nComplete these steps NOW, then call submit_review again.'
                 );
@@ -103,6 +109,48 @@ export class PostAnalysisPipeline {
                         maxIterations: WORKFLOW_BUDGET,
                         tools: options.availableTools,
                         label: 'Workflow Completion',
+                        requiresExplicitCompletion: true,
+                    },
+                    options.conversationManager,
+                    options.token,
+                    options.handler
+                );
+            }
+
+            // Zero-finding challenge for dismissive models on non-trivial PRs
+            const isNonTrivialPR = options.parsedDiff.length >= 5;
+            const isDismissive =
+                options.calibrationProfile.findingBias === 'dismissive';
+            if (
+                options.findingStore.size === 0 &&
+                isNonTrivialPR &&
+                isDismissive &&
+                !options.token.isCancellationRequested
+            ) {
+                Log.info(
+                    `Zero-finding challenge: dismissive model reported 0 findings on ${options.parsedDiff.length}-file PR`
+                );
+                const investigatedCount =
+                    options.executionContext.investigatedFiles?.size ?? 0;
+                options.conversationManager.addUserMessage(
+                    `ZERO FINDINGS ALERT — You reviewed ${options.parsedDiff.length} changed files ` +
+                        `(investigated ${investigatedCount} via tools) and recorded 0 findings. ` +
+                        `On a PR of this size with substantive code changes, this is unusual.\n\n` +
+                        `Before finalizing:\n` +
+                        `• Re-examine each file group for potential logic errors, missing error handling, or security issues\n` +
+                        `• If you skipped files, investigate them now with get_file_diff and find_symbol\n` +
+                        `• Record any genuine findings you may have overlooked with record_finding\n` +
+                        `• If truly no issues exist, that is acceptable — but verify you checked thoroughly\n\n` +
+                        `Then call submit_review again.`
+                );
+
+                const CHALLENGE_BUDGET = 15;
+                await options.conversationRunner.run(
+                    {
+                        systemPrompt: options.systemPrompt,
+                        maxIterations: CHALLENGE_BUDGET,
+                        tools: options.availableTools,
+                        label: 'Zero-Finding Challenge',
                         requiresExplicitCompletion: true,
                     },
                     options.conversationManager,
