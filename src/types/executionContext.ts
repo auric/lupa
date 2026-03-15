@@ -100,4 +100,15 @@ export interface ExecutionContext {
      * Paths are normalized with forward slashes.
      */
     investigatedFiles?: Set<string>;
+
+    /**
+     * Completion readiness signal from think_about_completion.
+     * The orchestrator checks this during workflow enforcement —
+     * if readiness is false, the conversation is re-entered.
+     */
+    completionReadiness?: {
+        coveragePercent: number;
+        uninvestigatedFiles: string[];
+        ready: boolean;
+    };
 }

@@ -75,8 +75,9 @@ export class ThinkAboutCompletionTool extends BaseTool {
         // Cross-reference claimed files_analyzed against actual tool call records.
         // The model may claim to have analyzed files it never investigated with tools.
         let investigationNote = '';
+        let uninvestigated: string[] = [];
         if (context.investigatedFiles && context.investigatedFiles.size > 0) {
-            const uninvestigated = files_analyzed.filter((claimed) => {
+            uninvestigated = files_analyzed.filter((claimed) => {
                 const normalizedClaimed = claimed.replace(/\\/g, '/');
                 return ![...context.investigatedFiles!].some(
                     (actual) =>
@@ -93,6 +94,12 @@ export class ThinkAboutCompletionTool extends BaseTool {
                     `Go investigate these files before calling submit_review.`;
             }
         }
+
+        context.completionReadiness = {
+            coveragePercent,
+            uninvestigatedFiles: uninvestigated,
+            ready: uninvestigated.length === 0,
+        };
 
         // Inject FindingStore summary with CoVe-style verification prompts
         const store = context.findingStore;

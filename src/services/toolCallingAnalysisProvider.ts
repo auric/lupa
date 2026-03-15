@@ -374,6 +374,16 @@ export class ToolCallingAnalysisProvider {
                         );
                     }
 
+                    if (
+                        executionContext.completionReadiness &&
+                        !executionContext.completionReadiness.ready
+                    ) {
+                        const cr = executionContext.completionReadiness;
+                        workflowGaps.push(
+                            `think_about_completion flagged ${cr.uninvestigatedFiles.length} uninvestigated file(s): ${cr.uninvestigatedFiles.join(', ')}. Investigate these files before submitting.`
+                        );
+                    }
+
                     if (workflowGaps.length > 0) {
                         Log.info(
                             `Workflow enforcement: ${workflowGaps.length} gap(s) detected, re-entering for completion`
