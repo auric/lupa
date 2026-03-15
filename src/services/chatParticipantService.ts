@@ -6,7 +6,10 @@ import { GitOperationsManager } from './gitOperationsManager';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
-import { ConversationRunner } from '../models/conversationRunner';
+import {
+    ConversationRunner,
+    type ToolCallHandler,
+} from '../models/conversationRunner';
 import { ConversationManager } from '../models/conversationManager';
 import { ChatLLMClient } from '../models/chatLLMClient';
 import type { ILLMClient } from '../models/ILLMClient';
@@ -27,7 +30,7 @@ import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { FindingStore } from '../sessions/findingStore';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
-import { AdversarialVerifier } from './adversarialVerifier';
+import { PostAnalysisPipeline } from './postAnalysisPipeline';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
@@ -40,6 +43,7 @@ import type {
     ChatAnalysisMetadata,
 } from '../types/chatTypes';
 import type { DiffHunk } from '../types/contextTypes';
+import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
 import { createFollowupProvider } from './chatFollowupProvider';
@@ -563,6 +567,7 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         const findingStore = new FindingStore();
+        const toolCallRecords: ToolCallRecord[] = [];
 
         // Create execution context as a mutable reference so parsedDiff can be
         // set after diff processing (RLM approach needs it on the context for tools)
@@ -577,6 +582,7 @@ export class ChatParticipantService implements vscode.Disposable {
             findingStore,
             calibrationProfile,
             toolCallCounts: new Map<string, number>(),
+            investigatedFiles: new Set<string>(),
         } as ExecutionContext;
 
         const toolExecutor = new ToolExecutor(
@@ -590,6 +596,46 @@ export class ChatParticipantService implements vscode.Disposable {
         const runner = new ConversationRunner(client, toolExecutor);
         const conversation = new ConversationManager();
         const availableTools = toolExecutor.getAvailableTools();
+
+        // Composite handler: stream to chat UI AND record tool calls for evidence audit
+        const recordingHandler: ToolCallHandler = {
+            onToolCallStart: adapter.onToolCallStart?.bind(adapter),
+            onToolCallComplete: (
+                toolCallId,
+                toolName,
+                args,
+                result,
+                success,
+                error,
+                durationMs,
+                metadata
+            ) => {
+                adapter.onToolCallComplete?.(
+                    toolCallId,
+                    toolName,
+                    args,
+                    result,
+                    success,
+                    error,
+                    durationMs,
+                    metadata
+                );
+                toolCallRecords.push({
+                    id: toolCallId,
+                    toolName,
+                    arguments: args,
+                    result,
+                    success,
+                    error,
+                    durationMs: durationMs ?? 0,
+                    timestamp: Date.now(),
+                    nestedCalls: metadata?.nestedToolCalls,
+                    executionTimeMs: metadata?.executionTimeMs,
+                    iterationsUsed: metadata?.iterationsUsed,
+                });
+            },
+            onIterationStart: adapter.onIterationStart?.bind(adapter),
+        };
         const systemPrompt = isRecursiveMode
             ? this.deps!.promptGenerator.generateRecursiveSystemPrompt(
                   calibrationProfile
@@ -652,7 +698,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 },
                 conversation,
                 token,
-                adapter
+                recordingHandler
             );
 
             debouncedHandler.flush();
@@ -663,80 +709,32 @@ export class ChatParticipantService implements vscode.Disposable {
 
             analysisCompleted = true;
 
-            // Post-analysis: validate findings and apply results
-            const findings = findingStore.getAll();
-            if (findings.length > 0) {
-                const validation = await this.deps!.findingValidator.validate(
-                    findings,
-                    parsedDiff,
-                    token
-                );
+            // Run full post-analysis pipeline (same as webview path)
+            const pipeline = new PostAnalysisPipeline(
+                this.deps!.findingValidator
+            );
+            const pipelineResult = await pipeline.run({
+                findingStore,
+                toolCallRecords,
+                executionContext,
+                parsedDiff,
+                calibrationProfile,
+                subagentExecutor,
+                conversationManager: conversation,
+                conversationRunner: runner,
+                systemPrompt,
+                availableTools,
+                token,
+                handler: recordingHandler,
+                progressCallback: (msg) =>
+                    stream.progress(`${ACTIVITY.analyzing} ${msg}`),
+            });
 
-                // Apply validation results to FindingStore (drop/downgrade)
-                for (const v of validation.validated) {
-                    if (v.verdict === 'drop') {
-                        findingStore.remove(v.finding.id);
-                    } else if (
-                        v.verdict === 'downgrade' &&
-                        v.downgradedSeverity
-                    ) {
-                        findingStore.updateSeverity(
-                            v.finding.id,
-                            v.downgradedSeverity
-                        );
-                    }
-                }
-
-                if (validation.dropped > 0 || validation.downgraded > 0) {
-                    Log.info(
-                        `[ChatParticipantService]: FindingValidator: ${validation.kept} kept, ${validation.downgraded} downgraded, ${validation.dropped} dropped`
-                    );
-                }
+            if (pipelineResult.rewrittenAnalysis) {
+                analysisResult = pipelineResult.rewrittenAnalysis;
             }
 
-            // Adversarial verification: run visible subagents against surviving findings
-            if (findingStore.size > 0 && !token.isCancellationRequested) {
-                const adversarialVerifier = new AdversarialVerifier();
-                const adversarialResult = await adversarialVerifier.verify(
-                    findingStore,
-                    calibrationProfile,
-                    subagentExecutor,
-                    parsedDiff,
-                    token,
-                    (msg) => stream.progress(`${ACTIVITY.analyzing} ${msg}`)
-                );
-
-                if (adversarialResult.refuted.length > 0) {
-                    Log.info(
-                        `[ChatParticipantService]: Adversarial refuted ${adversarialResult.refuted.length} finding(s), re-entering conversation for rewrite`
-                    );
-                    const refutedList = adversarialResult.refuted
-                        .map((t) => `"${t}"`)
-                        .join(', ');
-                    conversation.addUserMessage(
-                        `Adversarial verification has refuted ${adversarialResult.refuted.length} finding(s): ${refutedList}. ` +
-                            'These findings have been removed. ' +
-                            'Rewrite your review WITHOUT these refuted findings, then call submit_review.'
-                    );
-
-                    // Re-enter conversation with small budget for rewrite
-                    const REWRITE_BUDGET = 10;
-                    analysisResult = await runner.run(
-                        {
-                            systemPrompt,
-                            maxIterations: REWRITE_BUDGET,
-                            tools: availableTools,
-                            label: `Chat /${scopeLabel} Rewrite`,
-                            requiresExplicitCompletion: true,
-                        },
-                        conversation,
-                        token,
-                        adapter
-                    );
-                    debouncedHandler.flush();
-                }
-            }
-
+            debouncedHandler.flush();
             streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
 
             const contentAnalysis = this.analyzeResultContent(analysisResult);
