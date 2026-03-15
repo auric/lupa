@@ -604,6 +604,7 @@ export class ChatParticipantService implements vscode.Disposable {
         const availableTools = toolExecutor.getAvailableTools();
 
         // Composite handler: stream to chat UI AND record tool calls for evidence audit
+        let currentIteration = 0;
         const recordingHandler: ToolCallHandler = {
             onToolCallStart: adapter.onToolCallStart?.bind(adapter),
             onToolCallComplete: (
@@ -640,7 +641,31 @@ export class ChatParticipantService implements vscode.Disposable {
                     iterationsUsed: metadata?.iterationsUsed,
                 });
             },
-            onIterationStart: adapter.onIterationStart?.bind(adapter),
+            onIterationStart: (current, max) => {
+                currentIteration = current;
+                adapter.onIterationStart?.(current, max);
+            },
+            getContextStatusSuffix: async () => {
+                if (
+                    calibrationProfile.findingBias === 'dismissive' &&
+                    currentIteration > 0 &&
+                    currentIteration % 5 === 0 &&
+                    findingStore.size > 0
+                ) {
+                    const findings = findingStore.getAll();
+                    const findingSummary = findings
+                        .map(
+                            (f) =>
+                                `[${f.id}] ${f.severity}: ${f.title} (${f.file})`
+                        )
+                        .join('; ');
+                    return (
+                        `\n\n📋 REMINDER: ${findingStore.size} finding(s) recorded so far: ${findingSummary}. ` +
+                        'These MUST appear in your final review or be explicitly retracted.'
+                    );
+                }
+                return '';
+            },
         };
         const systemPrompt = isRecursiveMode
             ? this.deps!.promptGenerator.generateRecursiveSystemPrompt(
