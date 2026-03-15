@@ -36,7 +36,8 @@ import {
     type ModelCalibrationProfile,
 } from '../models/modelCalibration';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
-import { groupFilesForReview, type FileGroup } from './fileGrouper';
+import { FeedbackStore } from './feedbackStore';
+import { groupFilesForReview, buildSynthesisPrompt } from './fileGrouper';
 import type { CodeIntelligenceBrief } from '../types/enrichedDiffTypes';
 import type { ITool } from '../tools/ITool';
 
@@ -114,6 +115,10 @@ export class ToolCallingAnalysisProvider {
             : undefined;
 
         const findingStore = new FindingStore();
+        const feedbackStore = new FeedbackStore(
+            vscode.workspace.workspaceFolders?.[0]
+        );
+        await feedbackStore.load();
 
         // Wire recursive state to SubagentExecutor for aggregate progress reporting
         if (recursiveState) {
@@ -229,6 +234,7 @@ export class ToolCallingAnalysisProvider {
                     parsedDiff,
                     codeIntelBrief,
                     findingStore,
+                    feedbackStore,
                     subagentExecutor,
                     subagentSessionManager,
                     calibrationProfile,
@@ -384,6 +390,7 @@ export class ToolCallingAnalysisProvider {
                     availableTools,
                     token,
                     handler,
+                    feedbackStore,
                     progressCallback: progressCallback
                         ? (msg, inc) => progressCallback(msg, inc)
                         : undefined,
@@ -447,6 +454,7 @@ export class ToolCallingAnalysisProvider {
         parsedDiff: DiffHunk[];
         codeIntelBrief: CodeIntelligenceBrief;
         findingStore: FindingStore;
+        feedbackStore: FeedbackStore;
         subagentExecutor: SubagentExecutor;
         subagentSessionManager: SubagentSessionManager;
         calibrationProfile: ModelCalibrationProfile;
@@ -461,6 +469,7 @@ export class ToolCallingAnalysisProvider {
         const {
             parsedDiff,
             findingStore,
+            feedbackStore,
             subagentExecutor,
             subagentSessionManager,
             calibrationProfile,
@@ -551,10 +560,10 @@ export class ToolCallingAnalysisProvider {
             'Synthesizing review from investigation results...',
             0.5
         );
-        const synthesisPrompt = this.buildSynthesisPrompt(
-            findingStore,
+        const synthesisPrompt = buildSynthesisPrompt(
+            findingStore.getAll(),
             groups,
-            parsedDiff
+            parsedDiff.length
         );
         conversationManager.addUserMessage(synthesisPrompt);
 
@@ -626,6 +635,7 @@ export class ToolCallingAnalysisProvider {
             availableTools,
             token,
             handler,
+            feedbackStore,
             progressCallback: progressCallback
                 ? (msg, inc) => progressCallback(msg, inc)
                 : undefined,
@@ -650,42 +660,6 @@ export class ToolCallingAnalysisProvider {
             undefined,
             false,
             currentIteration
-        );
-    }
-
-    private buildSynthesisPrompt(
-        findingStore: FindingStore,
-        groups: FileGroup[],
-        parsedDiff: DiffHunk[]
-    ): string {
-        const findings = findingStore.getAll();
-        const totalFiles = parsedDiff.length;
-        const groupSummary = groups
-            .map((g) => `• ${g.label}: ${g.files.join(', ')}`)
-            .join('\n');
-
-        if (findings.length === 0) {
-            return (
-                `Investigation subagents have examined all ${totalFiles} changed files across ${groups.length} groups:\n${groupSummary}\n\n` +
-                'No issues were found during investigation. ' +
-                'Write a brief approval review acknowledging the investigation was thorough, then call submit_review.'
-            );
-        }
-
-        const findingList = findings
-            .map(
-                (f) =>
-                    `[${f.id}] ${f.severity} — ${f.title}\n  File: ${f.file}:${f.lineRange[0]}-${f.lineRange[1]}\n  ${f.description}`
-            )
-            .join('\n\n');
-
-        return (
-            `Investigation subagents have examined all ${totalFiles} changed files across ${groups.length} groups:\n${groupSummary}\n\n` +
-            `They recorded ${findings.length} finding(s):\n\n${findingList}\n\n` +
-            'Write a structured code review based on these findings. ' +
-            'Each finding MUST appear in your review — do NOT silently drop any. ' +
-            'If you disagree with a finding, call retract_finding with your reason. ' +
-            'Then call submit_review.'
         );
     }
 

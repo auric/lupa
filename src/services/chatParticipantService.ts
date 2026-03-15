@@ -31,6 +31,7 @@ import { FindingStore } from '../sessions/findingStore';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
+import { FeedbackStore } from './feedbackStore';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
@@ -49,7 +50,7 @@ import {
     getCalibrationProfile,
     type ModelCalibrationProfile,
 } from '../models/modelCalibration';
-import { groupFilesForReview } from './fileGrouper';
+import { groupFilesForReview, buildSynthesisPrompt } from './fileGrouper';
 import type { CodeIntelligenceBrief } from '../types/enrichedDiffTypes';
 import type { ITool } from '../tools/ITool';
 import { createFollowupProvider } from './chatFollowupProvider';
@@ -573,6 +574,10 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         const findingStore = new FindingStore();
+        const feedbackStore = new FeedbackStore(
+            vscode.workspace.workspaceFolders?.[0]
+        );
+        await feedbackStore.load();
         const toolCallRecords: ToolCallRecord[] = [];
 
         // Create execution context as a mutable reference so parsedDiff can be
@@ -684,6 +689,7 @@ export class ChatParticipantService implements vscode.Disposable {
                     parsedDiff,
                     codeIntelBrief,
                     findingStore,
+                    feedbackStore,
                     subagentExecutor,
                     subagentSessionManager,
                     calibrationProfile,
@@ -769,6 +775,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 availableTools,
                 token,
                 handler: recordingHandler,
+                feedbackStore,
                 progressCallback: (msg) =>
                     stream.progress(`${ACTIVITY.analyzing} ${msg}`),
             });
@@ -819,6 +826,7 @@ export class ChatParticipantService implements vscode.Disposable {
         parsedDiff: DiffHunk[];
         codeIntelBrief: CodeIntelligenceBrief;
         findingStore: FindingStore;
+        feedbackStore: FeedbackStore;
         subagentExecutor: SubagentExecutor;
         subagentSessionManager: SubagentSessionManager;
         calibrationProfile: ModelCalibrationProfile;
@@ -839,6 +847,7 @@ export class ChatParticipantService implements vscode.Disposable {
         const {
             parsedDiff,
             findingStore,
+            feedbackStore,
             subagentExecutor,
             subagentSessionManager,
             calibrationProfile,
@@ -925,32 +934,11 @@ export class ChatParticipantService implements vscode.Disposable {
 
         // Synthesis phase
         stream.progress(`${ACTIVITY.analyzing} Synthesizing review...`);
-        const findings = findingStore.getAll();
-        const groupSummary = groups
-            .map((g) => `• ${g.label}: ${g.files.join(', ')}`)
-            .join('\n');
-
-        let synthesisPrompt: string;
-        if (findings.length === 0) {
-            synthesisPrompt =
-                `Investigation subagents have examined all ${parsedDiff.length} changed files across ${groups.length} groups:\n${groupSummary}\n\n` +
-                'No issues were found during investigation. ' +
-                'Write a brief approval review acknowledging the investigation was thorough, then call submit_review.';
-        } else {
-            const findingList = findings
-                .map(
-                    (f) =>
-                        `[${f.id}] ${f.severity} — ${f.title}\n  File: ${f.file}:${f.lineRange[0]}-${f.lineRange[1]}\n  ${f.description}`
-                )
-                .join('\n\n');
-            synthesisPrompt =
-                `Investigation subagents have examined all ${parsedDiff.length} changed files across ${groups.length} groups:\n${groupSummary}\n\n` +
-                `They recorded ${findings.length} finding(s):\n\n${findingList}\n\n` +
-                'Write a structured code review based on these findings. ' +
-                'Each finding MUST appear in your review — do NOT silently drop any. ' +
-                'If you disagree with a finding, call retract_finding with your reason. ' +
-                'Then call submit_review.';
-        }
+        const synthesisPrompt = buildSynthesisPrompt(
+            findingStore.getAll(),
+            groups,
+            parsedDiff.length
+        );
 
         conversationManager.addUserMessage(synthesisPrompt);
 
@@ -989,6 +977,7 @@ export class ChatParticipantService implements vscode.Disposable {
             availableTools,
             token,
             handler: recordingHandler,
+            feedbackStore,
             progressCallback: (msg) =>
                 stream.progress(`${ACTIVITY.analyzing} ${msg}`),
         });
