@@ -22,7 +22,7 @@ export class SubmitReviewTool extends BaseTool {
         'BEFORE calling: (1) verify you generated hypotheses at checkpoint #1 and investigated each with tools, ' +
         '(2) for EACH finding verify you can name the tool call that confirmed it and attempted disproof, ' +
         '(3) verify all files in the changed files list were examined. ' +
-        'Zero findings IS valid — but only after genuine investigation with hypothesis generation and at least one validate_claim call.';
+        'Zero findings IS valid — but only after genuine investigation with hypothesis generation.';
 
     /**
      * Minimum 20 chars is intentionally lower than reviewExtractionUtils' 50-char
@@ -50,28 +50,8 @@ export class SubmitReviewTool extends BaseTool {
             throw new vscode.CancellationError();
         }
 
-        const profile = context.calibrationProfile;
         const store = context.findingStore;
         const subagentsRecordedFindings = store && store.size > 0;
-
-        // Calibration gate: dismissive models must call validate_claim before submitting.
-        // EXCEPTION: If subagents already recorded findings in FindingStore, they performed
-        // their own validation — waive the gate to prevent the parent from using forced
-        // validate_claim calls to disprove subagent findings.
-        if (
-            profile.minValidateClaimBeforeSubmit > 0 &&
-            !subagentsRecordedFindings
-        ) {
-            const validateClaimCalls =
-                context.toolCallCounts.get('validate_claim') ?? 0;
-            if (validateClaimCalls < profile.minValidateClaimBeforeSubmit) {
-                return toolError(
-                    `Review rejected: you have not called validate_claim yet (${validateClaimCalls} calls, minimum ${profile.minValidateClaimBeforeSubmit} required). ` +
-                        'Go back and use validate_claim to verify at least one hypothesis with LSP ground truth before submitting. ' +
-                        'If all hypotheses were disproved by validate_claim, you may then submit an approval.'
-                );
-            }
-        }
 
         // Gate 4: FindingStore gate — if subagents recorded findings, the review must address them
         if (subagentsRecordedFindings) {

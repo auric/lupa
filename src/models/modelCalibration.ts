@@ -52,13 +52,6 @@ export interface ModelCalibrationProfile {
     readonly includeRevertTest: boolean;
 
     /**
-     * Minimum validate_claim calls required before submit_review is accepted.
-     * For dismissive models: >= 1 to force tool-based verification.
-     * For balanced/aggressive models: 0 (no gate needed).
-     */
-    readonly minValidateClaimBeforeSubmit: number;
-
-    /**
      * OpenAI-style agentic preamble prepended to the role definition.
      * GPT models benefit from explicit "be an agent, use tools, don't guess" instructions.
      * Claude models don't need this — it can actually reduce quality.
@@ -98,18 +91,13 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
     challengeMode: 'prosecution',
     includeFalsePositiveGuide: true,
     includeRevertTest: true,
-    minValidateClaimBeforeSubmit: 1,
     includeAgenticPreamble: true,
     evidenceThreshold: 'high',
     adversarialVerificationThreshold: 'LOW',
     adversarialBudget: 20,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 5,
-        requiredToolsBeforeDone: [
-            'get_file_diff',
-            'find_symbol',
-            'validate_claim',
-        ],
+        requiredToolsBeforeDone: ['get_file_diff', 'find_symbol'],
         investigationPreamble:
             'You MUST keep investigating until you have thoroughly examined every assigned file. ' +
             'Do NOT stop early or yield control prematurely. ' +
@@ -125,14 +113,13 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
     challengeMode: 'prosecution',
     includeFalsePositiveGuide: true,
     includeRevertTest: false,
-    minValidateClaimBeforeSubmit: 1,
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
     adversarialVerificationThreshold: 'LOW',
     adversarialBudget: 20,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 3,
-        requiredToolsBeforeDone: ['validate_claim'],
+        requiredToolsBeforeDone: [],
         investigationPreamble:
             'Investigate thoroughly before recording findings. ' +
             'Use validate_claim to verify factual claims before recording. ' +
@@ -146,14 +133,13 @@ const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
     challengeMode: 'devils-advocate',
     includeFalsePositiveGuide: true,
     includeRevertTest: true,
-    minValidateClaimBeforeSubmit: 0,
     includeAgenticPreamble: true,
     evidenceThreshold: 'high',
     adversarialVerificationThreshold: 'LOW',
     adversarialBudget: 15,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
-        requiredToolsBeforeDone: ['validate_claim'],
+        requiredToolsBeforeDone: [],
         investigationPreamble:
             'Verify all claims with validate_claim before recording. ' +
             'Focus on precision — only record findings with concrete tool-confirmed evidence.',
@@ -171,14 +157,13 @@ const RAPTOR_MINI_PROFILE: ModelCalibrationProfile = {
     challengeMode: 'devils-advocate',
     includeFalsePositiveGuide: true,
     includeRevertTest: true,
-    minValidateClaimBeforeSubmit: 0,
     includeAgenticPreamble: true,
     evidenceThreshold: 'medium',
     adversarialVerificationThreshold: 'LOW',
     adversarialBudget: 15,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
-        requiredToolsBeforeDone: ['validate_claim'],
+        requiredToolsBeforeDone: [],
         investigationPreamble:
             'Verify all claims with validate_claim before recording. ' +
             'Focus on precision — only record findings with concrete tool-confirmed evidence.',
@@ -191,7 +176,6 @@ const CLAUDE_PROFILE: ModelCalibrationProfile = {
     challengeMode: 'devils-advocate',
     includeFalsePositiveGuide: true,
     includeRevertTest: true,
-    minValidateClaimBeforeSubmit: 0,
     includeAgenticPreamble: false,
     evidenceThreshold: 'medium',
     adversarialVerificationThreshold: 'LOW',

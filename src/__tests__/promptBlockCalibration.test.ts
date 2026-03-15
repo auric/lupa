@@ -11,7 +11,6 @@ const DISMISSIVE_PROFILE: ModelCalibrationProfile = {
     challengeMode: 'prosecution',
     includeFalsePositiveGuide: false,
     includeRevertTest: false,
-    minValidateClaimBeforeSubmit: 1,
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
 };
@@ -22,7 +21,6 @@ const AGGRESSIVE_PROFILE: ModelCalibrationProfile = {
     challengeMode: 'devils-advocate',
     includeFalsePositiveGuide: true,
     includeRevertTest: true,
-    minValidateClaimBeforeSubmit: 0,
     includeAgenticPreamble: true,
     evidenceThreshold: 'high',
 };
@@ -33,7 +31,6 @@ const BALANCED_PROFILE: ModelCalibrationProfile = {
     challengeMode: 'devils-advocate',
     includeFalsePositiveGuide: true,
     includeRevertTest: true,
-    minValidateClaimBeforeSubmit: 0,
     includeAgenticPreamble: false,
     evidenceThreshold: 'medium',
 };

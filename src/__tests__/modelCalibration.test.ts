@@ -17,7 +17,6 @@ describe('modelCalibration', () => {
             expect(profile.challengeMode).toBe('prosecution');
             expect(profile.includeFalsePositiveGuide).toBe(true);
             expect(profile.includeRevertTest).toBe(true);
-            expect(profile.minValidateClaimBeforeSubmit).toBe(1);
             expect(profile.includeAgenticPreamble).toBe(true);
             expect(profile.evidenceThreshold).toBe('high');
         });
@@ -32,7 +31,6 @@ describe('modelCalibration', () => {
             expect(profile.challengeMode).toBe('prosecution');
             expect(profile.includeFalsePositiveGuide).toBe(true);
             expect(profile.includeRevertTest).toBe(false);
-            expect(profile.minValidateClaimBeforeSubmit).toBe(1);
         });
 
         it('returns GPT-5 mini profile for gpt-5-mini id', () => {
@@ -42,7 +40,6 @@ describe('modelCalibration', () => {
             expect(profile.challengeMode).toBe('devils-advocate');
             expect(profile.includeFalsePositiveGuide).toBe(true);
             expect(profile.includeRevertTest).toBe(true);
-            expect(profile.minValidateClaimBeforeSubmit).toBe(0);
             expect(profile.evidenceThreshold).toBe('high');
         });
 
@@ -91,7 +88,7 @@ describe('modelCalibration', () => {
             expect(profile.challengeMode).toBe('devils-advocate');
             expect(profile.includeFalsePositiveGuide).toBe(true);
             expect(profile.includeRevertTest).toBe(true);
-            expect(profile.minValidateClaimBeforeSubmit).toBe(0);
+
             expect(profile.includeAgenticPreamble).toBe(false);
             expect(profile.evidenceThreshold).toBe('medium');
         });
@@ -172,9 +169,6 @@ describe('modelCalibration', () => {
                 profile.investigationProtocol.requiredToolsBeforeDone
             ).toContain('find_symbol');
             expect(
-                profile.investigationProtocol.requiredToolsBeforeDone
-            ).toContain('validate_claim');
-            expect(
                 profile.investigationProtocol.investigationPreamble
             ).toContain('keep investigating');
         });
@@ -186,7 +180,7 @@ describe('modelCalibration', () => {
             ).toBe(3);
             expect(
                 profile.investigationProtocol.requiredToolsBeforeDone
-            ).toContain('validate_claim');
+            ).toHaveLength(0);
             expect(
                 profile.investigationProtocol.requiredToolsBeforeDone
             ).not.toContain('find_symbol');
@@ -216,11 +210,11 @@ describe('modelCalibration', () => {
             );
         });
 
-        it('GPT-5-mini requires validate_claim', () => {
+        it('GPT-5-mini has empty requiredToolsBeforeDone', () => {
             const profile = getCalibrationProfile('gpt-5-mini', 'gpt-5-mini');
             expect(
                 profile.investigationProtocol.requiredToolsBeforeDone
-            ).toContain('validate_claim');
+            ).toHaveLength(0);
             expect(
                 profile.investigationProtocol.minToolCallsBeforeFirstFinding
             ).toBe(2);
