@@ -10,6 +10,13 @@ import { Log } from '../services/loggingService';
 import { isCancellationError, isTimeoutError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 
+const FILE_TRACKING_TOOLS = new Set([
+    'read_file',
+    'find_symbol',
+    'find_usages',
+    'validate_claim',
+]);
+
 /**
  * Interface for tool execution requests
  */
@@ -204,6 +211,23 @@ export class ToolExecutor {
                 Log.info(
                     `Tool '${name}' ✗ ${toolResult.error ?? 'unknown error'} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
                 );
+            }
+
+            // Track files investigated via deep investigation tools.
+            // This excludes get_file_diff (which only shows changed hunks) to ensure
+            // the model has read the actual file content before recording findings.
+            if (
+                toolResult.success &&
+                this.executionContext.investigatedFiles &&
+                FILE_TRACKING_TOOLS.has(name)
+            ) {
+                const parsed = validatedArgs as Record<string, unknown>;
+                const filePath = parsed.file_path ?? parsed.file;
+                if (filePath && typeof filePath === 'string') {
+                    this.executionContext.investigatedFiles.add(
+                        filePath.replace(/\\/g, '/')
+                    );
+                }
             }
 
             return {

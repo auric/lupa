@@ -139,6 +139,7 @@ export class ToolCallingAnalysisProvider {
             currentAgentId: 'root',
             findingStore,
             toolCallCounts: new Map<string, number>(),
+            investigatedFiles: new Set<string>(),
         } as ExecutionContext;
 
         const toolExecutor = new ToolExecutor(

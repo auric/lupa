@@ -92,4 +92,12 @@ export interface ExecutionContext {
      * Used by calibration gates (e.g., minimum validate_claim calls before submit).
      */
     toolCallCounts: Map<string, number>;
+
+    /**
+     * Set of file paths the model has investigated via read_file, find_symbol,
+     * find_usages, or validate_claim. Used by record_finding to ensure the model
+     * has actually examined a file before making claims about it.
+     * Paths are normalized with forward slashes.
+     */
+    investigatedFiles?: Set<string>;
 }

@@ -151,6 +151,29 @@ export class RecordFindingTool extends BaseTool {
             }
         }
 
+        // File investigation gate: require that the model has actually investigated
+        // the target file (via read_file, find_symbol, find_usages, or validate_claim)
+        // before recording a finding. Prevents "drive-by" findings based only on
+        // diff hunks without verifying claims against the actual codebase.
+        if (context.investigatedFiles) {
+            const normalizedFile = args.file.replace(/\\/g, '/');
+            const hasInvestigated =
+                context.investigatedFiles.has(normalizedFile) ||
+                [...context.investigatedFiles].some(
+                    (f) =>
+                        normalizedFile.endsWith(f) || f.endsWith(normalizedFile)
+                );
+
+            if (!hasInvestigated) {
+                return toolError(
+                    `Finding rejected: you have not investigated "${args.file}" with read_file, find_symbol, find_usages, or validate_claim. ` +
+                        'You MUST read the actual file or verify symbols before recording a finding — ' +
+                        'findings based only on diff hunks have a 90%+ false positive rate. ' +
+                        'Investigate the file first, then try recording again.'
+                );
+            }
+        }
+
         const finding = store.record({
             agentId: context.currentAgentId ?? 'unknown',
             severity: args.severity,

@@ -51,6 +51,7 @@ describe('RecordFindingTool', () => {
             findingStore: store,
             currentAgentId: 'root',
             toolCallCounts: investigatedToolCalls(),
+            investigatedFiles: new Set(['src/api.ts']),
         });
 
         const result = await tool.execute(BASE_FINDING_ARGS, ctx);
@@ -81,6 +82,7 @@ describe('RecordFindingTool', () => {
             findingStore: store,
             currentAgentId: 'child-1',
             toolCallCounts: investigatedToolCalls(),
+            investigatedFiles: new Set(['src/api.ts']),
         });
 
         await tool.execute(BASE_FINDING_ARGS, ctx);
@@ -111,6 +113,7 @@ describe('RecordFindingTool', () => {
             findingStore: store,
             currentAgentId: 'root',
             toolCallCounts: investigatedToolCalls(),
+            investigatedFiles: new Set(['src/api.ts']),
         });
 
         await tool.execute(BASE_FINDING_ARGS, ctx);
@@ -128,6 +131,7 @@ describe('RecordFindingTool', () => {
         const ctx = createMockExecutionContext({
             findingStore: store,
             toolCallCounts: investigatedToolCalls(),
+            investigatedFiles: new Set(['src/api.ts']),
         });
 
         await tool.execute(BASE_FINDING_ARGS, ctx);
@@ -144,6 +148,7 @@ describe('RecordFindingTool', () => {
             findingStore: store,
             currentAgentId: 'test-agent',
             toolCallCounts: investigatedToolCalls(),
+            investigatedFiles: new Set(['src/api.ts']),
         });
 
         await tool.execute(
@@ -186,6 +191,7 @@ describe('RecordFindingTool', () => {
             findingStore: store,
             currentAgentId: 'test-agent',
             toolCallCounts: investigatedToolCalls(),
+            investigatedFiles: new Set(['src/api.ts']),
         });
 
         await tool.execute(BASE_FINDING_ARGS, context);
@@ -204,6 +210,7 @@ describe('RecordFindingTool', () => {
             findingStore: store,
             currentAgentId: 'test-agent',
             toolCallCounts: investigatedToolCalls(),
+            investigatedFiles: new Set(['src/api.ts']),
         });
 
         await tool.execute(
@@ -268,6 +275,7 @@ describe('RecordFindingTool', () => {
                     ['get_file_diff', 1],
                     ['search_for_pattern', 1],
                 ]),
+                investigatedFiles: new Set(['src/api.ts']),
             });
 
             const result = await tool.execute(BASE_FINDING_ARGS, ctx);
@@ -312,6 +320,7 @@ describe('RecordFindingTool', () => {
             const ctx = createMockExecutionContext({
                 findingStore: store,
                 toolCallCounts: new Map(), // zero investigation calls
+                investigatedFiles: new Set(['src/api.ts']),
             });
 
             const result = await tool.execute(BASE_FINDING_ARGS, ctx);
@@ -339,6 +348,85 @@ describe('RecordFindingTool', () => {
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('minimum 5 required');
+        });
+    });
+
+    describe('file investigation gate', () => {
+        it('rejects finding when file has not been investigated', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set<string>(),
+            });
+
+            const result = await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('you have not investigated');
+            expect(store.size).toBe(0);
+        });
+
+        it('accepts finding when file has been investigated via read_file', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            const result = await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            expect(result.success).toBe(true);
+            expect(store.size).toBe(1);
+        });
+
+        it('matches files regardless of path separator style', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            const result = await tool.execute(
+                { ...BASE_FINDING_ARGS, file: 'src\\api.ts' },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+            expect(store.size).toBe(1);
+        });
+
+        it('matches files by suffix', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            const result = await tool.execute(
+                { ...BASE_FINDING_ARGS, file: 'd:/project/src/api.ts' },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+            expect(store.size).toBe(1);
+        });
+
+        it('skips gate when investigatedFiles is undefined', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: undefined,
+            });
+
+            const result = await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            expect(result.success).toBe(true);
+            expect(store.size).toBe(1);
         });
     });
 });

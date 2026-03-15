@@ -612,6 +612,7 @@ export function createMockExecutionContext(
         subagentExecutor: undefined,
         calibrationProfile: DEFAULT_PROFILE,
         toolCallCounts: new Map(),
+        investigatedFiles: new Set<string>(),
         ...overrides,
     };
 }
