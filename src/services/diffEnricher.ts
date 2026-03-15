@@ -252,6 +252,11 @@ export class DiffEnricher implements vscode.Disposable {
             }
             if (isTimeoutError(error)) {
                 symbolTimeouts.count++;
+            } else {
+                Log.debug(
+                    'DiffEnricher',
+                    `LSP hover error for ${name}: ${getErrorMessage(error)}`
+                );
             }
         }
 
@@ -287,6 +292,11 @@ export class DiffEnricher implements vscode.Disposable {
             }
             if (isTimeoutError(error)) {
                 symbolTimeouts.count++;
+            } else {
+                Log.debug(
+                    'DiffEnricher',
+                    `LSP reference error for ${name}: ${getErrorMessage(error)}`
+                );
             }
         }
 
