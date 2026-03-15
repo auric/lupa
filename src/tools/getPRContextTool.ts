@@ -10,27 +10,19 @@ import { getErrorMessage } from '../utils/errorUtils';
 export class GetPRContextTool extends BaseTool {
     name = 'get_pr_context';
     description =
-        'Get PR context: branch name, commit messages, and changed file list. ' +
+        'Get PR context: branch name and commit messages. ' +
         'Call this early in your review to understand the intent behind the changes ' +
         'before investigating individual files.';
 
-    schema = z.object({
-        max_commits: z.coerce
-            .number()
-            .optional()
-            .default(30)
-            .describe(
-                'Maximum number of commit messages to return (default: 30)'
-            ),
-    });
+    schema = z.object({});
 
     constructor(private gitOperationsManager: GitOperationsManager) {
         super();
     }
 
     async execute(
-        args: z.infer<typeof this.schema>,
-        context: ExecutionContext
+        _args: z.infer<typeof this.schema>,
+        _context: ExecutionContext
     ): Promise<ToolResult> {
         const repo = this.gitOperationsManager.getRepository();
         if (!repo) {
@@ -50,7 +42,7 @@ export class GetPRContextTool extends BaseTool {
                 result += `**Base**: \`${defaultBranch}\`\n\n`;
                 const commits = await this.gitOperationsManager.getCommitLog(
                     defaultBranch,
-                    args.max_commits
+                    30
                 );
                 if (commits.trim()) {
                     result += `### Commit Messages\n\`\`\`\n${commits}\n\`\`\`\n\n`;
@@ -65,14 +57,6 @@ export class GetPRContextTool extends BaseTool {
                 `get_pr_context: failed to get commit log: ${getErrorMessage(error)}`
             );
             result += `_Could not retrieve commit messages_\n\n`;
-        }
-
-        // Include changed files from parsed diff
-        if (context.parsedDiff && context.parsedDiff.length > 0) {
-            const files = context.parsedDiff.map((d) => d.filePath);
-            result += `### Changed Files (${files.length})\n`;
-            result += files.map((f) => `- ${f}`).join('\n');
-            result += '\n';
         }
 
         return toolSuccess(result);
