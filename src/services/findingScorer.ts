@@ -9,6 +9,10 @@ import type { ModelCalibrationProfile } from '../models/modelCalibration';
 export interface ScoringContext {
     toolCallRecords: ToolCallRecord[];
     calibrationProfile: ModelCalibrationProfile;
+    /** Rejection rate from FeedbackStore for this finding's category+model combo. */
+    feedbackRejectionRate?: number;
+    /** Total feedback entries for this category+model combo. */
+    feedbackTotalEntries?: number;
 }
 
 export interface SignalBreakdown {
@@ -248,6 +252,25 @@ function scoreDescriptionQuality(finding: RecordedFinding): SignalBreakdown {
     };
 }
 
+/**
+ * Feedback history signal: adjusts score based on historical user feedback.
+ * Centered at 0: rejectionRate=0.5 → 0 contribution, below → bonus, above → penalty.
+ * Only meaningful when feedbackTotalEntries >= MIN_FEEDBACK_ENTRIES.
+ */
+const MIN_FEEDBACK_ENTRIES = 5;
+
+function scoreFeedbackHistory(rejectionRate: number): SignalBreakdown {
+    const weight = 10;
+    // rejectionRate 0 → +5, 0.5 → 0, 1.0 → -5
+    const contribution = Math.round((0.5 - rejectionRate) * weight * 10) / 10;
+    return {
+        signal: 'feedbackHistory',
+        rawValue: rejectionRate,
+        weight,
+        contribution,
+    };
+}
+
 function getRecommendation(score: number): 'keep' | 'drop' | 'downgrade' {
     if (score < DROP_THRESHOLD) {
         return 'drop';
@@ -272,6 +295,14 @@ export function scoreFinding(
         scoreCategoryRisk(finding),
         scoreDescriptionQuality(finding),
     ];
+
+    if (
+        context.feedbackRejectionRate !== undefined &&
+        context.feedbackTotalEntries !== undefined &&
+        context.feedbackTotalEntries >= MIN_FEEDBACK_ENTRIES
+    ) {
+        signals.push(scoreFeedbackHistory(context.feedbackRejectionRate));
+    }
 
     const overallScore = signals.reduce((sum, s) => sum + s.contribution, 0);
 
