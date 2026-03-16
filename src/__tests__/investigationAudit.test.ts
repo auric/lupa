@@ -223,7 +223,7 @@ describe('buildInvestigationAudit', () => {
     it('flattens nested tool calls', () => {
         const calls: ToolCallRecord[] = [
             makeToolCall({
-                toolName: 'run_subagent',
+                toolName: 'run_subagent_batch',
                 arguments: {},
                 nestedCalls: [
                     makeToolCall({
@@ -257,10 +257,10 @@ describe('buildInvestigationAudit', () => {
     it('handles deeply nested tool calls', () => {
         const calls: ToolCallRecord[] = [
             makeToolCall({
-                toolName: 'run_subagent',
+                toolName: 'run_subagent_batch',
                 nestedCalls: [
                     makeToolCall({
-                        toolName: 'run_subagent',
+                        toolName: 'run_subagent_batch',
                         nestedCalls: [
                             makeToolCall({
                                 toolName: 'read_file',

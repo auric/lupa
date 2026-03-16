@@ -305,7 +305,7 @@ describe('ConversationRunner', () => {
                         {
                             id: 'call_1',
                             function: {
-                                name: 'run_subagent',
+                                name: 'run_subagent_batch',
                                 arguments: '{"task":"review files"}',
                             },
                         },
@@ -319,7 +319,7 @@ describe('ConversationRunner', () => {
 
             const toolExecutor = createMockToolExecutor([
                 {
-                    name: 'run_subagent',
+                    name: 'run_subagent_batch',
                     success: true,
                     result: 'Subagent findings',
                 },
@@ -333,13 +333,13 @@ describe('ConversationRunner', () => {
             const config: ConversationRunnerConfig = {
                 systemPrompt: 'Test prompt',
                 maxIterations: 10,
-                tools: [createMockTool('run_subagent')],
+                tools: [createMockTool('run_subagent_batch')],
                 afterToolCalls,
             };
 
             await runner.run(config, conversation, createCancellationToken());
 
-            expect(afterToolCalls).toHaveBeenCalledWith(['run_subagent']);
+            expect(afterToolCalls).toHaveBeenCalledWith(['run_subagent_batch']);
             const history = conversation.getHistory();
             const injected = history.find(
                 (m) => m.role === 'user' && m.content?.includes('Coverage gap')
@@ -2043,7 +2043,7 @@ describe('ConversationRunner', () => {
                 tools: [
                     createMockTool('find_symbol'),
                     createMockTool('read_file'),
-                    createMockTool('run_subagent'),
+                    createMockTool('run_subagent_batch'),
                 ],
                 disabledToolNames: disabledTools,
             };
@@ -2061,7 +2061,7 @@ describe('ConversationRunner', () => {
                 (t: { name: string }) => t.name
             );
             expect(toolNames).toContain('find_symbol');
-            expect(toolNames).toContain('run_subagent');
+            expect(toolNames).toContain('run_subagent_batch');
             expect(toolNames).not.toContain('read_file');
         });
 

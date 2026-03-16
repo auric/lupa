@@ -151,9 +151,9 @@ describe('ToolCallStreamAdapter', () => {
             );
         });
 
-        it('should format run_subagent message (present continuous - long-running)', () => {
+        it('should format run_subagent_batch message (present continuous - long-running)', () => {
             adapter.onToolCallStart(
-                'run_subagent',
+                'run_subagent_batch',
                 { task: 'investigate security' },
                 0,
                 1

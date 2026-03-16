@@ -41,9 +41,9 @@ describe('toolConstants', () => {
             }
         });
 
-        it('should include run_subagent to prevent recursion', () => {
+        it('should include run_subagent_batch to prevent recursion', () => {
             expect(
-                SubagentLimits.DISALLOWED_TOOLS.includes('run_subagent')
+                SubagentLimits.DISALLOWED_TOOLS.includes('run_subagent_batch')
             ).toBe(true);
         });
 
@@ -101,12 +101,14 @@ describe('toolConstants', () => {
             }
         });
 
-        it('should allow run_subagent for recursive children but not flat subagents', () => {
+        it('should allow run_subagent_batch for recursive children but not flat subagents', () => {
             expect(
-                SubagentLimits.DISALLOWED_TOOLS.includes('run_subagent')
+                SubagentLimits.DISALLOWED_TOOLS.includes('run_subagent_batch')
             ).toBe(true);
             expect(
-                RECURSIVE_CHILD_DISALLOWED_TOOLS.includes('run_subagent' as any)
+                RECURSIVE_CHILD_DISALLOWED_TOOLS.includes(
+                    'run_subagent_batch' as any
+                )
             ).toBe(false);
         });
 
@@ -155,7 +157,7 @@ describe('toolConstants', () => {
 
         it('should NOT include controller tools', () => {
             const controllerTools = [
-                'run_subagent',
+                'run_subagent_batch',
                 'update_plan',
                 'submit_review',
                 'think_about_completion',

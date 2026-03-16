@@ -108,7 +108,7 @@ function countAllFailed(calls: ToolCallRecord[]): number {
 function countAgents(calls: ToolCallRecord[]): number {
     let count = 0;
     for (const call of calls) {
-        if (call.toolName === 'run_subagent') {
+        if (call.toolName === 'run_subagent_batch') {
             count += 1;
             if (call.nestedCalls?.length) {
                 count += countAgents(call.nestedCalls);
@@ -125,7 +125,7 @@ function countAllIterations(
     let count = rootIterations ?? 0;
     for (const call of calls) {
         if (
-            call.toolName === 'run_subagent' &&
+            call.toolName === 'run_subagent_batch' &&
             call.iterationsUsed !== undefined
         ) {
             count += call.iterationsUsed;
@@ -207,7 +207,10 @@ function formatCallsMarkdown(calls: ToolCallRecord[], depth: number): string[] {
         const dur = call.durationMs
             ? ` (${formatDuration(call.durationMs)})`
             : '';
-        if (call.toolName === 'run_subagent' && call.nestedCalls?.length) {
+        if (
+            call.toolName === 'run_subagent_batch' &&
+            call.nestedCalls?.length
+        ) {
             const name = extractAgentName(call);
             const total = countAllCalls(call.nestedCalls);
             lines.push(
@@ -350,7 +353,7 @@ const ToolCallRow = ({
 };
 
 /**
- * Renders an inline agent section for a run_subagent call.
+ * Renders an inline agent section for a run_subagent_batch call.
  * Shows the agent header with summary stats, and when expanded,
  * renders its nested calls as a true tree (recursively).
  */
@@ -423,7 +426,7 @@ const InlineAgent = ({
             </div>
             {expanded && (
                 <div className="tc-agent-body">
-                    {/* Expandable row to show the raw run_subagent args/result */}
+                    {/* Expandable row to show the raw run_subagent_batch args/result */}
                     <div className="tc-row tc-row--meta">
                         <div
                             className="tc-row-header tc-row-header--meta"
@@ -523,7 +526,7 @@ const CallList = ({
         <>
             {calls.map((call) => {
                 const currentIdx = idx++;
-                if (call.toolName === 'run_subagent') {
+                if (call.toolName === 'run_subagent_batch') {
                     return (
                         <InlineAgent
                             key={call.id}

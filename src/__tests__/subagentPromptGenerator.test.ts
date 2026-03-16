@@ -271,7 +271,7 @@ describe('SubagentPromptGenerator', () => {
             const diffTools = [
                 createMockTool('get_file_diff', 'Get diff for specific files'),
                 createMockTool('find_symbol', 'Finds symbols in code'),
-                createMockTool('run_subagent', 'Spawn a sub-agent'),
+                createMockTool('run_subagent_batch', 'Spawn a sub-agent'),
             ];
 
             it('should include decomposition strategy when canRecurse with diff tools', () => {
@@ -288,7 +288,7 @@ describe('SubagentPromptGenerator', () => {
                 expect(prompt).toContain(
                     'You MUST Spawn Sub-Agents for 4+ Files'
                 );
-                expect(prompt).toContain('run_subagent');
+                expect(prompt).toContain('run_subagent_batch');
             });
 
             it('should show file-count-based investigation guidance', () => {
@@ -389,7 +389,7 @@ describe('SubagentPromptGenerator', () => {
                 );
 
                 expect(prompt).toContain('multiple');
-                expect(prompt).toContain('run_subagent');
+                expect(prompt).toContain('run_subagent_batch');
                 expect(prompt).toContain('in the same response');
                 expect(prompt).toContain('parallel');
             });
@@ -413,7 +413,7 @@ describe('SubagentPromptGenerator', () => {
         describe('canRecurse=true without diff tools', () => {
             const noDiffTools = [
                 createMockTool('find_symbol', 'Finds symbols in code'),
-                createMockTool('run_subagent', 'Spawn a sub-agent'),
+                createMockTool('run_subagent_batch', 'Spawn a sub-agent'),
             ];
 
             it('should not reference get_file_diff in decomposition when diff tools absent', () => {
