@@ -56,6 +56,8 @@ export interface SubagentExecuteOptions {
     calibrationProfile: ModelCalibrationProfile;
     /** Additional tools to exclude from this subagent (beyond standard filters). */
     excludeTools?: readonly string[];
+    /** Parent's investigated files set — shared so child file tracking propagates back. */
+    investigatedFiles?: Set<string>;
 }
 
 /**
@@ -209,6 +211,7 @@ export class SubagentExecutor {
                 calibrationProfile:
                     options?.calibrationProfile ?? DEFAULT_PROFILE,
                 toolCallCounts: new Map(),
+                investigatedFiles: options?.investigatedFiles,
             };
 
             const toolExecutor = new ToolExecutor(

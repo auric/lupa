@@ -226,6 +226,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                     childBudget,
                     findingStore: context.findingStore,
                     calibrationProfile: context.calibrationProfile,
+                    investigatedFiles: context.investigatedFiles,
                 }
             );
 

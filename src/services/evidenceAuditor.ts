@@ -8,7 +8,10 @@ import {
     PR_CONTEXT_TOOLS,
     DIFF_TOOLS,
 } from '../models/toolConstants';
-import { buildInvestigationAudit } from '../utils/investigationAudit';
+import {
+    buildInvestigationAudit,
+    flattenToolCalls,
+} from '../utils/investigationAudit';
 
 const DEPTH_THRESHOLD_HIGH = 4;
 const DEPTH_THRESHOLD_MEDIUM = 2;
@@ -95,9 +98,11 @@ export class EvidenceAuditor {
         depthScores: Map<string, InvestigationDepth>
     ): EvidenceAuditEntry {
         // Step 1: Find all tool calls that reference the finding's file
+        // Flatten nested calls so subagent-produced tool calls are included
+        const flatRecords = flattenToolCalls(toolCallRecords);
         const matchingCalls = this.findToolCallsForFile(
             finding.file,
-            toolCallRecords
+            flatRecords
         );
 
         const supportingToolCallIds = matchingCalls.map((tc) => tc.id);

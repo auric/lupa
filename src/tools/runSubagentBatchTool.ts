@@ -384,6 +384,7 @@ RULES:
                     childBudget: alloc.childBudget,
                     findingStore: context.findingStore,
                     calibrationProfile: context.calibrationProfile,
+                    investigatedFiles: context.investigatedFiles,
                 }
             );
 

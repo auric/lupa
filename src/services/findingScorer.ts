@@ -5,6 +5,7 @@ import type {
 } from '../types/findingTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
+import { flattenToolCalls } from '../utils/investigationAudit';
 
 export interface ScoringContext {
     toolCallRecords: ToolCallRecord[];
@@ -285,12 +286,14 @@ export function scoreFinding(
     finding: RecordedFinding,
     context: ScoringContext
 ): FindingScore {
+    // Flatten nested calls so subagent-produced tool calls are included in scoring
+    const flatRecords = flattenToolCalls(context.toolCallRecords);
     const signals: SignalBreakdown[] = [
-        scoreSupportingToolCalls(finding, context.toolCallRecords),
-        scoreInvestigationDepth(finding, context.toolCallRecords),
+        scoreSupportingToolCalls(finding, flatRecords),
+        scoreInvestigationDepth(finding, flatRecords),
         scoreDisproofAttempted(finding),
         scoreLspValidation(finding),
-        scoreSeverityEvidenceRatio(finding, context.toolCallRecords),
+        scoreSeverityEvidenceRatio(finding, flatRecords),
         scoreModelBias(context.calibrationProfile),
         scoreCategoryRisk(finding),
         scoreDescriptionQuality(finding),

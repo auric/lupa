@@ -25,7 +25,9 @@ const KNOWN_KINDS = [
 const DEPTH_PER_SIGNAL = 2;
 const MAX_DEPTH = 10;
 
-function flattenToolCalls(toolCalls: ToolCallRecord[]): ToolCallRecord[] {
+export function flattenToolCalls(
+    toolCalls: ToolCallRecord[]
+): ToolCallRecord[] {
     const result: ToolCallRecord[] = [];
     for (const call of toolCalls) {
         result.push(call);
