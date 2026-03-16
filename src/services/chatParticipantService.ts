@@ -31,6 +31,7 @@ import { FindingStore } from '../sessions/findingStore';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
+import { TokenValidator } from '../models/tokenValidator';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
@@ -605,6 +606,7 @@ export class ChatParticipantService implements vscode.Disposable {
 
         // Composite handler: stream to chat UI AND record tool calls for evidence audit
         let currentIteration = 0;
+        const tokenValidator = new TokenValidator(request.model);
         const recordingHandler: ToolCallHandler = {
             onToolCallStart: adapter.onToolCallStart?.bind(adapter),
             onToolCallComplete: (
@@ -646,25 +648,56 @@ export class ChatParticipantService implements vscode.Disposable {
                 adapter.onIterationStart?.(current, max);
             },
             getContextStatusSuffix: async () => {
-                if (
-                    calibrationProfile.findingBias === 'dismissive' &&
-                    currentIteration > 0 &&
-                    currentIteration % 5 === 0 &&
-                    findingStore.size > 0
-                ) {
-                    const findings = findingStore.getAll();
-                    const findingSummary = findings
-                        .map(
-                            (f) =>
-                                `[${f.id}] ${f.severity}: ${f.title} (${f.file})`
-                        )
-                        .join('; ');
-                    return (
-                        `\n\n📋 REMINDER: ${findingStore.size} finding(s) recorded so far: ${findingSummary}. ` +
-                        'These MUST appear in your final review or be explicitly retracted.'
+                try {
+                    const messages = conversation.getHistory().map((msg) => ({
+                        role: msg.role,
+                        content: msg.content,
+                        toolCalls: msg.toolCalls,
+                        toolCallId: msg.toolCallId,
+                    }));
+
+                    const validation = await tokenValidator.validateTokens(
+                        messages,
+                        systemPrompt
                     );
+                    const usagePercent = Math.round(
+                        (validation.totalTokens / validation.maxTokens) * 100
+                    );
+                    const remainingK = Math.round(
+                        (validation.maxTokens - validation.totalTokens) / 1000
+                    );
+
+                    let suffix = '';
+                    if (usagePercent >= 90) {
+                        suffix = `\n\n⚠️ [ctx: ${usagePercent}% | ${remainingK}k remaining — wrap up NOW]`;
+                    } else if (usagePercent >= 70) {
+                        suffix = `\n\n[ctx: ${usagePercent}% | ${remainingK}k remaining]`;
+                    }
+
+                    // Periodic FindingStore reminder for dismissive models at parent level.
+                    if (
+                        calibrationProfile.findingBias === 'dismissive' &&
+                        currentIteration > 0 &&
+                        currentIteration % 5 === 0 &&
+                        findingStore.size > 0
+                    ) {
+                        const findings = findingStore.getAll();
+                        const findingSummary = findings
+                            .map(
+                                (f) =>
+                                    `[${f.id}] ${f.severity}: ${f.title} (${f.file})`
+                            )
+                            .join('; ');
+                        suffix +=
+                            `\n\n📋 REMINDER: ${findingStore.size} finding(s) recorded so far: ${findingSummary}. ` +
+                            'These MUST appear in your final review or be explicitly retracted.';
+                    }
+
+                    return suffix;
+                } catch (error) {
+                    Log.error('Error calculating context status:', error);
+                    return '';
                 }
-                return '';
             },
         };
         const systemPrompt = isRecursiveMode

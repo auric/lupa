@@ -118,7 +118,7 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
             '(3) trace callers with find_usages, (4) verify claims with validate_claim. ' +
             'You MUST plan extensively before each tool call and reflect on results after.',
     },
-    useDecomposedReview: true,
+    useDecomposedReview: false,
     decomposedChildBudget: 30,
 };
 
@@ -140,7 +140,7 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
             'Use validate_claim to verify factual claims before recording. ' +
             'Do not stop at diff reading — trace dependencies and verify assumptions with tools.',
     },
-    useDecomposedReview: true,
+    useDecomposedReview: false,
     decomposedChildBudget: 25,
 };
 
