@@ -6,17 +6,24 @@
 /**
  * Generate subagent guidance for PR review mode.
  */
-export function generateSubagentGuidance(): string {
+export function generateSubagentGuidance(useBatchSubagent: boolean): string {
+    const toolIntro = useBatchSubagent
+        ? '`run_subagent_batch` spawns isolated agents to investigate specific questions in parallel. Put ALL investigation tasks into ONE call.'
+        : '`run_subagent` spawns an isolated agent to investigate specific questions.';
+    const triggerAction = useBatchSubagent
+        ? 'Put ALL investigations into ONE `run_subagent_batch` call'
+        : 'Spawn 2+ subagents for parallel analysis';
+
     return `<subagent_guidance>
 ## Subagent Delegation
 
-\`run_subagent\` spawns an isolated agent to investigate specific questions.
+${toolIntro}
 
 ### When to Spawn (MANDATORY)
 
 | Trigger | Action |
 |---------|--------|
-| 4+ files modified | Spawn 2+ subagents for parallel analysis |
+| 4+ files modified | ${triggerAction} |
 | Security-sensitive code | Dedicated security investigation subagent |
 | Complex dependency chain (3+ files) | Dependency-tracing subagent |
 

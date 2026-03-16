@@ -64,7 +64,17 @@ ${challengeCheckpoint}
  * Generate self-reflection guidance for the recursive root controller.
  * Reinforces the decompose→delegate→aggregate pattern instead of direct investigation.
  */
-export function generateRecursiveSelfReflectionGuidance(): string {
+export function generateRecursiveSelfReflectionGuidance(
+    useBatchSubagent: boolean
+): string {
+    const toolName = useBatchSubagent ? 'run_subagent_batch' : 'run_subagent';
+    const afterMetadata = useBatchSubagent
+        ? '→ Call `update_plan` to decompose into concern groups, then call `run_subagent_batch` with ALL groups.'
+        : '→ Call `update_plan` to decompose into concern groups, then spawn `run_subagent` for each group.';
+    const afterPlan = useBatchSubagent
+        ? '→ Put ALL concern groups into ONE `run_subagent_batch` call. They execute in parallel. Do NOT investigate files yourself.'
+        : '→ Make multiple `run_subagent` tool calls in one response — one per concern group. They execute in parallel. Do NOT investigate files yourself.';
+
     return `<self_reflection>
 ## Self-Reflection Tools (Recursive Root)
 
@@ -78,10 +88,10 @@ You are a **controller**, not an investigator. Reflection checkpoints must reinf
 ### Delegation Checkpoints
 
 After reviewing \`<diff_metadata>\`:
-→ Call \`update_plan\` to decompose into concern groups, then spawn \`run_subagent\` for each group.
+${afterMetadata}
 
 After calling \`update_plan\`:
-→ Make multiple \`run_subagent\` tool calls in one response — one per concern group. They execute in parallel. Do NOT investigate files yourself.
+${afterPlan}
 
 After all sub-agents return:
 → \`think\`: topic="Cross-concern synthesis", analysis=[validated findings from sub-agents], identified_risks=[gaps or uncertain findings], next_action="synthesize and submit"
@@ -94,7 +104,7 @@ Before submitting:
 
 ### Anti-Pattern: Direct Investigation
 After your initial orientation (1 key diff), you must NEVER call \`get_file_diff\`, \`read_file\`, or \`find_symbol\` again.
-If files need review, spawn \`run_subagent\` — even for trivial files (group them into one sub-agent).
+If files need review, call \`${toolName}\` — even for trivial files (group them into one sub-agent).
 Reading diffs yourself provides no code understanding — sub-agents can trace symbols, check usages, and verify context.
 </self_reflection>`;
 }

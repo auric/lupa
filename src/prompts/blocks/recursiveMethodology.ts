@@ -2,7 +2,19 @@
  * Decomposition → delegation → aggregation workflow for recursive review mode.
  */
 
-export function generateRecursiveMethodology(): string {
+export function generateRecursiveMethodology(
+    useBatchSubagent: boolean
+): string {
+    const spawnHeading = useBatchSubagent
+        ? '### Step 3: Spawn ALL Sub-Agents (Parallel — One Batch Call)'
+        : '### Step 3: Spawn ALL Sub-Agents (Parallel — Multiple Tool Calls in One Response)';
+    const spawnInstruction = useBatchSubagent
+        ? '⚠️ **Put ALL concern groups into ONE `run_subagent_batch` call** — one task per concern group. They execute in parallel internally.'
+        : '⚠️ **Make multiple `run_subagent` tool calls in your response — one per concern group.** They execute in parallel. Do NOT spawn one agent, wait for it, then spawn the next.';
+    const taskIntro = useBatchSubagent
+        ? 'Include all concern groups as tasks in your `run_subagent_batch` call:'
+        : 'For each concern group, call `run_subagent`:';
+
     return `<recursive_methodology>
 ## Recursive Review Process
 
@@ -44,11 +56,11 @@ Target **2-3 files per concern group** for thorough review.
 - [Any cross-cutting concerns to check after agents complete]
 \`\`\`
 
-### Step 3: Spawn ALL Sub-Agents (Parallel — Multiple Tool Calls in One Response)
+${spawnHeading}
 
-\u26a0\ufe0f **Make multiple \`run_subagent\` tool calls in your response — one per concern group.** They execute in parallel. Do NOT spawn one agent, wait for it, then spawn the next.
+${spawnInstruction}
 
-For each concern group, call \`run_subagent\`:
+${taskIntro}
 
 \`\`\`
 task: "Review [concern] in [files].

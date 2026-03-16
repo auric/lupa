@@ -81,7 +81,11 @@ export class PromptBuilder {
      * Add subagent delegation guidance.
      */
     addSubagentGuidance(): this {
-        this.sections.push(generateSubagentGuidance());
+        this.sections.push(
+            generateSubagentGuidance(
+                this._calibration?.usesBatchSubagent ?? false
+            )
+        );
         return this;
     }
 
@@ -138,7 +142,11 @@ export class PromptBuilder {
      * Reinforces delegation pattern instead of direct investigation.
      */
     addRecursiveSelfReflection(): this {
-        this.sections.push(generateRecursiveSelfReflectionGuidance());
+        this.sections.push(
+            generateRecursiveSelfReflectionGuidance(
+                this._calibration?.usesBatchSubagent ?? false
+            )
+        );
         return this;
     }
 
@@ -146,7 +154,11 @@ export class PromptBuilder {
      * Add role definition for recursive root auditor.
      */
     addRecursiveRootRole(): this {
-        this.sections.push(generateRecursiveRootRole());
+        this.sections.push(
+            generateRecursiveRootRole(
+                this._calibration?.usesBatchSubagent ?? false
+            )
+        );
         return this;
     }
 
@@ -154,7 +166,11 @@ export class PromptBuilder {
      * Add recursive decomposition/aggregation methodology.
      */
     addRecursiveMethodology(): this {
-        this.sections.push(generateRecursiveMethodology());
+        this.sections.push(
+            generateRecursiveMethodology(
+                this._calibration?.usesBatchSubagent ?? false
+            )
+        );
         return this;
     }
 
