@@ -27,7 +27,7 @@ Lupa is a VS Code extension for pull request analysis using GitHub Copilot model
 - 🔍 **Deep Code Analysis** — LLM-driven analysis with dynamic context gathering
 - 🛠️ **16 Specialized Tools** — Symbol lookup, file reading, grep search, diff access, usage finding, quality reasoning, and more
 - 🤖 **Recursive Language Model (RLM)** — Diff-on-demand architecture where the LLM loads context via tools instead of receiving the full diff
-- 🌲 **Recursive Agent Tree** — Complex PRs decomposed into concern groups with sub-agents analyzing each independently
+- 🌲 **Recursive Agent Tree** — Complex PRs decomposed into concern groups with sub-agents analyzing each in parallel via batch execution
 - 📊 **Rich Webview UI** — Interactive results with Markdown rendering and syntax highlighting
 - 💬 **Chat Integration** — Native VS Code chat participant for quick analysis
 
@@ -80,7 +80,7 @@ The selected model is saved in `.vscode/lupa.json` and persists across sessions.
 
 ### Default Model
 
-Lupa uses **GPT-4.1** as the default because it's free. With the recursive approach, GPT-4.1 now handles even large PRs well — the agent tree decomposes complex changes into focused investigations, preventing context overload.
+Lupa uses **GPT-4.1** as the default because it's free. For best results finding real bugs, try **Raptor Mini** or **GPT-5 mini** — both are free and provide excellent analysis quality with Lupa's parallel batch execution.
 
 ### ⚠️ Premium Models Are Expensive
 
@@ -98,12 +98,13 @@ Larger PRs use more iterations (e.g., an 80-file PR may reach 350+ iterations). 
 
 Recommended for Lupa:
 
-| Model                 | Cost | Notes                                                                     |
-| --------------------- | ---- | ------------------------------------------------------------------------- |
-| **GPT-4.1** (default) | Free | Recommended — works well with the recursive approach for PRs of all sizes |
-| **Raptor Mini**       | Free | Good alternative, but may not run subagents in parallel                   |
+| Model                 | Cost | Notes                                                          |
+| --------------------- | ---- | -------------------------------------------------------------- |
+| **Raptor Mini**       | Free | Excellent analysis quality — recommended for finding real bugs |
+| **GPT-5 mini**        | Free | Strong alternative with good issue detection                   |
+| **GPT-4.1** (default) | Free | Reliable baseline, works well for PRs of all sizes             |
 
-> **Note:** Some smaller models (GPT-5 mini, Raptor Mini) may not reliably spawn subagents in parallel, leading to sequential analysis that takes longer. GPT-4.1 handles parallel delegation well.
+Lupa uses **parallel batch subagent execution** — all investigation subagents run simultaneously regardless of model. This eliminates the sequential tool-calling limitation that previously affected smaller models.
 
 ### 💰 Using Your Own API Key
 

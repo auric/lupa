@@ -56,7 +56,7 @@ The `ServiceManager` initializes services in strict order to resolve dependencie
 3. LLM requests context via tools (`FindSymbolTool`, `ReadFileTool`, etc.)
 4. `ToolExecutor` runs tools (rate-limited by session)
 5. Multi-turn conversation via `ConversationManager`
-6. Subagent delegation via `RunSubagentTool` (uses per-analysis `SubagentExecutor` from `ExecutionContext`)
+6. Subagent delegation via `RunSubagentBatchTool` — accepts an array of investigation tasks and runs all subagents in parallel (uses per-analysis `SubagentExecutor` from `ExecutionContext`)
 
 ## Code Conventions
 
@@ -147,9 +147,9 @@ Most tools should let errors propagate to ToolExecutor. Don't wrap your execute 
 - **fdir abort behavior**: fdir resolves with partial results on AbortSignal, never throws. Check signal state AFTER fdir resolves and throw appropriate error (see `FileDiscoverer`)
 - **Cancel propagation**: Pass `ExecutionContext.cancellationToken` through to `SymbolExtractor` methods
 - **Linked tokens for child processes**: When spawning processes with timeouts, use `CancellationTokenSource` linked to the parent token (see `SearchForPatternTool`)
-- **Subagent CancellationTokenSource must be local**: `RunSubagentTool.execute()` uses a local `CancellationTokenSource`, never an instance variable—tools are singletons, so parallel executions would share and corrupt the source
+- **Subagent CancellationTokenSource must be local**: `RunSubagentBatchTool.execute()` uses a local `CancellationTokenSource`, never an instance variable—tools are singletons, so parallel executions would share and corrupt the source
 - **Subagent cancellation detection**: `SubagentExecutor` checks `ConversationRunner.hitMaxIterations` and `ConversationRunner.wasCancelled` boolean flags instead of raw `token.isCancellationRequested`—avoids false cancellation signals from unrelated token events
-- **Timeout vs parent cancellation**: `RunSubagentTool` checks `context.cancellationToken.isCancellationRequested` when attributing cancellation to timeout, giving parent cancellation priority over timeout timer
+- **Timeout vs parent cancellation**: `RunSubagentBatchTool` checks `context.cancellationToken.isCancellationRequested` when attributing cancellation to timeout, giving parent cancellation priority over timeout timer
 
 ### Timeout Strategies
 

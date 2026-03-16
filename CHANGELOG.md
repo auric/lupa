@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Parallel Batch Subagent Execution
+
+- **`run_subagent_batch` replaces `run_subagent`**: New tool accepts an array of investigation tasks and runs all subagents simultaneously. This eliminates sequential tool-calling overhead for models like Raptor Mini and GPT-5 mini that previously called `run_subagent` one at a time.
+- Removed per-model `usesBatchSubagent` toggle — all models now use the unified batch executor.
+
+### Changed
+
+- **Model recommendations updated**: Raptor Mini and GPT-5 mini now provide excellent analysis quality with parallel batch execution.
+
+### Added
+
 #### Recursive Language Model (RLM) Analysis
 
 - **New diff-on-demand architecture**: The LLM receives `<diff_metadata>` (file list with change stats) and fetches specific file diffs via the `get_file_diff` tool instead of receiving the full diff in the prompt. This prevents context window overflow on large PRs and lets the LLM prioritize which files to examine.
