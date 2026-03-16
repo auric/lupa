@@ -120,22 +120,57 @@ RULES:
     override normalizeArgs(
         args: Record<string, unknown>
     ): Record<string, unknown> {
-        const tasks = Array.isArray(args.tasks) ? args.tasks : [];
-        const normalized = tasks.map((item: Record<string, unknown>) => {
-            const task = typeof item.task === 'string' ? item.task.trim() : '';
-            const ctx =
-                typeof item.context === 'string' ? item.context.trim() : '';
-            if (
-                task.length < SubagentLimits.MIN_TASK_LENGTH &&
-                ctx.length >= SubagentLimits.MIN_TASK_LENGTH
-            ) {
+        let rawTasks = args.tasks;
+
+        // Handle models sending tasks as a JSON string instead of an array
+        if (typeof rawTasks === 'string') {
+            try {
+                rawTasks = JSON.parse(rawTasks);
                 Log.warn(
-                    `run_subagent_batch: task field empty/short — using context field as task (${ctx.length} chars)`
+                    'run_subagent_batch: tasks was a JSON string — parsed into array'
                 );
-                return { ...item, task: ctx, context: undefined };
+            } catch {
+                Log.warn(
+                    'run_subagent_batch: tasks was a non-JSON string — cannot parse'
+                );
+                rawTasks = [];
             }
-            return item;
-        });
+        }
+
+        // Handle models sending a single task object instead of an array
+        if (
+            rawTasks !== null &&
+            typeof rawTasks === 'object' &&
+            !Array.isArray(rawTasks)
+        ) {
+            Log.warn(
+                'run_subagent_batch: tasks was a single object — wrapping in array'
+            );
+            rawTasks = [rawTasks];
+        }
+
+        const tasks = Array.isArray(rawTasks) ? rawTasks : [];
+        const normalized = tasks
+            .filter(
+                (item): item is Record<string, unknown> =>
+                    item !== null && typeof item === 'object'
+            )
+            .map((item: Record<string, unknown>) => {
+                const task =
+                    typeof item.task === 'string' ? item.task.trim() : '';
+                const ctx =
+                    typeof item.context === 'string' ? item.context.trim() : '';
+                if (
+                    task.length < SubagentLimits.MIN_TASK_LENGTH &&
+                    ctx.length >= SubagentLimits.MIN_TASK_LENGTH
+                ) {
+                    Log.warn(
+                        `run_subagent_batch: task field empty/short — using context field as task (${ctx.length} chars)`
+                    );
+                    return { ...item, task: ctx, context: undefined };
+                }
+                return item;
+            });
         return { ...args, tasks: normalized };
     }
 

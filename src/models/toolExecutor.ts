@@ -167,8 +167,9 @@ export class ToolExecutor {
                             `${issue.path.map(String).join('.')}: ${issue.message}`
                     )
                     .join(', ');
+                const argsChanged = normalizedArgs !== args;
                 Log.warn(
-                    `Tool '${name}' ✗ schema validation failed: ${errorDetails} | args: ${this.formatArgsForLog(args)}`
+                    `Tool '${name}' ✗ schema validation failed: ${errorDetails} | args: ${this.formatArgsForLog(args)}${argsChanged ? ` | normalized: ${this.formatArgsForLog(normalizedArgs)}` : ''}`
                 );
                 return {
                     name,

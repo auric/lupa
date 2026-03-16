@@ -189,6 +189,54 @@ describe('RunSubagentBatchTool', () => {
             expect(tasks[0].task).toBe(VALID_TASK);
             expect(tasks[0].context).toBe('some context');
         });
+
+        it('should parse tasks from JSON string', () => {
+            const tool = new RunSubagentBatchTool(workspaceSettings);
+            const tasksArray = [{ task: VALID_TASK, context: 'some context' }];
+
+            const result = tool.normalizeArgs({
+                tasks: JSON.stringify(tasksArray),
+            });
+
+            const tasks = (result as any).tasks;
+            expect(tasks).toHaveLength(1);
+            expect(tasks[0].task).toBe(VALID_TASK);
+        });
+
+        it('should wrap single task object in array', () => {
+            const tool = new RunSubagentBatchTool(workspaceSettings);
+
+            const result = tool.normalizeArgs({
+                tasks: { task: VALID_TASK, context: 'ctx' },
+            });
+
+            const tasks = (result as any).tasks;
+            expect(tasks).toHaveLength(1);
+            expect(tasks[0].task).toBe(VALID_TASK);
+        });
+
+        it('should filter out null items in tasks array', () => {
+            const tool = new RunSubagentBatchTool(workspaceSettings);
+
+            const result = tool.normalizeArgs({
+                tasks: [null, { task: VALID_TASK }, undefined],
+            });
+
+            const tasks = (result as any).tasks;
+            expect(tasks).toHaveLength(1);
+            expect(tasks[0].task).toBe(VALID_TASK);
+        });
+
+        it('should return empty tasks array for non-parseable string', () => {
+            const tool = new RunSubagentBatchTool(workspaceSettings);
+
+            const result = tool.normalizeArgs({
+                tasks: 'not valid json',
+            });
+
+            const tasks = (result as any).tasks;
+            expect(tasks).toHaveLength(0);
+        });
     });
 
     describe('Parallel Execution', () => {
