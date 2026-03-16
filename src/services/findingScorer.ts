@@ -272,7 +272,62 @@ function scoreFeedbackHistory(rejectionRate: number): SignalBreakdown {
     };
 }
 
-function getRecommendation(score: number): 'keep' | 'drop' | 'downgrade' {
+const ABSENCE_LANGUAGE_PATTERN =
+    /\b(missing|lacks|doesn't check|no validation|not validated|doesn't handle|no error handling|absent|omitted|doesn't verify|no check|not checked)\b/i;
+
+const CONCRETE_FAILURE_MECHANISMS = new Set([
+    'wrong_return_value',
+    'runtime_exception',
+    'data_corruption',
+    'infinite_loop',
+    'deadlock',
+    'memory_leak',
+    'use_after_free',
+    'buffer_overflow',
+    'sql_injection',
+    'xss',
+]);
+
+function scoreAbsencePattern(finding: RecordedFinding): SignalBreakdown {
+    const weight = 15;
+
+    const hasAbsenceLanguage = ABSENCE_LANGUAGE_PATTERN.test(
+        finding.description
+    );
+
+    if (!hasAbsenceLanguage) {
+        return {
+            signal: 'absencePattern',
+            rawValue: 0,
+            weight,
+            contribution: 0,
+        };
+    }
+
+    const hasConcreteFailure = CONCRETE_FAILURE_MECHANISMS.has(
+        finding.failureMechanism
+    );
+
+    if (hasConcreteFailure) {
+        return {
+            signal: 'absencePattern',
+            rawValue: 0.5,
+            weight,
+            contribution: -5,
+        };
+    }
+
+    return {
+        signal: 'absencePattern',
+        rawValue: 1,
+        weight,
+        contribution: -15,
+    };
+}
+
+function getRecommendationFromScore(
+    score: number
+): 'keep' | 'drop' | 'downgrade' {
     if (score < DROP_THRESHOLD) {
         return 'drop';
     }
@@ -297,6 +352,7 @@ export function scoreFinding(
         scoreModelBias(context.calibrationProfile),
         scoreCategoryRisk(finding),
         scoreDescriptionQuality(finding),
+        scoreAbsencePattern(finding),
     ];
 
     if (
@@ -313,7 +369,7 @@ export function scoreFinding(
         findingId: finding.id,
         overallScore,
         signals,
-        recommendation: getRecommendation(overallScore),
+        recommendation: getRecommendationFromScore(overallScore),
     };
 }
 

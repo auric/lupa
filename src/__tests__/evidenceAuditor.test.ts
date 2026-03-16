@@ -495,6 +495,120 @@ describe('EvidenceAuditor', () => {
             expect(result.dropped).toBe(1); // f3: claimed validate_claim but never called
             expect(result.entries.length).toBe(3);
         });
+
+        it('drops finding when deletion language + zero-reference evidence present', () => {
+            const findings = [
+                createTestFinding({
+                    description:
+                        'The function handleClick was deleted but callers may break',
+                    verificationEvidence:
+                        'find_usages showed the function is no longer referenced',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'handleClick',
+                    },
+                    result: '0 results found for handleClick',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.dropped).toBe(1);
+            expect(result.entries[0]!.verdict).toBe('drop');
+            expect(result.entries[0]!.reason).toContain('Deletion safety');
+        });
+
+        it('drops finding when "removed" language + "no references" in tool result', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    description:
+                        'The helper was removed but may still be imported elsewhere',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                }),
+                createToolCallRecord({
+                    toolName: 'search_for_pattern',
+                    arguments: { file_path: 'src/foo.ts', pattern: 'helper' },
+                    result: 'No results found',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.dropped).toBe(1);
+            expect(result.entries[0]!.reason).toContain('Deletion safety');
+        });
+
+        it('keeps finding with deletion language but callers found', () => {
+            const findings = [
+                createTestFinding({
+                    description:
+                        'The function was deleted but callers depend on it',
+                    verificationEvidence: 'find_usages confirmed callers exist',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: { file_path: 'src/foo.ts', symbol_name: 'fn' },
+                    result: '3 references found in src/bar.ts, src/baz.ts',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: { file_path: 'src/foo.ts', symbol_name: 'fn' },
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.kept).toBe(1);
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
+        it('keeps finding without deletion language even if zero references', () => {
+            const findings = [
+                createTestFinding({
+                    description: 'The function has a null pointer bug',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: { file_path: 'src/foo.ts', symbol_name: 'fn' },
+                    result: '0 results',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).not.toBe('drop');
+        });
     });
 });
 

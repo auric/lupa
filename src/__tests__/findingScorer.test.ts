@@ -106,7 +106,7 @@ describe('findingScorer', () => {
             // Total = 95
             expect(score.overallScore).toBeGreaterThanOrEqual(90);
             expect(score.recommendation).toBe('keep');
-            expect(score.signals).toHaveLength(8);
+            expect(score.signals).toHaveLength(9);
         });
 
         it('should give low score with no supporting evidence', () => {
@@ -345,12 +345,83 @@ describe('findingScorer', () => {
             expect(scores[1].findingId).toBe('f2');
             expect(scores[2].findingId).toBe('f3');
             scores.forEach((s) => {
-                expect(s.signals).toHaveLength(8);
+                expect(s.signals.length).toBeGreaterThanOrEqual(8);
                 expect(typeof s.overallScore).toBe('number');
                 expect(['keep', 'drop', 'downgrade']).toContain(
                     s.recommendation
                 );
             });
+        });
+    });
+
+    describe('absencePattern signal', () => {
+        it('should penalize absence-only description without concrete failure mechanism', () => {
+            const finding = makeFinding({
+                description:
+                    'The function lacks error handling for network failures',
+                failureMechanism: 'missing_error_handling',
+            });
+            const context = makeContext();
+            const score = scoreFinding(finding, context);
+
+            const absenceSignal = score.signals.find(
+                (s) => s.signal === 'absencePattern'
+            )!;
+            expect(absenceSignal).toBeDefined();
+            expect(absenceSignal.contribution).toBe(-15);
+        });
+
+        it('should apply smaller penalty when absence language has concrete failure mechanism', () => {
+            const finding = makeFinding({
+                description:
+                    'Missing null check causes runtime_exception when input is undefined',
+                failureMechanism: 'runtime_exception',
+            });
+            const context = makeContext();
+            const score = scoreFinding(finding, context);
+
+            const absenceSignal = score.signals.find(
+                (s) => s.signal === 'absencePattern'
+            )!;
+            expect(absenceSignal).toBeDefined();
+            expect(absenceSignal.contribution).toBe(-5);
+        });
+
+        it('should not penalize findings without absence language', () => {
+            const finding = makeFinding({
+                description:
+                    'The function returns incorrect value when array is empty',
+                failureMechanism: 'wrong_return_value',
+            });
+            const context = makeContext();
+            const score = scoreFinding(finding, context);
+
+            const absenceSignal = score.signals.find(
+                (s) => s.signal === 'absencePattern'
+            )!;
+            expect(absenceSignal).toBeDefined();
+            expect(absenceSignal.contribution).toBe(0);
+        });
+
+        it('should reduce overall score for absence-pattern findings', () => {
+            const normalFinding = makeFinding({
+                description:
+                    'The function returns null instead of throwing when ID is invalid',
+                failureMechanism: 'wrong_return_value',
+            });
+            const absenceFinding = makeFinding({
+                description:
+                    "The function doesn't handle errors from the API call",
+                failureMechanism: 'missing_handling',
+            });
+            const context = makeContext();
+
+            const normalScore = scoreFinding(normalFinding, context);
+            const absenceScore = scoreFinding(absenceFinding, context);
+
+            expect(absenceScore.overallScore).toBeLessThan(
+                normalScore.overallScore
+            );
         });
     });
 });

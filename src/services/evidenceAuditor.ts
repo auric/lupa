@@ -16,6 +16,30 @@ import {
 const DEPTH_THRESHOLD_HIGH = 4;
 const DEPTH_THRESHOLD_MEDIUM = 2;
 
+const DELETION_LANGUAGE_PATTERN =
+    /\b(deleted|removed|no longer|was removed|was deleted|dropped|eliminated|got rid of)\b/i;
+
+const ZERO_REFERENCE_PATTERNS = [
+    /0 results/i,
+    /no results/i,
+    /not found/i,
+    /no references/i,
+    /0 usages/i,
+    /no usages/i,
+    /no callers/i,
+    /0 callers/i,
+    /no matches/i,
+    /0 matches/i,
+    /no occurrences/i,
+    /0 occurrences/i,
+] as const;
+
+const ZERO_REFERENCE_TOOL_NAMES = new Set([
+    'find_usages',
+    'find_symbol',
+    'search_for_pattern',
+]);
+
 /**
  * All known tool names the model might reference in evidence text.
  * Derived from existing tool constant arrays to avoid maintaining a separate list.
@@ -117,7 +141,22 @@ export class EvidenceAuditor {
         // Step 3: Populate supportingToolCalls on the finding
         finding.supportingToolCalls = supportingToolCallIds;
 
-        // Step 4: Check for fabricated evidence
+        // Step 4: Check for deletion safety pattern (proved safe but still reported)
+        const deletionVerdict = this.checkDeletionSafety(
+            finding,
+            matchingCalls,
+            flatRecords
+        );
+        if (deletionVerdict) {
+            return {
+                ...deletionVerdict,
+                supportingToolCallIds,
+                claimedTools,
+                actualToolsOnFile,
+            };
+        }
+
+        // Step 5: Check for fabricated evidence (claims tools never called)
         if (claimedTools.length > 0) {
             const fabricated = this.findFabricatedClaims(
                 claimedTools,
@@ -140,7 +179,7 @@ export class EvidenceAuditor {
             }
         }
 
-        // Step 5: Check investigation depth using scored depth system
+        // Step 6: Check investigation depth using scored depth system
         const fileScore = this.getFileDepthScore(finding.file, depthScores);
         const requiredScore = this.getRequiredDepthScore(finding.severity);
 
@@ -228,6 +267,42 @@ export class EvidenceAuditor {
             // Tool was called on OTHER files but not this one → fabricated for this file
             return true;
         });
+    }
+
+    private checkDeletionSafety(
+        finding: RecordedFinding,
+        fileMatchingCalls: ToolCallRecord[],
+        allRecords: ToolCallRecord[]
+    ): Pick<EvidenceAuditEntry, 'finding' | 'verdict' | 'reason'> | null {
+        const evidenceText = this.getEvidenceText(finding);
+
+        if (!DELETION_LANGUAGE_PATTERN.test(evidenceText)) {
+            return null;
+        }
+
+        const referenceToolCalls = [...fileMatchingCalls, ...allRecords].filter(
+            (tc) =>
+                tc.success &&
+                ZERO_REFERENCE_TOOL_NAMES.has(tc.toolName) &&
+                typeof tc.result === 'string'
+        );
+
+        const hasZeroReferences = referenceToolCalls.some((tc) =>
+            ZERO_REFERENCE_PATTERNS.some((pattern) =>
+                pattern.test(tc.result as string)
+            )
+        );
+
+        if (!hasZeroReferences) {
+            return null;
+        }
+
+        const reason =
+            'Deletion safety: evidence mentions removal AND tool calls show zero references/callers';
+        Log.info(
+            `EvidenceAuditor DROP [${finding.id}] "${finding.title}": ${reason}`
+        );
+        return { finding, verdict: 'drop', reason };
     }
 
     private getFileDepthScore(
