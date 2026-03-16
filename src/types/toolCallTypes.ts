@@ -22,11 +22,11 @@ export interface ToolCallRecord {
     durationMs: number | undefined;
     /** Timestamp when the tool was called */
     timestamp: number;
-    /** Nested tool calls from subagent (only for run_subagent tool) */
+    /** Nested tool calls from subagent (only for run_subagent_batch tool) */
     nestedCalls?: ToolCallRecord[];
-    /** Actual wall-clock execution time (only for run_subagent — replaces inaccurate batch-averaged durationMs) */
+    /** Actual wall-clock execution time (only for run_subagent_batch — replaces inaccurate batch-averaged durationMs) */
     executionTimeMs?: number;
-    /** Number of LLM iterations (turns) used (only for run_subagent) */
+    /** Number of LLM iterations (turns) used (only for run_subagent_batch) */
     iterationsUsed?: number;
 }
 

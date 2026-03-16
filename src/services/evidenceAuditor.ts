@@ -23,7 +23,7 @@ const ALL_TOOL_NAMES: readonly string[] = [
     ...PR_CONTEXT_TOOLS,
     ...DIFF_TOOLS,
     'validate_claim',
-    'run_subagent',
+    'run_subagent_batch',
     'think',
 ];
 

@@ -36,7 +36,6 @@ import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { ThinkTool } from '../tools/thinkTool';
 import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
-import { RunSubagentTool } from '../tools/runSubagentTool';
 import { RunSubagentBatchTool } from '../tools/runSubagentBatchTool';
 import { UpdatePlanTool } from '../tools/updatePlanTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
@@ -329,14 +328,9 @@ export class ServiceManager implements vscode.Disposable {
             // Note: UpdatePlanTool gets PlanSessionManager from ExecutionContext per-analysis
             this.services.toolRegistry!.registerTool(new UpdatePlanTool());
 
-            // Register the RunSubagentTool for delegating complex investigations
-            // Note: RunSubagentTool gets SubagentExecutor and SubagentSessionManager
+            // Register the RunSubagentBatchTool for delegating complex investigations
+            // Note: RunSubagentBatchTool gets SubagentExecutor and SubagentSessionManager
             // from ExecutionContext per-analysis for concurrent-safety
-            const runSubagentTool = new RunSubagentTool(
-                this.services.workspaceSettings!
-            );
-            this.services.toolRegistry!.registerTool(runSubagentTool);
-
             const runSubagentBatchTool = new RunSubagentBatchTool(
                 this.services.workspaceSettings!
             );

@@ -94,7 +94,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(systemPrompt).toContain('recursive');
             expect(systemPrompt).toContain('Decompose');
             expect(systemPrompt).toContain('Delegate');
-            expect(systemPrompt).toContain('run_subagent');
+            expect(systemPrompt).toContain('run_subagent_batch');
         });
 
         it('should include recursive methodology section', () => {
@@ -166,7 +166,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
-            expect(systemPrompt).toContain('run_subagent');
+            expect(systemPrompt).toContain('run_subagent_batch');
             expect(systemPrompt).toContain('submit_review');
         });
 
@@ -308,7 +308,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
             expect(prompt).toContain('Delegation is mandatory');
             expect(prompt).toContain('update_plan');
-            expect(prompt).toContain('run_subagent');
+            expect(prompt).toContain('run_subagent_batch');
         });
 
         it('should not use recursive reminder when recursiveMode is false', () => {
@@ -488,13 +488,12 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(systemPrompt).not.toContain('2-3 key diffs');
         });
 
-        it('should instruct root to make multiple run_subagent calls in one response (parallel)', () => {
+        it('should instruct root to put all tasks into one run_subagent_batch call (parallel)', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
-            expect(systemPrompt).toContain('multiple');
-            expect(systemPrompt).toContain('run_subagent');
-            expect(systemPrompt).toContain('in one response');
+            expect(systemPrompt).toContain('run_subagent_batch');
+            expect(systemPrompt).toContain('ONE');
             expect(systemPrompt).toContain('parallel');
         });
 
@@ -506,9 +505,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 10
             );
 
-            expect(prompt).toContain('multiple');
-            expect(prompt).toContain('run_subagent');
-            expect(prompt).toContain('in one response');
+            expect(prompt).toContain('run_subagent_batch');
             expect(prompt).toContain('parallel');
         });
 

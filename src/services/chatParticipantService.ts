@@ -844,7 +844,7 @@ export class ChatParticipantService implements vscode.Disposable {
         const allFiles = parsedDiff.map((d) => d.filePath);
 
         return (toolNames: string[]) => {
-            if (!toolNames.includes('run_subagent')) {
+            if (!toolNames.includes('run_subagent_batch')) {
                 return undefined;
             }
 

@@ -54,7 +54,7 @@ export class RunSubagentBatchTool extends BaseTool {
     name = 'run_subagent_batch';
     description = `Spawn multiple focused investigation sub-agents in ONE tool call — all run in parallel.
 
-Use this instead of making multiple sequential run_subagent calls. Accepts an array of tasks; each gets its own isolated context window and tool access.
+Accepts an array of tasks; each gets its own isolated context window and tool access.
 
 ⚡ All tasks execute simultaneously, regardless of model limitations.
 
@@ -69,8 +69,7 @@ Focus on: [key functions/classes]"
 RULES:
 - Include specific file paths in each task
 - Target 2-4 files per sub-agent for thorough review
-- Sub-agents CANNOT run tests or execute code
-- Use this tool when you need 2+ sub-agents — one call replaces multiple run_subagent calls`;
+- Sub-agents CANNOT run tests or execute code`;
 
     schema: z.ZodObject<{
         tasks: z.ZodArray<

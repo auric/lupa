@@ -54,7 +54,7 @@ export const DIFF_TOOLS = ['get_file_diff'] as const;
  * Investigation tools that should be removed from the recursive root agent
  * after the orientation phase (first subagent round).
  * The root is a controller — after it delegates, it should only retain
- * controller tools (run_subagent, update_plan, think_about_*, submit_review).
+ * controller tools (run_subagent_batch, update_plan, think_about_*, submit_review).
  */
 export const INVESTIGATION_TOOLS = [
     'get_file_diff',
@@ -77,22 +77,15 @@ export const SubagentLimits = {
     /** Maximum task length to prevent token exhaustion in subagent prompts */
     MAX_TASK_LENGTH: 20_000,
     /** Tools that subagents cannot access (flat mode — no recursion) */
-    DISALLOWED_TOOLS: [
-        'run_subagent', // Prevent sub-subagent recursion
-        'run_subagent_batch',
-        ...ROOT_ONLY_TOOLS,
-    ] as const,
+    DISALLOWED_TOOLS: ['run_subagent_batch', ...ROOT_ONLY_TOOLS] as const,
 } as const;
 
 /**
  * Tools disallowed for recursive child agents.
- * They CAN call run_subagent (enabling recursion) but cannot access
+ * They CAN call run_subagent_batch (enabling recursion) but cannot access
  * plan-tracking and final-review tools that belong to the root agent.
  */
-export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [
-    'run_subagent_batch',
-    ...ROOT_ONLY_TOOLS,
-] as const;
+export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [...ROOT_ONLY_TOOLS] as const;
 
 /**
  * Tools that are only available during main analysis mode (not exploration mode).

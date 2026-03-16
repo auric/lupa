@@ -235,22 +235,22 @@ export class PromptGenerator {
             '2. Call `get_file_diff` on **1 key file** (largest change or riskiest) to understand the PR\n';
         reminder += '3. Call `update_plan` — decompose into concern groups\n';
         reminder +=
-            '4. **Make multiple `run_subagent` calls in one response** — one per concern group (parallel execution)\n';
+            '4. **Call `run_subagent_batch`** with one task per concern group (parallel execution)\n';
         reminder +=
             '5. After agents return, call `update_plan` to record findings and coverage status\n';
         reminder +=
-            '6. If coverage gaps reported, group uncovered files and delegate via additional `run_subagent` calls\n';
+            '6. If coverage gaps reported, group uncovered files and delegate via additional `run_subagent_batch` calls\n';
         reminder += '7. Aggregate findings, check for cross-concern issues\n';
         reminder +=
             '8. Call `think_about_completion`, then `submit_review`\n\n';
 
         reminder +=
-            '⚠️ **Delegation is mandatory** — Read at most 1 diff for orientation, then delegate everything via `run_subagent`. ' +
+            '⚠️ **Delegation is mandatory** — Read at most 1 diff for orientation, then delegate everything via `run_subagent_batch`. ' +
             'Do NOT read additional diffs or investigate files yourself. ' +
             'Sub-agents read diffs on demand via `get_file_diff` and return findings to you.\n\n';
         reminder +=
             '⚠️ **Total file coverage required** — Every changed file must be reviewed. ' +
-            'If you receive a coverage gap report after sub-agents complete, group uncovered files and delegate them via additional `run_subagent` calls.\n\n';
+            'If you receive a coverage gap report after sub-agents complete, group uncovered files and delegate them via additional `run_subagent_batch` calls.\n\n';
         reminder +=
             'Quality matters more than quantity — a thorough review that finds zero issues is better than a review padded with speculative concerns.\n';
         reminder += '</analysis_task>';
@@ -264,7 +264,7 @@ export class PromptGenerator {
 
         let roadmap = '<delegation_roadmap>\n';
         roadmap +=
-            'Suggested investigation groups for parallel delegation via `run_subagent`:\n\n';
+            'Suggested investigation groups for parallel delegation via `run_subagent_batch`:\n\n';
 
         for (let i = 0; i < groups.length; i++) {
             const group = groups[i]!;
@@ -275,7 +275,7 @@ export class PromptGenerator {
         }
 
         roadmap +=
-            '\nCall multiple `run_subagent` IN THE SAME RESPONSE to investigate groups in parallel.\n';
+            '\nCall `run_subagent_batch` to investigate groups in parallel.\n';
         roadmap += '</delegation_roadmap>\n\n';
         return roadmap;
     }

@@ -151,7 +151,7 @@ export class ToolExecutor {
             }
 
             // Normalize args before validation (handles model-specific quirks like GPT-4.1
-            // putting run_subagent task content in the context field)
+            // putting run_subagent_batch task content in the context field)
             const normalizedArgs = tool.normalizeArgs
                 ? tool.normalizeArgs(args)
                 : args;

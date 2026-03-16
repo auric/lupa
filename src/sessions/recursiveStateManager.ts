@@ -316,7 +316,7 @@ export class RecursiveStateManager {
             '\n\n' +
             'Action required: Delegate ALL uncovered files to sub-agents.\n' +
             '1. Call `update_plan` to record current coverage status\n' +
-            '2. Group remaining files by concern and spawn `run_subagent` for each group\n' +
+            '2. Group remaining files by concern and use `run_subagent_batch` to investigate each group\n' +
             '3. Include context from completed sub-agent findings so new sub-agents know what concerns to look for\n' +
             '\n' +
             'Do NOT read diffs yourself — even small files deserve proper investigation via sub-agents. ' +

@@ -150,7 +150,7 @@ export class SubagentExecutor {
         const maxDepth = this.workspaceSettings.getMaxRecursionDepth();
         // Only allow recursion when depth permits, a session manager is available,
         // AND recursive state is tracking the agent tree (legacy mode has no
-        // recursiveState, so subagents should not get run_subagent).
+        // recursiveState, so subagents should not get run_subagent_batch).
         const canRecurse =
             depth < maxDepth &&
             !!options?.subagentSessionManager &&
@@ -541,7 +541,7 @@ export class SubagentExecutor {
     /**
      * Filter tools based on recursion capability.
      * When canRecurse is true, only exclude root-only tools (plan, review, reflection).
-     * When canRecurse is false, exclude everything including run_subagent (current flat behavior).
+     * When canRecurse is false, exclude everything including run_subagent_batch (current flat behavior).
      */
     private filterTools(canRecurse: boolean): ITool[] {
         const disallowed: readonly string[] = canRecurse

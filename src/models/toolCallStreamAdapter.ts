@@ -139,7 +139,7 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             }
 
             // Long-running actions - present continuous
-            case 'run_subagent':
+            case 'run_subagent_batch':
                 return '🤖 Running subagent investigation...';
 
             case 'think':
