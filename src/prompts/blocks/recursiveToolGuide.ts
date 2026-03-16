@@ -13,7 +13,7 @@ export function generateRecursiveToolGuide(): string {
 | \`get_pr_context\` | **FIRST** — get branch name, commit messages to understand PR intent before reviewing code |
 | \`get_file_diff\` | **SECOND** — read 1 key diff (largest/riskiest) to understand the PR's purpose |
 | \`update_plan\` | **THIRD** — decompose PR into concern groups |
-| \`run_subagent\` | **PRIMARY TOOL** — make multiple calls in one response (parallel execution) |
+| \`run_subagent_batch\` | **PRIMARY TOOL** — put ALL investigation tasks into ONE call (parallel execution) |
 | \`list_directory\` | Orient yourself — understand project structure |
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |
 | \`think\` | Think through code changes, context, or progress |
@@ -41,7 +41,7 @@ export function generateRecursiveToolGuide(): string {
 
 ### Sub-Agent Task Template
 
-Each \`run_subagent\` call should include:
+Each \`run_subagent_batch\` task should include:
 1. **Specific questions** about the change (not vague "review this")
 2. **File paths** to examine (sub-agents call \`get_file_diff\` themselves)
 3. **Key functions** to examine

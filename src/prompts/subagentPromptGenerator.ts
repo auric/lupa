@@ -19,7 +19,7 @@ export class SubagentPromptGenerator {
     /**
      * Generate a system prompt for a subagent investigation.
      * @param task The investigation task definition
-     * @param tools Available tools (run_subagent will be filtered out by executor unless recursive)
+     * @param tools Available tools (run_subagent_batch will be filtered out by executor unless recursive)
      * @param maxIterations Maximum conversation iterations for this subagent
      * @param canRecurse Whether this agent can spawn its own sub-agents
      * @returns Complete system prompt for the subagent
@@ -172,7 +172,7 @@ get_file_diff({file_paths: ["src/auth.ts"]})
             ? `
 ### Decomposition Strategy (You MUST Spawn Sub-Agents for 4+ Files)
 
-You have \`run_subagent\` available and **${maxIterations} iterations** for your own work.
+You have \`run_subagent_batch\` available and **${maxIterations} iterations** for your own work.
 
 ⚠️ **MANDATORY: If your task spans 4+ files, you MUST spawn sub-agents.**
 Do NOT try to review 4+ files directly — you'll exhaust your iterations and produce incomplete findings. This is not optional.
@@ -180,7 +180,7 @@ Do NOT try to review 4+ files directly — you'll exhaust your iterations and pr
 **Decomposition approach:**
 1. ${hasDiffTools ? 'Call `get_file_diff` for 1 key file to orient yourself (~1 iteration)' : 'Review the parent context to understand the scope of changes'}
 2. Based on ${hasDiffTools ? 'the diff' : 'what you know'}, split your remaining files into focused sub-tasks
-3. **Make multiple \`run_subagent\` tool calls in the same response** — they execute in parallel. Each sub-agent gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours)
+3. **Make multiple \`run_subagent_batch\` tool calls in the same response** — they execute in parallel. Each sub-agent gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours)
 4. After sub-agents return, aggregate their findings into your response
 ${
     hasDiffTools
@@ -330,7 +330,7 @@ If you find NO issues after investigation, state what you checked and why it pas
 
 **Technical Limits:**
 - You have **${maxIterations} tool iterations** - use them wisely
-- **Parallelize tool calls**: Make ALL independent tool calls in the same response (e.g. multiple \`find_symbol\`${hasDiffTools ? ', `get_file_diff`' : ''}${canRecurse ? ', or `run_subagent`' : ''} calls at once). Do NOT call tools one at a time when they are independent
+- **Parallelize tool calls**: Make ALL independent tool calls in the same response (e.g. multiple \`find_symbol\`${hasDiffTools ? ', `get_file_diff`' : ''}${canRecurse ? ', or `run_subagent_batch`' : ''} calls at once). Do NOT call tools one at a time when they are independent
 ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in your task' : '- You CANNOT see the PR diff - only what the parent provided in context'}
 - You CANNOT execute code or run tests
 

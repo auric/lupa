@@ -25,7 +25,7 @@ export function generateToolSelectionGuide(): string {
 | Think through analysis | \`think\` |
 | Record confirmed issue | \`record_finding\` |
 | Verify factual claim | \`validate_claim\` |
-| Deep investigation | \`run_subagent\` |
+| Deep investigation | \`run_subagent_batch\` |
 
 ### Principles
 
@@ -65,7 +65,7 @@ export function generateExplorationToolGuide(): string {
 | List directory | \`list_directory\` |
 | Find files | \`find_files_by_pattern\` |
 | Read config/docs | \`read_file\` |
-| Deep investigation | \`run_subagent\` |
+| Deep investigation | \`run_subagent_batch\` |
 
 ### Principles
 
@@ -73,7 +73,7 @@ export function generateExplorationToolGuide(): string {
 2. **Symbols over text**: Use \`find_symbol\` for code entities
 3. **Parallelize**: Call independent tools together
 4. **Build incrementally**: Start with overview, then drill down
-5. **Delegate complexity**: Use \`run_subagent\` for multi-module questions
+5. **Delegate complexity**: Use \`run_subagent_batch\` for multi-module questions
 
 ### Anti-Patterns
 
