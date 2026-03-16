@@ -17,6 +17,9 @@ function makeFinding(
         description:
             overrides.description ??
             'User input is concatenated into SQL query without parameterization',
+        affectedComponent:
+            overrides.affectedComponent ?? 'queryBuilder.executeRaw()',
+        failureMechanism: overrides.failureMechanism ?? 'security_bypass',
         supportingToolCalls: overrides.supportingToolCalls ?? [
             'read_file',
             'find_usages',

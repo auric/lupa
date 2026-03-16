@@ -70,6 +70,31 @@ export class RecordFindingTool extends BaseTool {
                     'Example: "Checked callers with find_usages — all 3 callers pass unvalidated input. ' +
                     'Searched for upstream validation with search_for_pattern — none found."'
             ),
+        affected_component: z
+            .string()
+            .min(5)
+            .describe(
+                'The SPECIFIC function, method, or code path that will produce incorrect results because of this issue. ' +
+                    'Can be the changed code itself (e.g., "parseConfig() returns wrong type") or a consumer ' +
+                    '(e.g., "handleRequest() crashes because it calls the changed function with Edge Case X"). ' +
+                    'Must be a real symbol — if you cannot name one, the finding is speculative.'
+            ),
+        failure_mechanism: z
+            .enum([
+                'wrong_return_value',
+                'runtime_exception',
+                'data_corruption',
+                'security_bypass',
+                'resource_leak',
+                'type_error',
+                'contract_violation',
+                'race_condition',
+            ])
+            .describe(
+                'HOW the failure manifests at runtime. Choose the most specific mechanism. ' +
+                    '"Missing validation" or "missing logging" are NOT failure mechanisms — ' +
+                    'name what actually goes WRONG when code executes.'
+            ),
         verifiable_claims: z
             .array(
                 z.object({
@@ -182,6 +207,8 @@ export class RecordFindingTool extends BaseTool {
             file: args.file,
             lineRange: [args.line, args.line],
             description: args.description,
+            affectedComponent: args.affected_component,
+            failureMechanism: args.failure_mechanism,
             verificationEvidence: args.verification_evidence,
             supportingToolCalls: [],
             disproof: {

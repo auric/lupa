@@ -15,6 +15,8 @@ function makeFinding(
         file: overrides.file ?? 'src/foo.ts',
         lineRange: overrides.lineRange ?? ([10, 20] as [number, number]),
         description: overrides.description ?? 'A test finding',
+        affectedComponent: overrides.affectedComponent ?? 'someFunction()',
+        failureMechanism: overrides.failureMechanism ?? 'wrong_return_value',
         supportingToolCalls: overrides.supportingToolCalls ?? [],
         disproof: overrides.disproof ?? {
             attempted: false,

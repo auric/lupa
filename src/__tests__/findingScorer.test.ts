@@ -27,6 +27,8 @@ function makeFinding(
         lineRange: [10, 15] as [number, number],
         description:
             'The function does not check for null before accessing .value property, which could cause a runtime crash.',
+        affectedComponent: overrides.affectedComponent ?? 'getValue()',
+        failureMechanism: overrides.failureMechanism ?? 'runtime_exception',
         verificationEvidence:
             'Verified by reading the diff and tracing the function',
         supportingToolCalls: ['call-1', 'call-2'],

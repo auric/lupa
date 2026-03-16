@@ -20,6 +20,8 @@ function createTestFinding(
         file: 'src/foo.ts',
         lineRange: [10, 20],
         description: 'Some issue',
+        affectedComponent: 'someFunction()',
+        failureMechanism: 'wrong_return_value',
         supportingToolCalls: ['find_usages', 'read_file'],
         disproof: {
             attempted: true,

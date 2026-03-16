@@ -29,6 +29,8 @@ export interface RecordedFinding {
     file: string;
     lineRange: [number, number];
     description: string;
+    affectedComponent: string;
+    failureMechanism: string;
     verificationEvidence?: string;
     supportingToolCalls: string[];
     disproof: FindingDisproof;
