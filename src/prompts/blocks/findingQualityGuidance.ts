@@ -71,14 +71,39 @@ Pre-existing code quality issues, tech debt, and architectural preferences are N
 - ❌ "Value could be undefined/null" when the language's type system already guarantees the type at that point
 - ❌ "No tests for X" without searching the test directory first
 - ✅ Documentation that contradicts the implementation IS a valid finding
+
+### Auto-Reject Patterns (NEVER record these)
+- **Safe deletion**: Symbol removed + zero callers found = cleanup, not a bug
+- **Missing observability**: Missing logging, metrics, or monitoring is a feature request, not a defect
+- **Missing runtime validation**: TypeScript types already provide compile-time safety for internal code
+- **Hypothetical consumers**: "Future code might depend on X" — only EXISTING consumers matter
+- **Test gaps for removed code**: Tests deleted alongside their tested code is correct cleanup
 `
         : '';
 
     return `<finding_quality>
 ## Finding Quality Standards
 
+Your primary job is CORRECTNESS VERIFICATION — confirming that code changes work as intended. Most PRs are correct. A review that confirms correctness with zero findings is a successful, high-quality review. Recording a finding is for when you discover concrete, demonstrable incorrect behavior — not for generating observations about code style, missing features, or hypothetical risks.
+
 ### Evidence Bar
 ${evidenceBarText}
+
+## Impact Proof Requirement
+
+A finding is ONLY valid if you can demonstrate a concrete runtime failure:
+
+1. **Name the affected component** — What specific function/method will produce wrong results?
+2. **Name the failure mechanism** — HOW does it fail? (wrong value, exception, data corruption, etc.)
+3. **Name the trigger** — What specific input, state, or call sequence causes it?
+
+If you cannot answer all three, the issue is SPECULATIVE — do not record it.
+
+**Valid finding**: "handleRequest() will throw TypeError when path contains spaces, because sanitizePath() was removed but handleRequest() still calls it at line 45"
+**Invalid finding**: "Missing input validation could lead to issues" — WHO is affected? WHAT fails? WHEN?
+
+### Deletion Safety Rule
+If a symbol/function is deleted AND your investigation shows ZERO callers/importers (via find_symbol, find_usages, or search_for_pattern), this is EXPECTED CLEANUP — NOT a finding. You proved it's safe by proving nothing depends on it.
 
 ### Scope: Changed Code Only
 
@@ -144,6 +169,12 @@ If no caller can produce the problematic input, the path is unreachable — drop
 
 CRITICAL/HIGH findings MUST be 🟢 VERIFIED with cited tool output.
 SPECULATIVE findings are **EXCLUDED** from the review entirely. If you cannot cite a specific tool output that supports a finding, it is speculative and must be omitted. Use tools to upgrade to LIKELY or VERIFIED before including any finding.
+
+### Required Impact Fields
+Every finding MUST specify:
+- **affected_component**: The exact function/method that produces wrong results. Verify it exists with find_symbol.
+- **failure_mechanism**: One of: wrong_return_value, runtime_exception, data_corruption, security_bypass, resource_leak, type_error, contract_violation, race_condition
+If you cannot fill these concretely, the finding is speculative — drop it.
 ${fpPatternsSection}
 ### Language-Aware Review
 
