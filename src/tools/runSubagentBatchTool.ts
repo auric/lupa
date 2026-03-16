@@ -21,8 +21,9 @@ import { Log } from '../services/loggingService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+import * as path from 'path';
 import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
-import { RunSubagentTool } from './runSubagentTool';
+import type { DiffHunk } from '../types/contextTypes';
 
 const MAX_TASK_LABEL_LENGTH = 80;
 
@@ -391,7 +392,7 @@ RULES:
             clearTimeout(timeoutHandle);
 
             if (recursiveState && alloc.childAgentId) {
-                const filesExamined = RunSubagentTool.extractFilesExamined(
+                const filesExamined = RunSubagentBatchTool.extractFilesExamined(
                     result.toolCalls,
                     context.parsedDiff
                 );
@@ -608,5 +609,67 @@ RULES:
             executionTimeMs: totalExecutionTimeMs,
             iterationsUsed: totalIterationsUsed,
         };
+    }
+
+    static extractFilesExamined(
+        toolCalls: ToolCallRecord[],
+        parsedDiff?: DiffHunk[]
+    ): string[] {
+        const files = new Set<string>();
+        for (const call of toolCalls) {
+            if (call.toolName !== 'get_file_diff') {
+                continue;
+            }
+            const raw = call.arguments['file_paths'];
+            const filePaths = Array.isArray(raw)
+                ? raw
+                : typeof raw === 'string'
+                  ? raw
+                        .split('\n')
+                        .map((l) => l.trim())
+                        .filter(Boolean)
+                  : [];
+            for (const fp of filePaths) {
+                if (typeof fp !== 'string') {
+                    continue;
+                }
+                const resolved = parsedDiff
+                    ? RunSubagentBatchTool.resolveToCanonicalPath(
+                          fp,
+                          parsedDiff
+                      )
+                    : fp;
+                if (resolved) {
+                    files.add(resolved);
+                }
+            }
+        }
+        return [...files];
+    }
+
+    private static resolveToCanonicalPath(
+        rawPath: string,
+        parsedDiff: DiffHunk[]
+    ): string | undefined {
+        const normalized = rawPath
+            .trim()
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '')
+            .replace(/^\.\//, '');
+        const requestedPath = path.posix.normalize(normalized);
+
+        const exactMatch = parsedDiff.find((f) => f.filePath === requestedPath);
+        if (exactMatch) {
+            return exactMatch.filePath;
+        }
+
+        const suffixMatches = parsedDiff.filter((f) =>
+            f.filePath.endsWith('/' + requestedPath)
+        );
+        if (suffixMatches.length === 1) {
+            return suffixMatches[0]!.filePath;
+        }
+
+        return undefined;
     }
 }
