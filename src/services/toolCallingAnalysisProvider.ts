@@ -196,6 +196,12 @@ export class ToolCallingAnalysisProvider {
 
             // Get available tools and generate system prompt
             const availableTools = toolExecutor.getAvailableTools();
+            const filteredTools = availableTools.filter((tool) => {
+                if (calibrationProfile.usesBatchSubagent) {
+                    return tool.name !== 'run_subagent';
+                }
+                return tool.name !== 'run_subagent_batch';
+            });
             const systemPrompt = isRecursiveMode
                 ? this.promptGenerator.generateRecursiveSystemPrompt(
                       calibrationProfile
@@ -325,7 +331,7 @@ export class ToolCallingAnalysisProvider {
                 {
                     systemPrompt,
                     maxIterations: this.maxIterations,
-                    tools: availableTools,
+                    tools: filteredTools,
                     label: 'Main Analysis',
                     requiresExplicitCompletion: true,
                     afterToolCalls: this.createCoverageGapCallback(
@@ -356,7 +362,7 @@ export class ToolCallingAnalysisProvider {
                     conversationManager,
                     conversationRunner,
                     systemPrompt,
-                    availableTools,
+                    availableTools: filteredTools,
                     token,
                     handler,
                     progressCallback: progressCallback

@@ -83,6 +83,9 @@ export interface ModelCalibrationProfile {
      * Critical for GPT-4.1 which tends to stop early without explicit guidance.
      */
     readonly investigationProtocol: InvestigationProtocol;
+
+    /** Whether the model should use run_subagent_batch instead of run_subagent */
+    readonly usesBatchSubagent: boolean;
 }
 
 const GPT_41_PROFILE: ModelCalibrationProfile = {
@@ -95,6 +98,7 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
     evidenceThreshold: 'high',
     adversarialVerificationThreshold: 'LOW',
     adversarialBudget: 20,
+    usesBatchSubagent: false,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 5,
         requiredToolsBeforeDone: ['get_file_diff', 'find_symbol'],
@@ -117,6 +121,7 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
     evidenceThreshold: 'low',
     adversarialVerificationThreshold: 'LOW',
     adversarialBudget: 20,
+    usesBatchSubagent: false,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 3,
         requiredToolsBeforeDone: [],
@@ -137,6 +142,7 @@ const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
     evidenceThreshold: 'high',
     adversarialVerificationThreshold: 'LOW',
     adversarialBudget: 15,
+    usesBatchSubagent: true,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: [],
@@ -161,6 +167,7 @@ const RAPTOR_MINI_PROFILE: ModelCalibrationProfile = {
     evidenceThreshold: 'medium',
     adversarialVerificationThreshold: 'LOW',
     adversarialBudget: 15,
+    usesBatchSubagent: true,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: [],
@@ -180,6 +187,7 @@ const CLAUDE_PROFILE: ModelCalibrationProfile = {
     evidenceThreshold: 'medium',
     adversarialVerificationThreshold: 'LOW',
     adversarialBudget: 15,
+    usesBatchSubagent: false,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: [],

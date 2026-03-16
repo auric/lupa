@@ -79,6 +79,7 @@ export const SubagentLimits = {
     /** Tools that subagents cannot access (flat mode — no recursion) */
     DISALLOWED_TOOLS: [
         'run_subagent', // Prevent sub-subagent recursion
+        'run_subagent_batch',
         ...ROOT_ONLY_TOOLS,
     ] as const,
 } as const;
@@ -88,7 +89,10 @@ export const SubagentLimits = {
  * They CAN call run_subagent (enabling recursion) but cannot access
  * plan-tracking and final-review tools that belong to the root agent.
  */
-export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [...ROOT_ONLY_TOOLS] as const;
+export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [
+    'run_subagent_batch',
+    ...ROOT_ONLY_TOOLS,
+] as const;
 
 /**
  * Tools that are only available during main analysis mode (not exploration mode).

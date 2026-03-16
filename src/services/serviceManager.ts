@@ -37,6 +37,7 @@ import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { ThinkTool } from '../tools/thinkTool';
 import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
 import { RunSubagentTool } from '../tools/runSubagentTool';
+import { RunSubagentBatchTool } from '../tools/runSubagentBatchTool';
 import { UpdatePlanTool } from '../tools/updatePlanTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { GetFileDiffTool } from '../tools/getFileDiffTool';
@@ -335,6 +336,11 @@ export class ServiceManager implements vscode.Disposable {
                 this.services.workspaceSettings!
             );
             this.services.toolRegistry!.registerTool(runSubagentTool);
+
+            const runSubagentBatchTool = new RunSubagentBatchTool(
+                this.services.workspaceSettings!
+            );
+            this.services.toolRegistry!.registerTool(runSubagentBatchTool);
 
             // Register finding management tools
             this.services.toolRegistry!.registerTool(new RecordFindingTool());
