@@ -3,6 +3,7 @@ import type { CodeIntelligenceBrief } from '../types/enrichedDiffTypes';
 import { ToolAwareSystemPromptGenerator } from '../prompts/toolAwareSystemPromptGenerator';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
+import { groupFilesForReview, type FileGroup } from '../services/fileGrouper';
 
 /**
  * Centralized prompt generation service.
@@ -72,7 +73,10 @@ export class PromptGenerator {
         const reminder = this.generateRlmAnalysisReminder(
             parsedDiff.length,
             recursiveMode,
-            maxSubagents
+            maxSubagents,
+            recursiveMode && parsedDiff.length >= 4
+                ? groupFilesForReview(parsedDiff)
+                : undefined
         );
 
         return `${metadataSection}${briefSection}${userFocusSection}${reminder}`;
@@ -156,10 +160,15 @@ export class PromptGenerator {
     private generateRlmAnalysisReminder(
         fileCount: number,
         recursiveMode: boolean,
-        maxSubagents?: number
+        maxSubagents?: number,
+        fileGroups?: FileGroup[]
     ): string {
         if (recursiveMode) {
-            return this.generateRecursiveRlmReminder(fileCount, maxSubagents);
+            return this.generateRecursiveRlmReminder(
+                fileCount,
+                maxSubagents,
+                fileGroups
+            );
         }
 
         const spawnSubagents = fileCount >= 4;
@@ -192,7 +201,8 @@ export class PromptGenerator {
      */
     private generateRecursiveRlmReminder(
         fileCount: number,
-        maxSubagents?: number
+        maxSubagents?: number,
+        fileGroups?: FileGroup[]
     ): string {
         // The real constraint is the total number of subagent spawns.
         const agentLimit = maxSubagents;
@@ -212,6 +222,10 @@ export class PromptGenerator {
             reminder +=
                 '**Agent Budget**: All sub-agent slots have been used. ' +
                 'Complete the review yourself using `get_file_diff` to read remaining files directly.\n\n';
+        }
+
+        if (fileGroups && fileGroups.length > 0) {
+            reminder += this.formatDelegationRoadmap(fileGroups);
         }
 
         reminder += '**Workflow**:\n';
@@ -242,6 +256,28 @@ export class PromptGenerator {
         reminder += '</analysis_task>';
 
         return reminder;
+    }
+
+    private formatDelegationRoadmap(groups: FileGroup[]): string {
+        const priorityLabel = (g: FileGroup) =>
+            g.priority >= 3 ? 'HIGH' : g.priority >= 2 ? 'MEDIUM' : 'LOW';
+
+        let roadmap = '<delegation_roadmap>\n';
+        roadmap +=
+            'Suggested investigation groups for parallel delegation via `run_subagent`:\n\n';
+
+        for (let i = 0; i < groups.length; i++) {
+            const group = groups[i]!;
+            roadmap += `  Group ${i + 1} [${priorityLabel(group)} — ${group.complexity}]: ${group.label}\n`;
+            for (const file of group.files) {
+                roadmap += `    - ${file}\n`;
+            }
+        }
+
+        roadmap +=
+            '\nCall multiple `run_subagent` IN THE SAME RESPONSE to investigate groups in parallel.\n';
+        roadmap += '</delegation_roadmap>\n\n';
+        return roadmap;
     }
 
     public dispose(): void {

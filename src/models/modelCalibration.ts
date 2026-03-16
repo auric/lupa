@@ -83,19 +83,6 @@ export interface ModelCalibrationProfile {
      * Critical for GPT-4.1 which tends to stop early without explicit guidance.
      */
     readonly investigationProtocol: InvestigationProtocol;
-
-    /**
-     * Whether to use orchestrator-driven file decomposition instead of LLM-driven.
-     * When true, the orchestrator groups files and spawns subagents directly.
-     * For dismissive models that don't decompose work on their own.
-     */
-    readonly useDecomposedReview: boolean;
-
-    /**
-     * Iteration budget for each decomposed review subagent.
-     * Only used when useDecomposedReview is true.
-     */
-    readonly decomposedChildBudget: number;
 }
 
 const GPT_41_PROFILE: ModelCalibrationProfile = {
@@ -118,8 +105,6 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
             '(3) trace callers with find_usages, (4) verify claims with validate_claim. ' +
             'You MUST plan extensively before each tool call and reflect on results after.',
     },
-    useDecomposedReview: false,
-    decomposedChildBudget: 30,
 };
 
 const GPT_4O_PROFILE: ModelCalibrationProfile = {
@@ -140,8 +125,6 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
             'Use validate_claim to verify factual claims before recording. ' +
             'Do not stop at diff reading — trace dependencies and verify assumptions with tools.',
     },
-    useDecomposedReview: false,
-    decomposedChildBudget: 25,
 };
 
 const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
@@ -161,8 +144,6 @@ const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
             'Verify all claims with validate_claim before recording. ' +
             'Focus on precision — only record findings with concrete tool-confirmed evidence.',
     },
-    useDecomposedReview: false,
-    decomposedChildBudget: 30,
 };
 
 /**
@@ -187,8 +168,6 @@ const RAPTOR_MINI_PROFILE: ModelCalibrationProfile = {
             'Verify all claims with validate_claim before recording. ' +
             'Focus on precision — only record findings with concrete tool-confirmed evidence.',
     },
-    useDecomposedReview: false,
-    decomposedChildBudget: 30,
 };
 
 const CLAUDE_PROFILE: ModelCalibrationProfile = {
@@ -206,8 +185,6 @@ const CLAUDE_PROFILE: ModelCalibrationProfile = {
         requiredToolsBeforeDone: [],
         investigationPreamble: '',
     },
-    useDecomposedReview: false,
-    decomposedChildBudget: 30,
 };
 
 export const DEFAULT_PROFILE: ModelCalibrationProfile = {

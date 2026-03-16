@@ -1,6 +1,5 @@
 import path from 'path';
 import type { DiffHunk } from '../types/contextTypes';
-import type { RecordedFinding } from '../types/findingTypes';
 
 export interface FileGroup {
     /** Human-readable label for the group (e.g., "src/services", "Configuration") */
@@ -305,38 +304,4 @@ export function groupFilesForReview(
     groups.sort((a, b) => b.priority - a.priority);
 
     return groups;
-}
-
-export function buildSynthesisPrompt(
-    findings: RecordedFinding[],
-    groups: FileGroup[],
-    totalFiles: number
-): string {
-    const groupSummary = groups
-        .map((g) => `• ${g.label}: ${g.files.join(', ')}`)
-        .join('\n');
-
-    if (findings.length === 0) {
-        return (
-            `Investigation subagents have examined all ${totalFiles} changed files across ${groups.length} groups:\n${groupSummary}\n\n` +
-            'No issues were found during investigation. ' +
-            'Write a brief approval review acknowledging the investigation was thorough, then call submit_review.'
-        );
-    }
-
-    const findingList = findings
-        .map(
-            (f) =>
-                `[${f.id}] ${f.severity} — ${f.title}\n  File: ${f.file}:${f.lineRange[0]}-${f.lineRange[1]}\n  ${f.description}`
-        )
-        .join('\n\n');
-
-    return (
-        `Investigation subagents have examined all ${totalFiles} changed files across ${groups.length} groups:\n${groupSummary}\n\n` +
-        `They recorded ${findings.length} finding(s):\n\n${findingList}\n\n` +
-        'Write a structured code review based on these findings. ' +
-        'Each finding MUST appear in your review — do NOT silently drop any. ' +
-        'If you disagree with a finding, call retract_finding with your reason. ' +
-        'Then call submit_review.'
-    );
 }
