@@ -102,7 +102,7 @@ export class PostAnalysisPipeline {
                         '\n\nComplete these steps NOW, then call submit_review again.'
                 );
 
-                const WORKFLOW_BUDGET = 10;
+                const WORKFLOW_BUDGET = 30;
                 await options.conversationRunner.run(
                     {
                         systemPrompt: options.systemPrompt,
