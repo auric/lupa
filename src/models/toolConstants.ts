@@ -65,6 +65,7 @@ export const INVESTIGATION_TOOLS = [
     'find_files_by_pattern',
     'list_directory',
     'get_symbols_overview',
+    'batch_tools',
 ] as const;
 
 /**
