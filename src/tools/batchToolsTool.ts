@@ -45,16 +45,16 @@ Example: Read two files and search for a pattern simultaneously:
   { "tool": "read_file", "args": { "file_path": "src/main.ts" } },
   { "tool": "read_file", "args": { "file_path": "src/utils.ts" } },
   { "tool": "search_for_pattern", "args": { "pattern": "TODO" } }
-]}`;
+]}
+
+IMPORTANT: "calls" must be a JSON array, not a string. Do NOT stringify the array.`;
 
     schema = z.object({
         calls: z
             .array(callSchema)
-            .min(2)
+            .min(1)
             .max(MAX_BATCH_SIZE)
-            .describe(
-                'Array of tool calls to execute in parallel. Minimum 2 (no point batching 1 call).'
-            ),
+            .describe('Array of tool calls to execute in parallel.'),
     });
 
     /**
@@ -68,14 +68,9 @@ Example: Read two files and search for a pattern simultaneously:
     ): Record<string, unknown> {
         let calls = args.calls ?? args.tools;
 
-        // Parse JSON string
+        // Parse JSON string — LLMs sometimes stringify the calls array
         if (typeof calls === 'string') {
-            try {
-                calls = JSON.parse(calls);
-            } catch {
-                // Leave as-is for Zod to reject
-                return { calls };
-            }
+            calls = this.tryParseJsonString(calls);
         }
 
         // Wrap single call in array
@@ -232,5 +227,49 @@ Example: Read two files and search for a pattern simultaneously:
             Log.error(`batch_tools: unexpected error`, error);
             return toolError(`Batch execution failed: ${String(error)}`);
         }
+    }
+
+    /**
+     * Attempt to parse a JSON string into an array.
+     * Handles trimming, double-encoding, and markdown code fences.
+     * Returns the original string if all attempts fail (Zod will reject it).
+     */
+    private tryParseJsonString(value: string): unknown {
+        const cleaned = value.trim();
+
+        // Try direct parse — if result is an array/object, we're done.
+        // If result is still a string, it was double-encoded; parse again.
+        try {
+            const parsed = JSON.parse(cleaned);
+            if (typeof parsed === 'string') {
+                // Double-encoded: parse the inner string
+                try {
+                    return JSON.parse(parsed);
+                } catch {
+                    // Inner parse failed, return outer result
+                    return parsed;
+                }
+            }
+            return parsed;
+        } catch {
+            // continue to fallback attempts
+        }
+
+        // Strip markdown code fences: ```json ... ```
+        const fenceMatch = cleaned.match(
+            /^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/
+        );
+        if (fenceMatch?.[1]) {
+            try {
+                return JSON.parse(fenceMatch[1].trim());
+            } catch {
+                // continue
+            }
+        }
+
+        Log.warn(
+            `batch_tools: could not parse 'calls' JSON string (${cleaned.length} chars), first 200: ${cleaned.slice(0, 200)}`
+        );
+        return value;
     }
 }

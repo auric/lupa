@@ -135,11 +135,11 @@ describe('BatchToolsTool', () => {
             expect(result.success).toBe(false);
         });
 
-        it('should reject single call (min 2)', () => {
+        it('should accept single call (min 1)', () => {
             const result = batchTool.schema.safeParse({
                 calls: [{ tool: 'read_file', args: { file_path: 'a.ts' } }],
             });
-            expect(result.success).toBe(false);
+            expect(result.success).toBe(true);
         });
 
         it('should reject missing tool name', () => {
@@ -181,6 +181,28 @@ describe('BatchToolsTool', () => {
                 { tool: 'search_for_pattern', args: { pattern: 'foo' } },
             ];
             const args = { calls: JSON.stringify(calls) };
+            const normalized = batchTool.normalizeArgs(args);
+            expect(normalized.calls).toEqual(calls);
+        });
+
+        it('should parse double-encoded JSON string calls', () => {
+            const calls = [
+                { tool: 'read_file', args: { file_path: 'a.ts' } },
+                { tool: 'search_for_pattern', args: { pattern: 'foo' } },
+            ];
+            const args = { calls: JSON.stringify(JSON.stringify(calls)) };
+            const normalized = batchTool.normalizeArgs(args);
+            expect(normalized.calls).toEqual(calls);
+        });
+
+        it('should parse calls wrapped in markdown code fences', () => {
+            const calls = [
+                { tool: 'read_file', args: { file_path: 'a.ts' } },
+                { tool: 'search_for_pattern', args: { pattern: 'foo' } },
+            ];
+            const args = {
+                calls: '```json\n' + JSON.stringify(calls) + '\n```',
+            };
             const normalized = batchTool.normalizeArgs(args);
             expect(normalized.calls).toEqual(calls);
         });
