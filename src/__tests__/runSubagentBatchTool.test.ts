@@ -1008,9 +1008,12 @@ describe('RunSubagentBatchTool', () => {
             );
 
             expect(result.metadata?.nestedToolCalls).toHaveLength(2);
-            expect(result.metadata?.nestedToolCalls).toEqual(
-                expect.arrayContaining([toolCall1, toolCall2])
-            );
+            // Each entry is a synthetic per-subagent record with nested calls
+            const subagentRecords = result.metadata!.nestedToolCalls!;
+            expect(subagentRecords[0]!.toolName).toBe('run_subagent_batch');
+            expect(subagentRecords[0]!.nestedCalls).toEqual([toolCall1]);
+            expect(subagentRecords[1]!.toolName).toBe('run_subagent_batch');
+            expect(subagentRecords[1]!.nestedCalls).toEqual([toolCall2]);
         });
 
         it('should sum executionTimeMs across subagents', async () => {

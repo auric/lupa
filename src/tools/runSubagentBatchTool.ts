@@ -622,7 +622,7 @@ RULES:
     }
 
     private aggregateMetadata(outcomes: TaskOutcome[]): ToolResultMetadata {
-        const allToolCalls: ToolCallRecord[] = [];
+        const perSubagentRecords: ToolCallRecord[] = [];
         let totalExecutionTimeMs = 0;
         let totalIterationsUsed = 0;
 
@@ -630,7 +630,23 @@ RULES:
             if (outcome.status !== 'completed') {
                 continue;
             }
-            allToolCalls.push(...outcome.result.toolCalls);
+
+            // Create a synthetic ToolCallRecord per subagent so the webview
+            // renders each as its own expandable InlineAgent entry.
+            perSubagentRecords.push({
+                id: `subagent-${outcome.subagentId}`,
+                toolName: 'run_subagent_batch',
+                arguments: { task: outcome.allocation.task },
+                result: outcome.result.response,
+                success: outcome.result.success,
+                error: outcome.result.error,
+                durationMs: undefined,
+                timestamp: Date.now(),
+                nestedCalls: outcome.result.toolCalls,
+                executionTimeMs: outcome.result.executionTimeMs,
+                iterationsUsed: outcome.result.iterationsUsed,
+            });
+
             if (outcome.result.executionTimeMs !== undefined) {
                 totalExecutionTimeMs += outcome.result.executionTimeMs;
             }
@@ -640,7 +656,7 @@ RULES:
         }
 
         return {
-            nestedToolCalls: allToolCalls,
+            nestedToolCalls: perSubagentRecords,
             executionTimeMs: totalExecutionTimeMs,
             iterationsUsed: totalIterationsUsed,
         };
