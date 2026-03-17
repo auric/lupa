@@ -1,10 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { RecordedFinding } from '../types/findingTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
-import {
-    DEFAULT_PROFILE,
-    getCalibrationProfile,
-} from '../models/modelCalibration';
+import { DEFAULT_PROFILE } from '../models/modelCalibration';
 import {
     scoreFinding,
     scoreAll,
@@ -106,7 +103,7 @@ describe('findingScorer', () => {
             // Total = 95
             expect(score.overallScore).toBeGreaterThanOrEqual(90);
             expect(score.recommendation).toBe('keep');
-            expect(score.signals).toHaveLength(9);
+            expect(score.signals).toHaveLength(11);
         });
 
         it('should give low score with no supporting evidence', () => {
@@ -154,10 +151,6 @@ describe('findingScorer', () => {
         it('should give dismissive model bonus over aggressive model', () => {
             const finding = makeFinding();
 
-            const dismissiveProfile = getCalibrationProfile(
-                'gpt-4.1',
-                'gpt-4.1'
-            );
             const aggressiveContext = makeContext({
                 calibrationProfile: {
                     ...DEFAULT_PROFILE,
@@ -166,7 +159,11 @@ describe('findingScorer', () => {
                 },
             });
             const dismissiveContext = makeContext({
-                calibrationProfile: dismissiveProfile,
+                calibrationProfile: {
+                    ...DEFAULT_PROFILE,
+                    findingBias: 'dismissive' as const,
+                    name: 'test-dismissive',
+                },
             });
 
             const dismissiveScore = scoreFinding(finding, dismissiveContext);
@@ -422,6 +419,225 @@ describe('findingScorer', () => {
             expect(absenceScore.overallScore).toBeLessThan(
                 normalScore.overallScore
             );
+        });
+    });
+
+    describe('affectedComponentVerified signal', () => {
+        it('should give bonus when affected component symbol is found in tool call args', () => {
+            const finding = makeFinding({
+                affectedComponent: 'parseConfig()',
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'find_symbol',
+                        arguments: {
+                            symbol: 'parseConfig',
+                            file_path: 'src/services/foo.ts',
+                        },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-2',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/services/foo.ts' },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'affectedComponentVerified'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(15);
+        });
+
+        it('should penalize when affected component symbol is NOT in any tool call', () => {
+            const finding = makeFinding({
+                affectedComponent: 'handleUserSession()',
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/services/foo.ts' },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'affectedComponentVerified'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(-5);
+        });
+    });
+
+    describe('crossFileEvidence signal', () => {
+        it('should give max bonus for 3+ distinct files investigated', () => {
+            const finding = makeFinding({
+                file: 'src/services/foo.ts',
+                affectedComponent: 'processData()',
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/services/foo.ts' },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-2',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/models/bar.ts' },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-3',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/utils/helpers.ts' },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'crossFileEvidence'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(10);
+            expect(signal.rawValue).toBeGreaterThanOrEqual(3);
+        });
+
+        it('should give no bonus for single-file investigation', () => {
+            const finding = makeFinding({
+                file: 'src/services/foo.ts',
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/services/foo.ts' },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'crossFileEvidence'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(0);
+            expect(signal.rawValue).toBe(1);
+        });
+
+        it('should give moderate bonus for 2-file investigation', () => {
+            const finding = makeFinding({
+                file: 'src/services/foo.ts',
+                affectedComponent: 'validateInput()',
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'find_symbol',
+                        arguments: {
+                            symbol: 'validateInput',
+                            file_path: 'src/services/foo.ts',
+                        },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-2',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/models/schema.ts' },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'crossFileEvidence'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(5);
+            expect(signal.rawValue).toBe(2);
+        });
+    });
+
+    describe('combined new signals: TP vs FP scenarios', () => {
+        it('should score high for cross-module verified TP pattern', () => {
+            const finding = makeFinding({
+                file: 'src/services/auth.ts',
+                affectedComponent: 'SessionManager.validateToken()',
+                supportingToolCalls: ['call-1', 'call-2', 'call-3'],
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'find_symbol',
+                        arguments: {
+                            symbol: 'SessionManager',
+                            file_path: 'src/services/auth.ts',
+                        },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-2',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/models/session.ts' },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-3',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/utils/crypto.ts' },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const componentSignal = score.signals.find(
+                (s) => s.signal === 'affectedComponentVerified'
+            )!;
+            const crossFileSignal = score.signals.find(
+                (s) => s.signal === 'crossFileEvidence'
+            )!;
+            expect(componentSignal.contribution).toBe(15);
+            expect(crossFileSignal.contribution).toBe(10);
+        });
+
+        it('should score low for single-file speculative FP pattern', () => {
+            const finding = makeFinding({
+                file: 'src/services/foo.ts',
+                affectedComponent: 'unknownFunction()',
+                supportingToolCalls: [],
+                disproof: { attempted: false, method: '', result: '' },
+                lspValidation: undefined,
+                description: "The function doesn't check for null",
+                failureMechanism: 'missing_null_check',
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/services/foo.ts' },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const componentSignal = score.signals.find(
+                (s) => s.signal === 'affectedComponentVerified'
+            )!;
+            const crossFileSignal = score.signals.find(
+                (s) => s.signal === 'crossFileEvidence'
+            )!;
+            expect(componentSignal.contribution).toBe(-5);
+            expect(crossFileSignal.contribution).toBe(0);
+            expect(score.recommendation).toBe('drop');
         });
     });
 });

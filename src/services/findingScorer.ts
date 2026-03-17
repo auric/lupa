@@ -337,6 +337,103 @@ function scoreAbsencePattern(finding: RecordedFinding): SignalBreakdown {
     };
 }
 
+const SYMBOL_TOKEN_PATTERN = /\b([a-zA-Z_]\w{2,})\b/g;
+
+const TOOL_ARG_SYMBOL_FIELDS: ReadonlySet<string> = new Set([
+    'symbol',
+    'symbol_name',
+    'relative_path',
+    'file_path',
+    'file',
+    'query',
+]);
+
+function scoreAffectedComponentVerified(
+    finding: RecordedFinding,
+    toolCallRecords: ToolCallRecord[]
+): SignalBreakdown {
+    const weight = 15;
+    const tokens = new Set<string>();
+    for (const match of finding.affectedComponent.matchAll(
+        SYMBOL_TOKEN_PATTERN
+    )) {
+        tokens.add(match[1]!);
+    }
+
+    if (tokens.size === 0) {
+        return {
+            signal: 'affectedComponentVerified',
+            rawValue: 0,
+            weight,
+            contribution: 0,
+        };
+    }
+
+    const verified = [...tokens].some((token) =>
+        toolCallRecords.some((r) => {
+            for (const [key, val] of Object.entries(r.arguments)) {
+                if (!TOOL_ARG_SYMBOL_FIELDS.has(key)) {
+                    continue;
+                }
+                if (typeof val === 'string' && val.includes(token)) {
+                    return true;
+                }
+            }
+            return false;
+        })
+    );
+
+    return {
+        signal: 'affectedComponentVerified',
+        rawValue: verified ? 1 : 0,
+        weight,
+        contribution: verified ? 15 : -5,
+    };
+}
+
+function scoreCrossFileEvidence(
+    finding: RecordedFinding,
+    toolCallRecords: ToolCallRecord[]
+): SignalBreakdown {
+    const weight = 10;
+
+    const normalize = (p: string) => p.replace(/\\/g, '/');
+    const distinctFiles = new Set<string>();
+    distinctFiles.add(normalize(finding.file));
+
+    for (const record of toolCallRecords) {
+        for (const val of Object.values(record.arguments)) {
+            if (typeof val !== 'string') {
+                continue;
+            }
+            const norm = normalize(val);
+            if (
+                norm.includes('/') &&
+                /\.\w+$/.test(norm) &&
+                toolCallRecords.some((r) => toolCallMatchesFile(r, norm))
+            ) {
+                distinctFiles.add(norm);
+            }
+        }
+    }
+
+    let contribution: number;
+    if (distinctFiles.size >= 3) {
+        contribution = 10;
+    } else if (distinctFiles.size === 2) {
+        contribution = 5;
+    } else {
+        contribution = 0;
+    }
+
+    return {
+        signal: 'crossFileEvidence',
+        rawValue: distinctFiles.size,
+        weight,
+        contribution,
+    };
+}
+
 function getRecommendationFromScore(
     score: number
 ): 'keep' | 'drop' | 'downgrade' {
@@ -365,6 +462,8 @@ export function scoreFinding(
         scoreCategoryRisk(finding),
         scoreDescriptionQuality(finding),
         scoreAbsencePattern(finding),
+        scoreAffectedComponentVerified(finding, flatRecords),
+        scoreCrossFileEvidence(finding, flatRecords),
     ];
 
     if (
