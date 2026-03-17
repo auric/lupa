@@ -9,12 +9,12 @@ describe('modelCalibration', () => {
                 'gpt-4.1-2025-04-14'
             );
             expect(profile.name).toBe('gpt-4.1');
-            expect(profile.findingBias).toBe('dismissive');
-            expect(profile.challengeMode).toBe('prosecution');
+            expect(profile.findingBias).toBe('balanced');
+            expect(profile.challengeMode).toBe('devils-advocate');
             expect(profile.includeFalsePositiveGuide).toBe(true);
             expect(profile.includeRevertTest).toBe(true);
             expect(profile.includeAgenticPreamble).toBe(true);
-            expect(profile.evidenceThreshold).toBe('high');
+            expect(profile.evidenceThreshold).toBe('medium');
         });
 
         it('returns GPT-4o profile for gpt-4o family', () => {
@@ -23,8 +23,8 @@ describe('modelCalibration', () => {
                 'gpt-4o-2024-11-20'
             );
             expect(profile.name).toBe('gpt-4o');
-            expect(profile.findingBias).toBe('dismissive');
-            expect(profile.challengeMode).toBe('prosecution');
+            expect(profile.findingBias).toBe('balanced');
+            expect(profile.challengeMode).toBe('devils-advocate');
             expect(profile.includeFalsePositiveGuide).toBe(true);
             expect(profile.includeRevertTest).toBe(false);
         });
@@ -107,33 +107,30 @@ describe('modelCalibration', () => {
     });
 
     describe('investigation protocols', () => {
-        it('GPT-4.1 has the most structured investigation protocol', () => {
+        it('GPT-4.1 has a minimal investigation protocol', () => {
             const profile = getCalibrationProfile('gpt-4.1', 'gpt-4.1');
-            expect(
-                profile.investigationProtocol.minToolCallsBeforeFirstFinding
-            ).toBe(5);
-            expect(
-                profile.investigationProtocol.requiredToolsBeforeDone
-            ).toContain('get_file_diff');
-            expect(
-                profile.investigationProtocol.requiredToolsBeforeDone
-            ).toContain('find_symbol');
-            expect(
-                profile.investigationProtocol.investigationPreamble
-            ).toContain('keep investigating');
-        });
-
-        it('GPT-4o has moderate investigation requirements', () => {
-            const profile = getCalibrationProfile('gpt-4o', 'gpt-4o');
             expect(
                 profile.investigationProtocol.minToolCallsBeforeFirstFinding
             ).toBe(3);
             expect(
                 profile.investigationProtocol.requiredToolsBeforeDone
             ).toHaveLength(0);
+            expect(profile.investigationProtocol.investigationPreamble).toBe(
+                ''
+            );
+        });
+
+        it('GPT-4o has minimal investigation requirements', () => {
+            const profile = getCalibrationProfile('gpt-4o', 'gpt-4o');
+            expect(
+                profile.investigationProtocol.minToolCallsBeforeFirstFinding
+            ).toBe(2);
             expect(
                 profile.investigationProtocol.requiredToolsBeforeDone
-            ).not.toContain('find_symbol');
+            ).toHaveLength(0);
+            expect(profile.investigationProtocol.investigationPreamble).toBe(
+                ''
+            );
         });
 
         it('Claude has minimal investigation protocol', () => {

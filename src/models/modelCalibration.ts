@@ -87,30 +87,25 @@ export interface ModelCalibrationProfile {
 
 const GPT_41_PROFILE: ModelCalibrationProfile = {
     name: 'gpt-4.1',
-    findingBias: 'dismissive',
-    challengeMode: 'prosecution',
+    findingBias: 'balanced',
+    challengeMode: 'devils-advocate',
     includeFalsePositiveGuide: true,
     includeRevertTest: true,
     includeAgenticPreamble: true,
-    evidenceThreshold: 'high',
+    evidenceThreshold: 'medium',
     adversarialVerificationThreshold: 'LOW',
     adversarialBudget: 20,
     investigationProtocol: {
-        minToolCallsBeforeFirstFinding: 5,
-        requiredToolsBeforeDone: ['get_file_diff', 'find_symbol'],
-        investigationPreamble:
-            'You MUST keep investigating until you have thoroughly examined every assigned file. ' +
-            'Do NOT stop early or yield control prematurely. ' +
-            'For EACH changed function: (1) read the diff, (2) read the full implementation with find_symbol, ' +
-            '(3) trace callers with find_usages, (4) verify claims with validate_claim. ' +
-            'You MUST plan extensively before each tool call and reflect on results after.',
+        minToolCallsBeforeFirstFinding: 3,
+        requiredToolsBeforeDone: [],
+        investigationPreamble: '',
     },
 };
 
 const GPT_4O_PROFILE: ModelCalibrationProfile = {
     name: 'gpt-4o',
-    findingBias: 'dismissive',
-    challengeMode: 'prosecution',
+    findingBias: 'balanced',
+    challengeMode: 'devils-advocate',
     includeFalsePositiveGuide: true,
     includeRevertTest: false,
     includeAgenticPreamble: true,
@@ -118,12 +113,9 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
     adversarialVerificationThreshold: 'LOW',
     adversarialBudget: 20,
     investigationProtocol: {
-        minToolCallsBeforeFirstFinding: 3,
+        minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: [],
-        investigationPreamble:
-            'Investigate thoroughly before recording findings. ' +
-            'Use validate_claim to verify factual claims before recording. ' +
-            'Do not stop at diff reading — trace dependencies and verify assumptions with tools.',
+        investigationPreamble: '',
     },
 };
 
