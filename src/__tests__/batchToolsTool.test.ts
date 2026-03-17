@@ -5,6 +5,7 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ITool } from '../tools/ITool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { TokenConstants } from '../models/tokenConstants';
 import { createMockExecutionContext } from './testUtils/mockFactories';
 import type { ExecutionContext } from '../types/executionContext';
 
@@ -63,6 +64,24 @@ class MockFailingTool implements ITool {
     }
 }
 
+class MockLargeOutputTool implements ITool {
+    name = 'large_output_tool';
+    description = 'Returns a large output';
+    schema = z.object({ size: z.number() });
+
+    getVSCodeTool() {
+        return {
+            name: this.name,
+            description: this.description,
+            inputSchema: z.toJSONSchema(this.schema),
+        };
+    }
+
+    async execute(args: any, _context: ExecutionContext): Promise<ToolResult> {
+        return toolSuccess('X'.repeat(args.size));
+    }
+}
+
 describe('BatchToolsTool', () => {
     let batchTool: BatchToolsTool;
     let toolRegistry: ToolRegistry;
@@ -75,6 +94,7 @@ describe('BatchToolsTool', () => {
         toolRegistry.registerTool(new MockReadFileTool());
         toolRegistry.registerTool(new MockSearchTool());
         toolRegistry.registerTool(new MockFailingTool());
+        toolRegistry.registerTool(new MockLargeOutputTool());
         toolRegistry.registerTool(batchTool);
 
         context = createMockExecutionContext();
@@ -451,6 +471,30 @@ describe('BatchToolsTool', () => {
 
             // Should succeed - 3 calls total (batch_tools + 2 inner) = at limit
             expect(result.success).toBe(true);
+        });
+
+        it('should truncate individual results when combined output would exceed max chars', async () => {
+            // Each tool returns 40K chars; 2 calls = 80K which exceeds 60K limit
+            const result = await batchTool.execute(
+                {
+                    calls: [
+                        { tool: 'large_output_tool', args: { size: 40_000 } },
+                        { tool: 'large_output_tool', args: { size: 40_000 } },
+                    ],
+                },
+                context
+            );
+
+            expect(result.success).toBe(true);
+            const data = result.data!;
+
+            // The combined output must fit within MAX_TOOL_RESPONSE_CHARS
+            expect(data.length).toBeLessThanOrEqual(
+                TokenConstants.MAX_TOOL_RESPONSE_CHARS
+            );
+
+            // At least one result should have been truncated
+            expect(data).toContain('(truncated from');
         });
     });
 });

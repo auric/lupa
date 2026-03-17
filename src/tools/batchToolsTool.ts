@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
+import { TokenConstants } from '../models/tokenConstants';
 import { Log } from '../services/loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 
@@ -10,6 +11,12 @@ import { isCancellationError } from '../utils/asyncUtils';
  * Prevents token exhaustion from excessively large batches.
  */
 const MAX_BATCH_SIZE = 15;
+
+/**
+ * Reserve chars for summary line, separators, and headers.
+ * The actual per-result budget is computed dynamically from the tool response limit.
+ */
+const OVERHEAD_CHARS_PER_RESULT = 100;
 
 /**
  * Tools that cannot be called via batch_tools.
@@ -187,15 +194,32 @@ Example: Read two files and search for a pattern simultaneously:
                 `batch_tools: completed ${results.length} calls (${succeeded} succeeded, ${failed} failed) [${elapsed}ms]`
             );
 
+            // Compute per-result budget to keep total under ToolExecutor's response limit.
+            // Reserve 500 chars for summary + formatting overhead.
+            const maxTotal = TokenConstants.MAX_TOOL_RESPONSE_CHARS - 500;
+            const perResultBudget = Math.floor(
+                (maxTotal - results.length * OVERHEAD_CHARS_PER_RESULT) /
+                    results.length
+            );
+
             // Format results as indexed sections for clear LLM consumption
+            let totalChars = 0;
             const sections = results.map((result, i) => {
                 const call = calls[i]!;
                 const header = `[${i + 1}/${results.length}] ${call.tool}`;
+                let section: string;
                 if (result.success) {
-                    return `${header}: ✓\n${result.result ?? '(no output)'}`;
+                    const body = result.result ?? '(no output)';
+                    if (body.length > perResultBudget) {
+                        section = `${header}: ✓ (truncated from ${body.length} to ${perResultBudget} chars)\n${body.slice(0, perResultBudget)}`;
+                    } else {
+                        section = `${header}: ✓\n${body}`;
+                    }
                 } else {
-                    return `${header}: ✗ ${result.error ?? 'unknown error'}`;
+                    section = `${header}: ✗ ${result.error ?? 'unknown error'}`;
                 }
+                totalChars += section.length;
+                return section;
             });
 
             const summary = `Batch complete: ${succeeded}/${results.length} succeeded [${elapsed}ms]`;
