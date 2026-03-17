@@ -304,6 +304,7 @@ export class ToolTestingWebviewService {
                 this.toolRegistry,
                 executionContext
             );
+            executionContext.toolExecutor = executor;
 
             const results = await executor.executeTools([
                 {

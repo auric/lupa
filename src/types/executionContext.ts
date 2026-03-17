@@ -6,6 +6,7 @@ import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { FindingStore } from '../sessions/findingStore';
 import type { DiffHunk } from './contextTypes';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
+import type { ToolExecutor } from '../models/toolExecutor';
 
 /**
  * Context passed to tools during execution.
@@ -111,4 +112,12 @@ export interface ExecutionContext {
         uninvestigatedFiles: string[];
         ready: boolean;
     };
+
+    /**
+     * Reference to the ToolExecutor for the current analysis.
+     * Used by batch_tools to dispatch inner tool calls through the normal
+     * validation/execution pipeline.
+     * Set after ToolExecutor construction at each creation site.
+     */
+    toolExecutor?: ToolExecutor;
 }

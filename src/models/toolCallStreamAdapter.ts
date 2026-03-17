@@ -142,6 +142,13 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             case 'run_subagent_batch':
                 return '🤖 Running subagent investigation...';
 
+            case 'batch_tools': {
+                const callCount = Array.isArray(args.calls)
+                    ? args.calls.length
+                    : '?';
+                return `⚡ Running ${callCount} tools in parallel...`;
+            }
+
             case 'think':
                 return `🧠 Thinking about \`${sanitizeForMarkdown(args.topic, 'analysis')}\`...`;
 

@@ -24,7 +24,7 @@ export function generateAnalysisMethodology(
 Before each tool call, briefly explain what you learned from the previous result and what you plan to do next. This keeps your analysis grounded in evidence.
 
 ### Step 1: Create Your Plan (MANDATORY - FIRST ACTION)
-⚠️ **Your first turn MUST call both \`get_pr_context\` and \`update_plan\`.** Call them in the same turn (parallel). Do not investigate before planning.
+⚠️ **Your first turn MUST call both \`get_pr_context\` and \`update_plan\`.** Call them in the same turn (parallel), or use \`batch_tools\` to combine them if needed. Do not investigate before planning.
 
 Read the PR commit messages from \`get_pr_context\` to understand the developer's intent, then call \`update_plan\` with this structure:
 \`\`\`markdown

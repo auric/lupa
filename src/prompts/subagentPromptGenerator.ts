@@ -330,7 +330,7 @@ If you find NO issues after investigation, state what you checked and why it pas
 
 **Technical Limits:**
 - You have **${maxIterations} tool iterations** - use them wisely
-- **Parallelize tool calls**: Make ALL independent tool calls in the same response (e.g. multiple \`find_symbol\`${hasDiffTools ? ', `get_file_diff`' : ''}${canRecurse ? ', or `run_subagent_batch`' : ''} calls at once). Do NOT call tools one at a time when they are independent
+- **Parallelize tool calls**: Make ALL independent tool calls in the same response (e.g. multiple \`find_symbol\`${hasDiffTools ? ', `get_file_diff`' : ''}${canRecurse ? ', or `run_subagent_batch`' : ''} calls at once). Do NOT call tools one at a time when they are independent. Use \`batch_tools\` if you cannot call multiple tools per turn natively
 ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in your task' : '- You CANNOT see the PR diff - only what the parent provided in context'}
 - You CANNOT execute code or run tests
 

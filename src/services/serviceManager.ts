@@ -37,6 +37,7 @@ import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { ThinkTool } from '../tools/thinkTool';
 import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
 import { RunSubagentBatchTool } from '../tools/runSubagentBatchTool';
+import { BatchToolsTool } from '../tools/batchToolsTool';
 import { UpdatePlanTool } from '../tools/updatePlanTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { GetFileDiffTool } from '../tools/getFileDiffTool';
@@ -216,6 +217,7 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry,
             utilityContext
         );
+        utilityContext.toolExecutor = this.services.toolExecutor;
         this.services.conversationManager = new ConversationManager();
         // Note: SubagentSessionManager and SubagentExecutor are created per-analysis
         // in ToolCallingAnalysisProvider for concurrent-safety.
@@ -335,6 +337,9 @@ export class ServiceManager implements vscode.Disposable {
                 this.services.workspaceSettings!
             );
             this.services.toolRegistry!.registerTool(runSubagentBatchTool);
+
+            // Register batch_tools meta-tool for parallel tool execution
+            this.services.toolRegistry!.registerTool(new BatchToolsTool());
 
             // Register finding management tools
             this.services.toolRegistry!.registerTool(new RecordFindingTool());

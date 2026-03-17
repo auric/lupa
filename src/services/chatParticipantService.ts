@@ -288,13 +288,18 @@ export class ChatParticipantService implements vscode.Disposable {
                 request.model.family,
                 request.model.id
             );
-            const toolExecutor = new ToolExecutor(this.deps.toolRegistry, {
+            const explorationContext: ExecutionContext = {
                 subagentSessionManager,
                 subagentExecutor,
                 cancellationToken: token,
                 calibrationProfile: explorationProfile,
                 toolCallCounts: new Map(),
-            });
+            };
+            const toolExecutor = new ToolExecutor(
+                this.deps.toolRegistry,
+                explorationContext
+            );
+            explorationContext.toolExecutor = toolExecutor;
 
             const runner = new ConversationRunner(client, toolExecutor);
             const conversation = new ConversationManager();
@@ -591,6 +596,7 @@ export class ChatParticipantService implements vscode.Disposable {
             this.deps!.toolRegistry,
             executionContext
         );
+        executionContext.toolExecutor = toolExecutor;
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
         stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);

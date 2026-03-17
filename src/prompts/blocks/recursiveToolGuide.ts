@@ -21,6 +21,7 @@ export function generateRecursiveToolGuide(): string {
 | \`submit_review\` | **FINAL ACTION** — deliver aggregated, structured review |
 | \`record_finding\` | Commit findings as discovered — survives timeout |
 | \`validate_claim\` | LSP-verify critical claims before including in final review |
+| \`batch_tools\` | Wrap multiple independent tool calls into one parallel invocation |
 
 ⚠️ **Read at most 1 diff for orientation.** Do NOT call \`get_file_diff\` more than once or use \`read_file\`. Sub-agents read all remaining diffs.
 

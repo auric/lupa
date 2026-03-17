@@ -51,6 +51,7 @@ const ALL_TOOL_NAMES: readonly string[] = [
     ...DIFF_TOOLS,
     'validate_claim',
     'run_subagent_batch',
+    'batch_tools',
     'think',
 ];
 

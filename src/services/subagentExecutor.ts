@@ -219,6 +219,7 @@ export class SubagentExecutor {
                 childContext,
                 maxIterations * ANALYSIS_LIMITS.toolCallMultiplier
             );
+            childContext.toolExecutor = toolExecutor;
             const conversationRunner = new ConversationRunner(
                 this.llmClient,
                 toolExecutor
