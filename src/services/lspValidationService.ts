@@ -18,6 +18,35 @@ import type { GitOperationsManager } from './gitOperationsManager';
 
 const LSP_VALIDATION_TIMEOUT = 2000;
 
+const WORD_CHAR = /\w/;
+
+/**
+ * Find a symbol in a line using word-boundary matching.
+ * Prevents `user` from matching inside `userId`.
+ */
+function findWordBoundaryMatch(lineText: string, symbol: string): number {
+    let startIndex = 0;
+    while (startIndex <= lineText.length - symbol.length) {
+        const idx = lineText.indexOf(symbol, startIndex);
+        if (idx < 0) {
+            return -1;
+        }
+        const charBefore = idx > 0 ? lineText[idx - 1] : '';
+        const charAfter =
+            idx + symbol.length < lineText.length
+                ? lineText[idx + symbol.length]
+                : '';
+        if (
+            (!charBefore || !WORD_CHAR.test(charBefore)) &&
+            (!charAfter || !WORD_CHAR.test(charAfter))
+        ) {
+            return idx;
+        }
+        startIndex = idx + 1;
+    }
+    return -1;
+}
+
 export class LspValidationService implements vscode.Disposable {
     constructor(private readonly gitOps: GitOperationsManager) {}
 
@@ -107,7 +136,7 @@ export class LspValidationService implements vscode.Disposable {
                 return undefined;
             }
             const lineText = document.lineAt(lineIndex).text;
-            const col = lineText.indexOf(symbol);
+            const col = findWordBoundaryMatch(lineText, symbol);
             if (col >= 0) {
                 return new vscode.Position(lineIndex, col);
             }
@@ -118,7 +147,7 @@ export class LspValidationService implements vscode.Disposable {
                     continue;
                 }
                 const adjText = document.lineAt(adjacentLine).text;
-                const adjCol = adjText.indexOf(symbol);
+                const adjCol = findWordBoundaryMatch(adjText, symbol);
                 if (adjCol >= 0) {
                     return new vscode.Position(adjacentLine, adjCol);
                 }

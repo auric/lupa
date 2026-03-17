@@ -125,7 +125,10 @@ function extractSymbolsResolved(
             continue;
         }
         const name = getStringArg(call.arguments, 'symbol_name');
-        const file = getStringArg(call.arguments, 'file_path') ?? 'unknown';
+        const file =
+            getStringArg(call.arguments, 'relative_path') ??
+            getStringArg(call.arguments, 'file_path') ??
+            'unknown';
         if (!name) {
             continue;
         }

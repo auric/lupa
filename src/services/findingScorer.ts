@@ -56,9 +56,21 @@ const SEVERITY_EVIDENCE_REQUIREMENTS: Record<FindingSeverity, number> = {
 
 function toolCallMatchesFile(record: ToolCallRecord, file: string): boolean {
     const normalizedFile = file.replace(/\\/g, '/');
-    const args = JSON.stringify(record.arguments).replace(/\\/g, '/');
     const fileName = normalizedFile.split('/').pop()!;
-    return args.includes(normalizedFile) || args.includes(fileName);
+    // Check structured argument fields for exact path matches
+    // instead of substring matching on serialized JSON
+    const argValues = Object.values(record.arguments).filter(
+        (v): v is string => typeof v === 'string'
+    );
+    return argValues.some((v) => {
+        const normalized = v.replace(/\\/g, '/');
+        return (
+            normalized === normalizedFile ||
+            normalized.endsWith(normalizedFile) ||
+            normalizedFile.endsWith(normalized) ||
+            normalized === fileName
+        );
+    });
 }
 
 function scoreSupportingToolCalls(
