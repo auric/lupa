@@ -6,7 +6,7 @@ import { LOG_LEVELS } from './loggingTypes';
  * These are set to generous values that work well for all cases.
  */
 export const ANALYSIS_LIMITS = {
-    maxIterations: 600,
+    maxIterations: 100,
     requestTimeoutSeconds: 240,
     maxSubagentsPerSession: 150,
     /**
