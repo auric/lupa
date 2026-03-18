@@ -59,7 +59,7 @@ describe('FeedbackStore', () => {
 
         await store.record({
             category: 'security',
-            severity: 'high',
+            severity: 'HIGH',
             modelFamily: 'gpt-4',
             verdict: 'accepted',
         });
@@ -79,13 +79,13 @@ describe('FeedbackStore', () => {
 
         await store.record({
             category: 'a',
-            severity: 'low',
+            severity: 'LOW',
             modelFamily: 'm1',
             verdict: 'accepted',
         });
         await store.record({
             category: 'b',
-            severity: 'high',
+            severity: 'HIGH',
             modelFamily: 'm2',
             verdict: 'rejected',
         });
@@ -99,32 +99,32 @@ describe('FeedbackStore', () => {
 
         await store.record({
             category: 'perf',
-            severity: 'medium',
+            severity: 'MEDIUM',
             modelFamily: 'gpt-4',
             verdict: 'accepted',
         });
         await store.record({
             category: 'perf',
-            severity: 'medium',
+            severity: 'MEDIUM',
             modelFamily: 'gpt-4',
             verdict: 'rejected',
         });
         await store.record({
             category: 'perf',
-            severity: 'medium',
+            severity: 'MEDIUM',
             modelFamily: 'gpt-4',
             verdict: 'rejected',
         });
         await store.record({
             category: 'perf',
-            severity: 'medium',
+            severity: 'MEDIUM',
             modelFamily: 'gpt-4',
             verdict: 'dismissed',
         });
         // Different model family — should not count
         await store.record({
             category: 'perf',
-            severity: 'medium',
+            severity: 'MEDIUM',
             modelFamily: 'claude',
             verdict: 'rejected',
         });
@@ -142,13 +142,13 @@ describe('FeedbackStore', () => {
 
         await store.record({
             category: 'sec',
-            severity: 'high',
+            severity: 'HIGH',
             modelFamily: 'gpt-4',
             verdict: 'rejected',
         });
         await store.record({
             category: 'sec',
-            severity: 'high',
+            severity: 'HIGH',
             modelFamily: 'gpt-4',
             verdict: 'accepted',
         });
@@ -166,7 +166,7 @@ describe('FeedbackStore', () => {
             {
                 id: 'existing-1',
                 category: 'bug',
-                severity: 'high',
+                severity: 'HIGH',
                 modelFamily: 'gpt-4',
                 verdict: 'accepted',
                 timestamp: '2025-01-01T00:00:00.000Z',
@@ -217,7 +217,7 @@ describe('FeedbackStore', () => {
             {
                 id: '1',
                 category: 'x',
-                severity: 'low',
+                severity: 'LOW',
                 modelFamily: 'm',
                 verdict: 'accepted',
                 timestamp: '2025-01-01T00:00:00.000Z',
@@ -239,7 +239,7 @@ describe('FeedbackStore', () => {
 
         await store.record({
             category: 'a',
-            severity: 'low',
+            severity: 'LOW',
             modelFamily: 'm',
             verdict: 'accepted',
         });
@@ -257,7 +257,7 @@ describe('FeedbackStore', () => {
 
         await store.record({
             category: 'a',
-            severity: 'low',
+            severity: 'LOW',
             modelFamily: 'm',
             verdict: 'accepted',
         });
@@ -272,7 +272,7 @@ describe('FeedbackStore', () => {
         const existingEntries = Array.from({ length: 1000 }, (_, i) => ({
             id: `old-${i}`,
             category: 'bulk',
-            severity: 'low',
+            severity: 'LOW',
             modelFamily: 'gpt-4',
             verdict: 'accepted' as const,
             timestamp: `2025-01-01T00:00:${String(i).padStart(2, '0')}.000Z`,
@@ -288,7 +288,7 @@ describe('FeedbackStore', () => {
         // Record one more — should trim oldest
         await store.record({
             category: 'new',
-            severity: 'high',
+            severity: 'HIGH',
             modelFamily: 'gpt-4',
             verdict: 'rejected',
         });
@@ -307,7 +307,7 @@ describe('FeedbackStore', () => {
 
         await store.record({
             category: 'x',
-            severity: 'low',
+            severity: 'LOW',
             modelFamily: 'm',
             verdict: 'accepted',
         });
