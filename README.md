@@ -26,7 +26,7 @@ Lupa is a VS Code extension for pull request analysis using GitHub Copilot model
 ## Features
 
 - 🔍 **Deep Code Analysis** — LLM-driven analysis with dynamic context gathering
-- 🛠️ **16 Specialized Tools** — Symbol lookup, file reading, grep search, diff access, usage finding, quality reasoning, and more
+- 🛠️ **Specialized Tools** — Symbol lookup, file reading, grep search, diff access, usage finding, quality reasoning, and more
 - 🤖 **Recursive Language Model (RLM)** — Diff-on-demand architecture where the LLM loads context via tools instead of receiving the full diff
 - 🌲 **Recursive Agent Tree** — Complex PRs decomposed into concern groups with sub-agents analyzing each in parallel via batch execution
 - 📊 **Rich Webview UI** — Interactive results with Markdown rendering and syntax highlighting
