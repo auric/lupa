@@ -59,10 +59,15 @@ export class ThinkTool extends BaseTool {
         const { topic, identified_risks, next_action } = args;
 
         const riskCount = identified_risks?.length ?? 0;
-        const topicLower = topic.toLowerCase();
-        const isEarlyCheckpoint = !topicLower.match(
-            /devil|advocate|synthesis|completion|final|alignment|progress|prosecution/
-        );
+
+        // Use call count instead of topic-name matching to determine early vs late checkpoints.
+        // Topic-name matching is gameable: dismissive models learned to name early topics
+        // "evidence synthesis" or "final assessment" to match the bypass regex.
+        // Call count is objective — the first few think calls are always hypothesis-generation
+        // checkpoints; later calls are naturally synthesis/devil's-advocate.
+        const MAX_EARLY_CHECKPOINT_CALLS = 2;
+        const thinkCallCount = context.toolCallCounts.get('think') ?? 0;
+        const isEarlyCheckpoint = thinkCallCount <= MAX_EARLY_CHECKPOINT_CALLS;
 
         const profile = context.calibrationProfile;
         const isDismissive = profile.findingBias === 'dismissive';
