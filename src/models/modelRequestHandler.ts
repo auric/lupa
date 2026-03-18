@@ -242,12 +242,30 @@ export class ModelRequestHandler {
                 timeoutReject = reject;
             });
 
+            // Explicit cancellation promise — ensures the race settles immediately
+            // when the user cancels, rather than relying on VS Code's stream
+            // implementation to notice the token and abort promptly.
+            const cancellationPromise = new Promise<never>((_, reject) => {
+                if (token.isCancellationRequested) {
+                    reject(new vscode.CancellationError());
+                    return;
+                }
+                token.onCancellationRequested(() => {
+                    reject(new vscode.CancellationError());
+                });
+            });
+            cancellationPromise.catch(() => {});
+
             // Start the initial inactivity timer
             resetTimeout();
 
-            // Race the stream consumption against inactivity timeout
+            // Race the stream consumption against inactivity timeout and user cancellation
             // When timeout wins, it also cancels the linked token to stop the stream
-            return await Promise.race([streamPromise, timeoutPromise]);
+            return await Promise.race([
+                streamPromise,
+                timeoutPromise,
+                cancellationPromise,
+            ]);
         } finally {
             if (timeoutId !== undefined) {
                 clearTimeout(timeoutId);
