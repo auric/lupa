@@ -110,7 +110,7 @@ RULES:
             tasks: z
                 .array(taskItem)
                 .min(1)
-                .max(10)
+                .max(20)
                 .describe(
                     'Array of investigation tasks. All tasks run in parallel.'
                 ),
