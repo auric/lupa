@@ -266,5 +266,40 @@ function getConfig(): Config | undefined { ... }
 - ❌ FALSE POSITIVE: ALL callers already handle the undefined case. Use find_usages to verify.
 - ✅ TRUE POSITIVE if: find_usages reveals callers that use the result without null check
 
+## Reportable Bug Categories (ONLY report findings in these categories)
+
+1. **Type/Contract mismatch** — function returns X but caller uses as Y, or API expects X but receives Y
+2. **Null/undefined dereference** — concrete code path where a value is used without null check
+3. **Missing error handling** — try/catch absent for operation that demonstrably throws on a reachable path
+4. **Resource leak** — resource opened but never closed on some code path (files, connections, subscriptions)
+5. **Security vulnerability** — injection, path traversal, auth bypass with an exploitable path you can trace
+6. **Logic error** — demonstrably wrong behavior for specific, concrete inputs you can name
+7. **Race condition** — evidence of concurrent access to shared mutable state (verify the runtime model first)
+
+### Categories to NEVER Report (even if you notice them)
+- Missing test coverage or deleted test files
+- Code style, formatting, or naming conventions
+- Missing documentation, JSDoc, or comments
+- Intentionally deleted files with zero remaining importers
+- "What if" scenarios without evidence the scenario occurs
+- Performance concerns without measurement data
+- Suggestions for future improvements
+
+## Finding Examples
+
+### GOOD finding (report findings like this):
+> **Type mismatch in data flow**: \`parseConfig()\` returns \`Config | undefined\` at line 45 of config.ts, but \`initApp()\` at line 89 of app.ts calls \`config.host\` without null check. When the config file is missing, \`parseConfig()\` returns \`undefined\` and this dereferences null.
+> Evidence: find_symbol(parseConfig) shows return type \`Config | undefined\`. find_usages(parseConfig) shows initApp calls it. validate_claim confirms no null check at line 89.
+
+### GOOD finding (report findings like this):
+> **Contract violation**: \`UserService.getUser()\` returns \`Promise<User | null>\` when user not found (line 34), but the caller at \`handleRequest\` line 78 destructures the result as \`{ name, email }\` without checking for null, causing "Cannot destructure property 'name' of null" at runtime.
+> Evidence: find_symbol(getUser, include_body: true) shows null return path. find_usages(getUser) shows handleRequest destructures without check.
+
+### BAD finding (DO NOT report findings like these):
+> ❌ "The deleted test file \`thinkTools.test.ts\` reduces test coverage" — This is a test coverage concern, not a bug.
+> ❌ "Consider adding error handling for edge cases in the new function" — Speculative; no concrete failing scenario identified.
+> ❌ "The function lacks JSDoc documentation" — Documentation suggestion, not a bug.
+> ❌ "If the input were null, this could crash" — No evidence that null is actually passed on any reachable code path.
+
 </finding_quality>`;
 }
