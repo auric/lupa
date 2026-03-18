@@ -53,6 +53,7 @@ Your parent agent already identified which files belong to your investigation �
             : '';
 
         // When canRecurse, the investigation approach defers to decomposition for large scopes
+        // All variants use "Describe Then Judge" — in a single think call, first describe what the code does, then identify risks
         const investigationSteps =
             canRecurse && hasDiffTools
                 ? `
@@ -60,24 +61,24 @@ Your parent agent already identified which files belong to your investigation �
    - **1-3 files**: Call \`get_file_diff\` ONCE with all file paths in the \`file_paths\` array, e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts", "c.ts"]})\`. Then investigate using steps 2-5 below.
    - **4+ files**: You **MUST** spawn sub-agents. Read 1 key diff to orient, then follow the **Decomposition Strategy** below.
 
-2. ⚠️ **Reasoning Checkpoint #1 — Hypothesis Generation**: Call \`think\` to plan your investigation:
-   - topic: "[filename] changes"
-   - analysis: what changed, what looks risky, what looks correct
-   - identified_risks: Note any specific hypotheses about what could go wrong, if you see potential concerns. Examples: missing error handling for edge case X, type narrowing gap when Y is null, inconsistency between this change and callers of Z. These are optional investigation leads, not requirements.
+2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both to identify real issues.
+
+3. **Trace Dependencies**: Use \`find_usages\` to understand callers of modified functions and whether changes affect them.
+
+4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+
+5. ⚠️ **Reasoning Checkpoint #1 — Describe Then Judge**: Call \`think\` to FIRST describe what the code does, THEN identify potential issues:
+   - topic: "[filename] analysis"
+   - analysis: **Describe first**: What does this code do? What are the data flows and contracts between caller/callee? **Then judge**: Given that understanding, what could actually go wrong? Look for: contract violations between caller/callee, edge cases the change doesn't handle, type mismatches in data flow, inconsistencies with codebase conventions.
+   - identified_risks: Specific hypotheses grounded in the description above. If you have none, that's fine.
    - next_action: which tool to call next and why
-   Most code changes are correct. Finding zero issues after thorough investigation is the most common valid outcome. If you have no hypotheses, proceed directly to evidence gathering.
-
-3. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both to identify real issues.
-
-4. **Trace Dependencies**: Use \`find_usages\` to understand callers of modified functions and whether changes affect them.
-
-5. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+   Most code changes are correct. Finding zero issues after thorough investigation is the most common valid outcome.
 
 6. **Verify Factual Claims**: For claims like "symbol is unused", "type is wrong", or "no callers handle this" — call \`validate_claim\` for compiler-grade LSP verification. Its result overrides your reasoning.
 
-7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 3-6. Does the evidence confirm or disprove your initial risks? Update your next_action.
+7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 2-6. Does the evidence confirm or disprove your initial risks? Update your next_action.
 
-Diff reading is orientation, not investigation. You must call tools from steps 3-6 before writing findings.
+Diff reading is orientation, not investigation. You must call tools from steps 2-4 before writing findings.
 
 8. **REQUIRED Verification Loop** — for EACH potential finding:
    a. Call \`validate_claim\` to check the factual basis with LSP ground truth
@@ -89,10 +90,9 @@ Diff reading is orientation, not investigation. You must call tools from steps 3
 ### Example Investigation Flow
 \`\`\`
 get_file_diff({file_paths: ["src/auth.ts"]})
-→ think({topic: "auth.ts changes", identified_risks: ["Timing attack on password comparison"], next_action: "find_usages for login()"})
-→ find_usages({symbol: "login", file: "src/auth.ts"})
 → find_symbol({name_path: "login", include_body: true})
-→ think({topic: "evidence synthesis", analysis: "3 callers found, none use constant-time comparison...", next_action: "validate then record"})
+→ find_usages({symbol: "login", file: "src/auth.ts"})
+→ think({topic: "auth.ts analysis", analysis: "Describe: login() takes email+password, queries DB, compares with bcrypt.compare(). 3 callers: /api/login, /api/oauth, /api/admin. Contract: returns JWT or throws 401. Judge: Early return on user-not-found before bcrypt creates timing side-channel that leaks whether email exists.", identified_risks: ["Timing attack on password comparison"], next_action: "validate_claim for constant-time comparison"})
 → validate_claim({claim_type: "symbol_missing", symbol: "timingSafeEqual", file: "src/auth.ts", line: 12})
 → think({topic: "devil's advocate", analysis: "Could a middleware handle this? No — auth.ts is the direct entry point. Is timing-safe comparison needed here? Yes — password comparison.", next_action: "record finding"})
 → record_finding({severity: "HIGH", title: "Timing attack on password comparison", file: "src/auth.ts", line: 42, description: "...", disproof_note: "validate_claim: timingSafeEqual not found. Devil's advocate: no middleware handles this."})
@@ -103,22 +103,22 @@ get_file_diff({file_paths: ["src/auth.ts"]})
                   ? `
 1. **Read the Diff**: Call \`get_file_diff\` ONCE with ALL file paths in the \`file_paths\` array (e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts"]})\`). This gives you orientation — what changed and where.
 
-2. ⚠️ **Reasoning Checkpoint #1 — Hypothesis Generation**: Call \`think\` to plan your investigation:
-   - topic: "[filename] changes"
-   - analysis: what changed, what looks risky, what looks correct
-   - identified_risks: Note any specific hypotheses about what could go wrong, if you see potential concerns. Examples: missing error handling for edge case X, type narrowing gap when Y is null, inconsistency between this change and callers of Z. These are optional investigation leads, not requirements.
+2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both.
+
+3. **Trace Dependencies**: Use \`find_usages\` to understand callers of modified functions and whether changes affect them.
+
+4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+
+5. ⚠️ **Reasoning Checkpoint #1 — Describe Then Judge**: Call \`think\` to FIRST describe what the code does, THEN identify potential issues:
+   - topic: "[filename] analysis"
+   - analysis: **Describe first**: What does this code do? What are the data flows and contracts between caller/callee? **Then judge**: Given that understanding, what could actually go wrong? Look for: contract violations between caller/callee, edge cases the change doesn't handle, type mismatches in data flow, inconsistencies with codebase conventions.
+   - identified_risks: Specific hypotheses grounded in the description above. If you have none, that's fine.
    - next_action: which tool to call next and why
-   Most code changes are correct. Finding zero issues after thorough investigation is the most common valid outcome. If you have no hypotheses, proceed directly to evidence gathering.
-
-3. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both.
-
-4. **Trace Dependencies**: Use \`find_usages\` to understand callers of modified functions and whether changes affect them.
-
-5. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+   Most code changes are correct. Finding zero issues after thorough investigation is the most common valid outcome.
 
 6. **Verify Factual Claims**: For claims like "symbol is unused", "type is wrong", or "no callers handle this" — call \`validate_claim\` for compiler-grade LSP verification. Its result overrides your reasoning.
 
-7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 3-6. Does the evidence confirm or disprove your initial risks?
+7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 2-6. Does the evidence confirm or disprove your initial risks?
 
 8. **REQUIRED Verification Loop** — for EACH potential finding:
    a. Call \`validate_claim\` to check the factual basis with LSP ground truth
@@ -127,14 +127,14 @@ get_file_diff({file_paths: ["src/auth.ts"]})
    d. Only if the finding survives both validate_claim AND devil's advocate → call \`record_finding\`
    ⚠️ Unrecorded findings are LOST on timeout — record each finding immediately after verification.
 
-Diff reading is orientation, not investigation. You must call tools from steps 3-6 before writing findings.
+Diff reading is orientation, not investigation. You must call tools from steps 2-4 before writing findings.
 
 ### Example Investigation Flow
 \`\`\`
 get_file_diff({file_paths: ["src/auth.ts"]})
-→ think({topic: "auth.ts changes", identified_risks: ["Timing attack"], next_action: "find_usages for login()"})
+→ find_symbol({name_path: "login", include_body: true})
 → find_usages({symbol: "login", file: "src/auth.ts"})
-→ think({topic: "evidence synthesis", analysis: "3 callers found, none handle timing...", next_action: "verify and record"})
+→ think({topic: "auth.ts analysis", analysis: "Describe: login() takes email+password, queries DB, compares with bcrypt. 3 callers. Contract: returns JWT or throws 401. Judge: Timing side-channel — early return on user-not-found leaks email existence.", identified_risks: ["Timing attack"], next_action: "validate_claim"})
 → validate_claim({claim_type: "symbol_missing", symbol: "timingSafeEqual", file: "src/auth.ts", line: 12})
 → think({topic: "devil's advocate", analysis: "No middleware or wrapper for this. Real issue.", next_action: "record finding"})
 → record_finding({severity: "HIGH", ..., disproof_note: "validate_claim confirmed. Devil's advocate: no centralized handler."})
@@ -144,22 +144,22 @@ get_file_diff({file_paths: ["src/auth.ts"]})
                   : `
 1. **Review Parent Context**: Study the code and information the parent agent provided in context above — this is your primary input.
 
-2. ⚠️ **Reasoning Checkpoint #1 — Hypothesis Generation**: Call \`think\` to plan your investigation:
-   - topic: "[area] review"
-   - analysis: what you see in the context, what looks risky, what looks correct
-   - identified_risks: Note any specific hypotheses about what could go wrong, if you see potential concerns. Examples: missing error handling for edge case X, type narrowing gap when Y is null, inconsistency between this change and callers of Z. These are optional investigation leads, not requirements.
+2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
+
+3. **Trace Dependencies**: Use \`find_usages\` if you need to understand who calls a function or how it's used.
+
+4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+
+5. ⚠️ **Reasoning Checkpoint #1 — Describe Then Judge**: Call \`think\` to FIRST describe what the code does, THEN identify potential issues:
+   - topic: "[area] analysis"
+   - analysis: **Describe first**: What does this code do? What are the data flows and contracts between components? **Then judge**: Given that understanding, what could actually go wrong? Look for: contract violations, unhandled edge cases, type mismatches, inconsistencies with codebase conventions.
+   - identified_risks: Specific hypotheses grounded in the description above. If you have none, that's fine.
    - next_action: which tool to call next and why
-   Most code changes are correct. Finding zero issues after thorough investigation is the most common valid outcome. If you have no hypotheses, proceed directly to evidence gathering.
-
-3. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
-
-4. **Trace Dependencies**: Use \`find_usages\` if you need to understand who calls a function or how it's used.
-
-5. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+   Most code changes are correct. Finding zero issues after thorough investigation is the most common valid outcome.
 
 6. **Verify Factual Claims**: For claims like "symbol is unused", "type is wrong", or "no callers handle this" — call \`validate_claim\` for compiler-grade LSP verification. Its result overrides your reasoning.
 
-7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 3-6. Does the evidence confirm or disprove your initial risks?
+7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 2-6. Does the evidence confirm or disprove your initial risks?
 
 8. **REQUIRED Verification Loop** — for EACH potential finding:
    a. Call \`validate_claim\` to check the factual basis with LSP ground truth
@@ -335,7 +335,7 @@ ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in 
 - You CANNOT execute code or run tests
 
 **Self-Reflection:**
-${hasDiffTools ? '- ⚠️ You MUST call \\`think\\` at least 3 times: after reading diffs (noting any identified risks), after gathering evidence, and as ' + (calibration.challengeMode === 'prosecution' ? 'prosecution checkpoint' : "devil's advocate") + ' before recording' : '- ⚠️ You MUST call \\`think\\` at least 3 times: after reviewing context (noting any identified risks), after gathering evidence, and as ' + (calibration.challengeMode === 'prosecution' ? 'prosecution checkpoint' : "devil's advocate") + ' before recording'}
+${hasDiffTools ? '- ⚠️ You MUST call \\`think\\` at least 3 times: after reading diffs and gathering evidence (describe what the code does FIRST, then identify risks), after synthesizing all evidence, and as ' + (calibration.challengeMode === 'prosecution' ? 'prosecution checkpoint' : "devil's advocate") + ' before recording' : '- ⚠️ You MUST call \\`think\\` at least 3 times: after reviewing context and gathering evidence (describe what the code does FIRST, then identify risks), after synthesizing all evidence, and as ' + (calibration.challengeMode === 'prosecution' ? 'prosecution checkpoint' : "devil's advocate") + ' before recording'}
 - ⚠️ You MUST call \`validate_claim\` before EVERY \`record_finding\` — findings without LSP verification are untrustworthy
 - ⚠️ You MUST call \`record_finding\` for each confirmed finding — unrecorded findings are LOST
 - For factual claims ("unused symbol", "wrong type", "no callers"): \`validate_claim\` LSP result overrides your reasoning

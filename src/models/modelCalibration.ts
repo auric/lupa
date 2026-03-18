@@ -87,35 +87,41 @@ export interface ModelCalibrationProfile {
 
 const GPT_41_PROFILE: ModelCalibrationProfile = {
     name: 'gpt-4.1',
-    findingBias: 'balanced',
+    findingBias: 'dismissive',
     challengeMode: 'devils-advocate',
-    includeFalsePositiveGuide: true,
-    includeRevertTest: true,
+    includeFalsePositiveGuide: false,
+    includeRevertTest: false,
     includeAgenticPreamble: true,
-    evidenceThreshold: 'medium',
-    adversarialVerificationThreshold: 'LOW',
-    adversarialBudget: 20,
+    evidenceThreshold: 'low',
+    adversarialVerificationThreshold: 'HIGH',
+    adversarialBudget: 10,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 3,
         requiredToolsBeforeDone: [],
-        investigationPreamble: '',
+        investigationPreamble:
+            'When you reach a checkpoint with zero hypotheses, reconsider — ' +
+            'most non-trivial code changes have at least one edge case worth investigating. ' +
+            'Do not settle for "looks fine" without tool verification.',
     },
 };
 
 const GPT_4O_PROFILE: ModelCalibrationProfile = {
     name: 'gpt-4o',
-    findingBias: 'balanced',
+    findingBias: 'dismissive',
     challengeMode: 'devils-advocate',
-    includeFalsePositiveGuide: true,
+    includeFalsePositiveGuide: false,
     includeRevertTest: false,
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
-    adversarialVerificationThreshold: 'LOW',
-    adversarialBudget: 20,
+    adversarialVerificationThreshold: 'HIGH',
+    adversarialBudget: 10,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: [],
-        investigationPreamble: '',
+        investigationPreamble:
+            'When you reach a checkpoint with zero hypotheses, reconsider — ' +
+            'most non-trivial code changes have at least one edge case worth investigating. ' +
+            'Do not settle for "looks fine" without tool verification.',
     },
 };
 

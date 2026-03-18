@@ -489,7 +489,7 @@ describe('SubagentPromptGenerator', () => {
                     'Diff reading is orientation, not investigation'
                 );
                 expect(prompt).toContain(
-                    'must call tools from steps 3-6 before writing findings'
+                    'must call tools from steps 2-4 before writing findings'
                 );
             });
         });
@@ -598,8 +598,8 @@ describe('SubagentPromptGenerator', () => {
             });
         });
 
-        describe('hypothesis generation requirements', () => {
-            it('should require hypothesis generation at checkpoint #1 with diff tools', () => {
+        describe('describe-then-judge checkpoint requirements', () => {
+            it('should require describe-then-judge at checkpoint #1 with diff tools', () => {
                 const task: SubagentTask = { task: 'Test task' };
                 const tools = [
                     createMockTool(
@@ -616,14 +616,12 @@ describe('SubagentPromptGenerator', () => {
                     DEFAULT_PROFILE
                 );
 
-                expect(prompt).toContain('Hypothesis Generation');
-                expect(prompt).toContain('generate 2-3 specific hypotheses');
-                expect(prompt).toContain(
-                    'Empty identified_risks here means you skipped hypothesis generation'
-                );
+                expect(prompt).toContain('Describe Then Judge');
+                expect(prompt).toContain('Describe first');
+                expect(prompt).toContain('Then judge');
             });
 
-            it('should require hypothesis generation at checkpoint #1 without diff tools', () => {
+            it('should require describe-then-judge at checkpoint #1 without diff tools', () => {
                 const task: SubagentTask = { task: 'Test task' };
                 const tools = [
                     createMockTool('find_symbol', 'Finds symbols in code'),
@@ -636,11 +634,11 @@ describe('SubagentPromptGenerator', () => {
                     DEFAULT_PROFILE
                 );
 
-                expect(prompt).toContain('Hypothesis Generation');
-                expect(prompt).toContain('generate 2-3 specific hypotheses');
+                expect(prompt).toContain('Describe Then Judge');
+                expect(prompt).toContain('Describe first');
             });
 
-            it('should mention hypothesis generation in self-reflection constraints', () => {
+            it('should mention describe-first in self-reflection constraints', () => {
                 const task: SubagentTask = { task: 'Test task' };
                 const tools = [
                     createMockTool(
@@ -657,9 +655,7 @@ describe('SubagentPromptGenerator', () => {
                     DEFAULT_PROFILE
                 );
 
-                expect(prompt).toContain(
-                    'with 2-3 hypotheses in identified_risks'
-                );
+                expect(prompt).toContain('describe what the code does FIRST');
             });
         });
     });
