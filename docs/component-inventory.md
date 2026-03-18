@@ -117,9 +117,9 @@ These components are created fresh for each analysis session, not managed by Ser
 
 ### Delegation Tools
 
-| Tool              | File                 | Name           | Description                     |
-| ----------------- | -------------------- | -------------- | ------------------------------- |
-| `RunSubagentTool` | `runSubagentTool.ts` | `run_subagent` | Delegate complex investigations |
+| Tool                   | File                      | Name                 | Description                                      |
+| ---------------------- | ------------------------- | -------------------- | ------------------------------------------------ |
+| `RunSubagentBatchTool` | `runSubagentBatchTool.ts` | `run_subagent_batch` | Delegate complex investigations (parallel batch) |
 
 ### Tool Utilities
 

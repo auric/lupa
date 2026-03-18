@@ -13,6 +13,13 @@ const DISMISSIVE_PROFILE: ModelCalibrationProfile = {
     includeRevertTest: false,
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
+    adversarialVerificationThreshold: 'LOW',
+    adversarialBudget: 20,
+    investigationProtocol: {
+        minToolCallsBeforeFirstFinding: 3,
+        requiredToolsBeforeDone: [],
+        investigationPreamble: '',
+    },
 };
 
 const AGGRESSIVE_PROFILE: ModelCalibrationProfile = {
@@ -23,6 +30,13 @@ const AGGRESSIVE_PROFILE: ModelCalibrationProfile = {
     includeRevertTest: true,
     includeAgenticPreamble: true,
     evidenceThreshold: 'high',
+    adversarialVerificationThreshold: 'LOW',
+    adversarialBudget: 15,
+    investigationProtocol: {
+        minToolCallsBeforeFirstFinding: 2,
+        requiredToolsBeforeDone: [],
+        investigationPreamble: '',
+    },
 };
 
 const BALANCED_PROFILE: ModelCalibrationProfile = {
@@ -33,6 +47,13 @@ const BALANCED_PROFILE: ModelCalibrationProfile = {
     includeRevertTest: true,
     includeAgenticPreamble: false,
     evidenceThreshold: 'medium',
+    adversarialVerificationThreshold: 'CRITICAL',
+    adversarialBudget: 20,
+    investigationProtocol: {
+        minToolCallsBeforeFirstFinding: 2,
+        requiredToolsBeforeDone: [],
+        investigationPreamble: '',
+    },
 };
 
 describe('Calibration-aware prompt blocks', () => {
