@@ -8,7 +8,7 @@ import { LOG_LEVELS } from './loggingTypes';
 export const ANALYSIS_LIMITS = {
     maxIterations: 600,
     requestTimeoutSeconds: 240,
-    maxSubagentsPerSession: 75,
+    maxSubagentsPerSession: 150,
     /**
      * Maximum concurrent LLM requests across all agents.
      * Prevents API rate limiting when many subagents run in parallel.
