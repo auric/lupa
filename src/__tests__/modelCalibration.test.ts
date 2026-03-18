@@ -117,7 +117,7 @@ describe('modelCalibration', () => {
             ).toHaveLength(0);
             expect(
                 profile.investigationProtocol.investigationPreamble
-            ).toContain('reconsider');
+            ).toContain('CRASH HYPOTHESES');
         });
 
         it('GPT-4o has anti-dismissal investigation protocol', () => {
@@ -130,7 +130,7 @@ describe('modelCalibration', () => {
             ).toHaveLength(0);
             expect(
                 profile.investigationProtocol.investigationPreamble
-            ).toContain('reconsider');
+            ).toContain('CRASH HYPOTHESES');
         });
 
         it('Claude has minimal investigation protocol', () => {

@@ -24,13 +24,14 @@ export function generateToolSelectionGuide(): string {
 | Track progress | \`update_plan\` |
 | Think through analysis | \`think\` |
 | Record confirmed issue | \`record_finding\` |
+| Check existing findings | \`list_findings\` |
 | Verify factual claim | \`validate_claim\` |
 | Deep investigation | \`run_subagent_batch\` |
 | Parallel tool calls | \`batch_tools\` |
 
 ### Principles
 
-1. **Plan first**: Call \`update_plan\` before any investigation to structure your review
+1. **Orient then plan**: Read at least one diff with \`get_file_diff\` before calling \`update_plan\` — plans must be based on code, not just file names
 2. **Verify before claiming**: Use tools to confirm behavior, don't assume
 3. **Symbols over text**: Use \`find_symbol\` for code, \`read_file\` for configs only
 4. **Parallelize**: Call independent tools in one turn. If you can only call one tool per turn, use \`batch_tools\` to wrap multiple independent calls into a single parallel invocation

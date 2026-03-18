@@ -23,10 +23,11 @@ export function generateAnalysisMethodology(
 
 Before each tool call, briefly explain what you learned from the previous result and what you plan to do next. This keeps your analysis grounded in evidence.
 
-### Step 1: Create Your Plan (MANDATORY - FIRST ACTION)
-⚠️ **Your first turn MUST call both \`get_pr_context\` and \`update_plan\`.** Call them in the same turn (parallel), or use \`batch_tools\` to combine them if needed. Do not investigate before planning.
+### Step 1: Orient, Then Plan (MANDATORY - FIRST ACTIONS)
+⚠️ **Turn 1**: Call \`get_pr_context\` and \`get_file_diff\` (for the largest/riskiest file) to understand the PR.
+⚠️ **Turn 2**: Call \`update_plan\` based on what you learned. Do NOT call \`update_plan\` until you have read at least one diff.
 
-Read the PR commit messages from \`get_pr_context\` to understand the developer's intent, then call \`update_plan\` with this structure:
+Read the PR commit messages from \`get_pr_context\` and examine a key diff to understand the developer's intent, then call \`update_plan\` with this structure:
 \`\`\`markdown
 ## PR Review Plan
 

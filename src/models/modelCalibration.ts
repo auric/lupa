@@ -99,9 +99,17 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
         minToolCallsBeforeFirstFinding: 3,
         requiredToolsBeforeDone: [],
         investigationPreamble:
-            'When you reach a checkpoint with zero hypotheses, reconsider — ' +
-            'most non-trivial code changes have at least one edge case worth investigating. ' +
-            'Do not settle for "looks fine" without tool verification.',
+            'For EACH changed function, investigate in this exact order:\n' +
+            'Round 1 — CRASH HYPOTHESES: Could this function throw, panic, or crash? ' +
+            'Form a hypothesis BEFORE calling tools: "Function X could throw when Y because Z." ' +
+            'Then use find_usages and validate_claim to prove or disprove.\n' +
+            'Round 2 — WRONG RESULT HYPOTHESES: Could this function return incorrect data silently? ' +
+            'Check return types against what callers expect. Use find_usages on each changed function.\n' +
+            'Round 3 — CALLER MISMATCH: Do all callers of changed functions handle the new behavior correctly? ' +
+            'If a return type, parameter, or error behavior changed, check every call site.\n\n' +
+            'BEFORE calling any investigation tool, write your hypothesis. ' +
+            'If you cannot form a hypothesis, skip that tool call — do not call tools exploratorily.\n\n' +
+            'Call list_findings before recording to avoid duplicating what other agents already found.',
     },
 };
 
@@ -119,9 +127,17 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: [],
         investigationPreamble:
-            'When you reach a checkpoint with zero hypotheses, reconsider — ' +
-            'most non-trivial code changes have at least one edge case worth investigating. ' +
-            'Do not settle for "looks fine" without tool verification.',
+            'For EACH changed function, investigate in this exact order:\n' +
+            'Round 1 — CRASH HYPOTHESES: Could this function throw, panic, or crash? ' +
+            'Form a hypothesis BEFORE calling tools: "Function X could throw when Y because Z." ' +
+            'Then use find_usages and validate_claim to prove or disprove.\n' +
+            'Round 2 — WRONG RESULT HYPOTHESES: Could this function return incorrect data silently? ' +
+            'Check return types against what callers expect. Use find_usages on each changed function.\n' +
+            'Round 3 — CALLER MISMATCH: Do all callers of changed functions handle the new behavior correctly? ' +
+            'If a return type, parameter, or error behavior changed, check every call site.\n\n' +
+            'BEFORE calling any investigation tool, write your hypothesis. ' +
+            'If you cannot form a hypothesis, skip that tool call — do not call tools exploratorily.\n\n' +
+            'Call list_findings before recording to avoid duplicating what other agents already found.',
     },
 };
 

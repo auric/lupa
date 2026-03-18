@@ -45,7 +45,7 @@ describe('ToolAwareSystemPromptGenerator', () => {
 
             expect(prompt).toContain('<analysis_methodology>');
             expect(prompt).toContain('Analysis Process');
-            expect(prompt).toContain('Create Your Plan');
+            expect(prompt).toContain('Orient, Then Plan');
             expect(prompt).toContain('Gather Context');
             expect(prompt).toContain('update_plan');
             expect(prompt).toContain('Critical Thinking');
