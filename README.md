@@ -5,7 +5,6 @@
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.107+-blue.svg)](https://code.visualstudio.com/)
 [![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](./CHANGELOG.md)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](./LICENSE)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/auric/lupa)
 
 > ⚠️ **Important: Read before using!**
 >
