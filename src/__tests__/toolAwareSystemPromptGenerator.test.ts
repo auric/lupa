@@ -152,7 +152,7 @@ describe('ToolAwareSystemPromptGenerator', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
             expect(prompt).toContain('Verification Gates');
             expect(prompt).toContain('Missing error handling');
-            expect(prompt).toContain('Missing test for X');
+            expect(prompt).toContain('Race condition');
             expect(prompt).toContain('Design inconsistency');
         });
 
@@ -176,7 +176,6 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain(
                 'outer scope, middleware, or executor already catches'
             );
-            expect(prompt).toContain('without searching the test directory');
         });
 
         it('should include scope boundary rule with revert test', () => {
@@ -195,29 +194,29 @@ describe('ToolAwareSystemPromptGenerator', () => {
         it('should include design inconsistency and feature request verification gates', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
             expect(prompt).toContain('Design inconsistency');
-            expect(prompt).toContain('Should add X feature');
             expect(prompt).toContain('Pre-existing code quality issues');
         });
 
         it('should cap feature suggestions at LOW severity', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
-            expect(prompt).toContain('suggestion, not a bug');
+            expect(prompt).toContain('feature request, not a defect');
         });
 
         it('should include layered validation awareness', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
             expect(prompt).toContain('Should validate X');
             expect(prompt).toContain(
-                'outer scope already catches and handles the error'
+                'outer scope, framework layer, or decorator already catches and handles the error'
             );
             expect(prompt).toContain('caller or middleware already validates');
-            expect(prompt).toContain('surrounding layer already provides it');
         });
 
         it('should include try-catch verification gate', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
-            expect(prompt).toContain('Should add try-catch');
-            expect(prompt).toContain('outer scope already catches');
+            expect(prompt).toContain('Should add error handling');
+            expect(prompt).toContain(
+                'outer scope, framework layer, or decorator already catches'
+            );
         });
 
         it('should require caller trace in counterexample requirement', () => {
@@ -228,8 +227,6 @@ describe('ToolAwareSystemPromptGenerator', () => {
 
         it('should include false positive patterns for tests and docs', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
-            expect(prompt).toContain('Missing test');
-            expect(prompt).toContain('No tests for X');
             expect(prompt).toContain(
                 'Documentation that contradicts the implementation'
             );
@@ -283,7 +280,7 @@ describe('ToolAwareSystemPromptGenerator', () => {
         it('should include centralized error handler FP pattern', () => {
             const prompt = generator.generateSystemPrompt(DEFAULT_PROFILE);
             expect(prompt).toContain('centralized error handler');
-            expect(prompt).toContain('ToolExecutor');
+            expect(prompt).toContain('wraps all calls');
         });
 
         it('should include internal-state constraint FP pattern', () => {

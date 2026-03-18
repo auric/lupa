@@ -122,9 +122,9 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
             // Filters are now in the <finding_quality> block, not duplicated in Step 4
             expect(systemPrompt).toContain(
-                'surrounding layer already provides it'
+                'framework layer, or decorator already catches'
             );
-            expect(systemPrompt).toContain('Missing test');
+            expect(systemPrompt).toContain('Test gaps for removed code');
         });
 
         it('should include FP example patterns in finding quality guidance', () => {

@@ -538,7 +538,7 @@ describe('SubagentPromptGenerator', () => {
 
                 expect(prompt).toContain('Changed Code Only');
                 expect(prompt).toContain('Revert Test');
-                expect(prompt).toContain('suggestion, not a bug');
+                expect(prompt).toContain('feature request, not a defect');
                 expect(prompt).toContain('When uncertain, omit');
             });
 
@@ -558,7 +558,7 @@ describe('SubagentPromptGenerator', () => {
                 expect(prompt).toContain(
                     'caller or middleware already validates'
                 );
-                expect(prompt).toContain('surrounding layer');
+                expect(prompt).toContain('framework layer');
                 expect(prompt).toContain('trace ALL callers');
                 expect(prompt).toContain('concrete failing scenario');
             });
