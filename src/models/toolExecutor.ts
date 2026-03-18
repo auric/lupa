@@ -223,7 +223,8 @@ export class ToolExecutor {
                 FILE_TRACKING_TOOLS.has(name)
             ) {
                 const parsed = validatedArgs as Record<string, unknown>;
-                const filePath = parsed.file_path ?? parsed.file;
+                const filePath =
+                    parsed.file_path ?? parsed.file ?? parsed.relative_path;
                 if (filePath && typeof filePath === 'string') {
                     this.executionContext.investigatedFiles.add(
                         filePath.replace(/\\/g, '/')

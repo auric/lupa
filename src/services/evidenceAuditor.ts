@@ -162,7 +162,7 @@ export class EvidenceAuditor {
             const fabricated = this.findFabricatedClaims(
                 claimedTools,
                 matchingCalls,
-                toolCallRecords
+                flatRecords
             );
             if (fabricated.length > 0) {
                 const reason = `Fabricated evidence: claimed ${fabricated.join(', ')} but ${fabricated.length === 1 ? 'this tool was' : 'these tools were'} never called on "${finding.file}"`;
