@@ -73,7 +73,7 @@ export class AdversarialVerifier {
         const results = await Promise.allSettled(
             toVerify.map(async ({ finding, index }) => {
                 if (token.isCancellationRequested) {
-                    throw new Error('Cancelled');
+                    throw new vscode.CancellationError();
                 }
                 const { verdict, toolCalls } = await this.verifyFinding(
                     finding,
