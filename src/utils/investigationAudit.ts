@@ -124,7 +124,7 @@ function extractSymbolsResolved(
         if (call.toolName !== 'find_symbol') {
             continue;
         }
-        const name = getStringArg(call.arguments, 'symbol_name');
+        const name = getStringArg(call.arguments, 'name_path');
         const file =
             getStringArg(call.arguments, 'relative_path') ??
             getStringArg(call.arguments, 'file_path') ??

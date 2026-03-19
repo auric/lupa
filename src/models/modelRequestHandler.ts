@@ -193,6 +193,7 @@ export class ModelRequestHandler {
         const linkedTokenSource = new vscode.CancellationTokenSource();
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let userCancellationDisposable: vscode.Disposable | undefined;
+        let cancellationDisposable: vscode.Disposable | undefined;
 
         try {
             // Pre-check cancellation FIRST before any async work
@@ -250,7 +251,7 @@ export class ModelRequestHandler {
                     reject(new vscode.CancellationError());
                     return;
                 }
-                token.onCancellationRequested(() => {
+                cancellationDisposable = token.onCancellationRequested(() => {
                     reject(new vscode.CancellationError());
                 });
             });
@@ -270,6 +271,7 @@ export class ModelRequestHandler {
             if (timeoutId !== undefined) {
                 clearTimeout(timeoutId);
             }
+            cancellationDisposable?.dispose();
             userCancellationDisposable?.dispose();
             linkedTokenSource.dispose();
         }

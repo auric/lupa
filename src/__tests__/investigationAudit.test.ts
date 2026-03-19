@@ -74,7 +74,7 @@ describe('buildInvestigationAudit', () => {
             makeToolCall({
                 toolName: 'find_symbol',
                 arguments: {
-                    symbol_name: 'MyClass',
+                    name_path: 'MyClass',
                     file_path: 'src/model.ts',
                 },
                 result: 'Found class definition at line 10',
@@ -95,7 +95,7 @@ describe('buildInvestigationAudit', () => {
         const calls: ToolCallRecord[] = [
             makeToolCall({
                 toolName: 'find_symbol',
-                arguments: { symbol_name: 'foo' },
+                arguments: { name_path: 'foo' },
                 result: 'function foo()',
             }),
         ];
@@ -159,7 +159,7 @@ describe('buildInvestigationAudit', () => {
             // Symbol resolved for same file
             makeToolCall({
                 toolName: 'find_symbol',
-                arguments: { symbol_name: 'init', file_path: 'src/main.ts' },
+                arguments: { name_path: 'init', file_path: 'src/main.ts' },
                 result: 'function init()',
             }),
             // Usage for the same symbol
@@ -201,7 +201,7 @@ describe('buildInvestigationAudit', () => {
             }),
             makeToolCall({
                 toolName: 'find_symbol',
-                arguments: { symbol_name: 'x', file_path: 'a.ts' },
+                arguments: { name_path: 'x', file_path: 'a.ts' },
                 result: 'function x()',
             }),
             makeToolCall({
@@ -237,7 +237,7 @@ describe('buildInvestigationAudit', () => {
                     makeToolCall({
                         toolName: 'find_symbol',
                         arguments: {
-                            symbol_name: 'nestedFn',
+                            name_path: 'nestedFn',
                             file_path: 'src/nested.ts',
                         },
                         result: 'function nestedFn()',
