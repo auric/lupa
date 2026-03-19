@@ -400,12 +400,12 @@ Some tools provide marginal value for code review while adding cognitive load fo
 | `list_directory`        | Rarely used in reviews                     | **Remove globally** — `find_symbol` and `search_for_pattern` are better for locating code |
 | `find_files_by_pattern` | Occasionally useful for finding test files | **Keep** but lower priority in tool guide                                                 |
 | `get_symbols_overview`  | Useful for understanding file structure    | **Keep** but consider merging with `find_symbol`                                          |
-| `batch_tools`           | Meta-tool, complex semantics               | **Remove globally** — adds complexity without clear review benefit                        |
+| `batch_tools`           | Speeds up models that avoid parallel calls | **Keep for mini models** — disabled only for GPT-4.1/4o where it adds confusion           |
 
 ### Implementation
 
 ```
-Phase 1: Remove batch_tools and list_directory globally
+Phase 1: Remove list_directory globally (already disabled for GPT-4.1/4o)
 Phase 2: Monitor tool usage metrics across models
 Phase 3: Further pruning based on actual usage data
 ```
