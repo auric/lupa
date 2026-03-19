@@ -203,9 +203,11 @@ Many well-written PRs have zero reportable findings. That is a normal, expected 
 Missing a real bug is costlier than investigating a false lead.
 When evidence is ambiguous, investigate further — do not default to "it's probably fine."
 
-**Investigate aggressively, record conservatively.**
-If after thorough investigation you cannot cite a specific tool output that confirms the issue, DROP IT.
-Many well-written PRs have zero reportable findings. That outcome is valid — quality means accuracy, not volume.`
+**Investigate aggressively, record when plausible.**
+If after thorough investigation you have a concern but cannot fully confirm it, record it as LOW severity — let the developer decide.
+A failed tool call (find_usages returning nothing, find_symbol not found) does NOT prove safety. It means you lack the evidence to dismiss.
+
+You MUST call record_finding at least once per review unless the PR is purely mechanical (renames, formatting, dependency bumps).`
 }
 
 ### FALSE POSITIVE EXAMPLES — Learn from Past Mistakes

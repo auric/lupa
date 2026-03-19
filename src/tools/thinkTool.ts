@@ -83,16 +83,21 @@ export class ThinkTool extends BaseTool {
             );
         }
 
+        const findingStore = context.findingStore;
+        const currentFindingsCount = findingStore?.size ?? 0;
+
         const riskNote =
             riskCount > 0
                 ? isDismissive
-                    ? `${riskCount} risk(s) identified. Investigate each with tools — call validate_claim, find_usages, or search_for_pattern. Do NOT dismiss any hypothesis without concrete tool output proving it safe.`
+                    ? `${riskCount} risk(s) identified. Investigate each with tools — call find_usages, validate_claim, or search_for_pattern. Do NOT dismiss any hypothesis without concrete tool output proving it safe. If a tool call fails or returns no results, that is NOT proof of safety — record a LOW-severity finding.`
                     : `${riskCount} risk(s) to verify with tools.`
                 : isEarlyCheckpoint
                   ? isDismissive
                       ? 'No risks identified yet. This is almost certainly wrong — real code changes have edge cases. Generate at least 2-3 hypotheses: error handling gaps, type safety issues, missing validation, caller inconsistencies, off-by-one errors. Hypotheses are free — investigate them with tools.'
                       : 'No risks identified yet. Before moving on — consider: edge cases in error handling, type safety gaps, missing validation on inputs, inconsistency with callers, or concurrency issues. Generate at least 2 hypotheses to investigate, even if they turn out to be fine.'
-                  : 'No risks identified.';
+                  : isDismissive && currentFindingsCount === 0
+                    ? `No risks identified after ${thinkCallCount} checkpoints, and you have recorded ZERO findings so far. Reviewers who find zero issues across all files are almost always under-investigating. Revisit your strongest hypothesis from earlier checkpoints and record it as a LOW-severity finding. A failed tool call (find_usages returning nothing, find_symbol not found) does NOT prove safety — it means you lack evidence to dismiss.`
+                    : 'No risks identified.';
         const actionNote = next_action ? ` Next: ${next_action}.` : '';
 
         return toolSuccess(

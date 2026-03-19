@@ -10,7 +10,7 @@ describe('modelCalibration', () => {
             );
             expect(profile.name).toBe('gpt-4.1');
             expect(profile.findingBias).toBe('dismissive');
-            expect(profile.challengeMode).toBe('devils-advocate');
+            expect(profile.challengeMode).toBe('prosecution');
             expect(profile.includeFalsePositiveGuide).toBe(false);
             expect(profile.includeRevertTest).toBe(false);
             expect(profile.includeAgenticPreamble).toBe(true);
@@ -24,7 +24,7 @@ describe('modelCalibration', () => {
             );
             expect(profile.name).toBe('gpt-4o');
             expect(profile.findingBias).toBe('dismissive');
-            expect(profile.challengeMode).toBe('devils-advocate');
+            expect(profile.challengeMode).toBe('prosecution');
             expect(profile.includeFalsePositiveGuide).toBe(false);
             expect(profile.includeRevertTest).toBe(false);
         });
@@ -171,12 +171,12 @@ describe('modelCalibration', () => {
     describe('tool filtering and finding caps', () => {
         it('GPT-4.1 disables cognitive-overload tools', () => {
             const profile = getCalibrationProfile('gpt-4.1', 'gpt-4.1');
-            expect(profile.disabledTools).toContain('validate_claim');
             expect(profile.disabledTools).toContain('batch_tools');
             expect(profile.disabledTools).toContain('list_directory');
             expect(profile.disabledTools).toContain('get_symbols_overview');
-            expect(profile.disabledTools).toContain('retract_finding');
-            expect(profile.disabledTools.length).toBeGreaterThanOrEqual(5);
+            expect(profile.disabledTools).not.toContain('validate_claim');
+            expect(profile.disabledTools).not.toContain('retract_finding');
+            expect(profile.disabledTools.length).toBe(4);
         });
 
         it('GPT-4.1 has tight finding cap', () => {

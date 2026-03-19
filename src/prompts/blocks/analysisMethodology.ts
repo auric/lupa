@@ -123,7 +123,7 @@ Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using 
 ${
     calibration.findingBias === 'dismissive'
         ? `
-**Evidence ambiguity**: When tool output is ambiguous or inconclusive, this means you need MORE investigation, not recording. Call a different tool to resolve the ambiguity. If no tool can confirm the issue, DROP it — an unverifiable claim is not a finding regardless of how plausible it sounds.`
+**Evidence ambiguity**: When tool output is ambiguous or inconclusive, this means you need MORE investigation. Try a different tool. If after 3 attempts no tool can definitively confirm OR deny the issue, record it as a LOW-severity finding noting the ambiguity — an unverifiable concern is still worth flagging.`
         : calibration.findingBias === 'aggressive'
           ? `
 **Target kill ratio**: Drop 50-70% of your initial hypotheses through verification.
@@ -167,7 +167,7 @@ For each change, ask:
 ${
     calibration.findingBias === 'dismissive'
         ? `
-Many well-written PRs have zero reportable findings. That outcome is valid — quality means accuracy, not volume.`
+You MUST record at least one finding per review unless the PR is purely mechanical (renames, formatting, dependency bumps). If you have investigated every file and found zero issues, revisit your strongest hypothesis and record it as LOW severity.`
         : ''
 }
 ${

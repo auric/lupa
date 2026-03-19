@@ -102,7 +102,7 @@ export interface ModelCalibrationProfile {
 const GPT_41_PROFILE: ModelCalibrationProfile = {
     name: 'gpt-4.1',
     findingBias: 'dismissive',
-    challengeMode: 'devils-advocate',
+    challengeMode: 'prosecution',
     includeFalsePositiveGuide: false,
     includeRevertTest: false,
     includeAgenticPreamble: true,
@@ -113,18 +113,16 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
         minToolCallsBeforeFirstFinding: 3,
         requiredToolsBeforeDone: [],
         investigationPreamble:
-            'For each changed function: read the diff, then call find_usages to trace every caller.\n' +
-            'Ask: does any caller break because of this change? If a caller cannot handle the new ' +
-            'return type, null case, or error behavior, that is a bug — record it immediately.\n' +
-            'If you cannot name a specific caller that breaks, do not record a finding.',
+            'For each changed function: read the diff, then call find_usages to trace callers.\n' +
+            'If a caller cannot handle the new behavior (return type, null case, error path), call record_finding immediately.\n' +
+            'If find_usages fails or returns no results for an exported/public function, record a LOW-severity finding — unverifiable callers are a risk.\n' +
+            'When uncertain, record a LOW-severity finding. Missing a real bug is worse than reporting a false positive.',
     },
     disabledTools: [
-        'validate_claim',
         'batch_tools',
         'list_directory',
         'find_files_by_pattern',
         'get_symbols_overview',
-        'retract_finding',
     ],
     maxFindingsPerReview: 5,
 };
@@ -132,7 +130,7 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
 const GPT_4O_PROFILE: ModelCalibrationProfile = {
     name: 'gpt-4o',
     findingBias: 'dismissive',
-    challengeMode: 'devils-advocate',
+    challengeMode: 'prosecution',
     includeFalsePositiveGuide: false,
     includeRevertTest: false,
     includeAgenticPreamble: true,
@@ -143,18 +141,16 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: [],
         investigationPreamble:
-            'For each changed function: read the diff, then call find_usages to trace every caller.\n' +
-            'Ask: does any caller break because of this change? If a caller cannot handle the new ' +
-            'return type, null case, or error behavior, that is a bug — record it immediately.\n' +
-            'If you cannot name a specific caller that breaks, do not record a finding.',
+            'For each changed function: read the diff, then call find_usages to trace callers.\n' +
+            'If a caller cannot handle the new behavior (return type, null case, error path), call record_finding immediately.\n' +
+            'If find_usages fails or returns no results for an exported/public function, record a LOW-severity finding — unverifiable callers are a risk.\n' +
+            'When uncertain, record a LOW-severity finding. Missing a real bug is worse than reporting a false positive.',
     },
     disabledTools: [
-        'validate_claim',
         'batch_tools',
         'list_directory',
         'find_files_by_pattern',
         'get_symbols_overview',
-        'retract_finding',
     ],
     maxFindingsPerReview: 5,
 };

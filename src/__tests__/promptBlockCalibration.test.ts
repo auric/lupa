@@ -20,6 +20,8 @@ const DISMISSIVE_PROFILE: ModelCalibrationProfile = {
         requiredToolsBeforeDone: [],
         investigationPreamble: '',
     },
+    disabledTools: [],
+    maxFindingsPerReview: 5,
 };
 
 const AGGRESSIVE_PROFILE: ModelCalibrationProfile = {
@@ -37,6 +39,8 @@ const AGGRESSIVE_PROFILE: ModelCalibrationProfile = {
         requiredToolsBeforeDone: [],
         investigationPreamble: '',
     },
+    disabledTools: [],
+    maxFindingsPerReview: 10,
 };
 
 const BALANCED_PROFILE: ModelCalibrationProfile = {
@@ -54,6 +58,8 @@ const BALANCED_PROFILE: ModelCalibrationProfile = {
         requiredToolsBeforeDone: [],
         investigationPreamble: '',
     },
+    disabledTools: [],
+    maxFindingsPerReview: 15,
 };
 
 describe('Calibration-aware prompt blocks', () => {
@@ -120,7 +126,7 @@ describe('Calibration-aware prompt blocks', () => {
         it('should strengthen skepticism for dismissive models', () => {
             const methodology = generateAnalysisMethodology(DISMISSIVE_PROFILE);
             expect(methodology).toContain('submit_review will reject');
-            expect(methodology).toContain('quality means accuracy, not volume');
+            expect(methodology).toContain('MUST record at least one finding');
         });
 
         it('should produce balanced output with balanced profile', () => {
