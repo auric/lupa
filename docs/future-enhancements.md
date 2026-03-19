@@ -7,16 +7,17 @@ Roadmap of research-backed improvements for reducing false positives and improvi
 ## Table of Contents
 
 1. [Self-Reflection Scoring (Qodo-Style 2nd Pass)](#1-self-reflection-scoring)
-2. [Adaptive Tool Budget per PR Complexity](#2-adaptive-tool-budget)
-3. [Tool Description RAG](#3-tool-description-rag)
-4. [Cross-Model Validation](#4-cross-model-validation)
-5. [Scratchpad Tool with Forced Reasoning](#5-scratchpad-tool)
-6. [Finding Pattern Learning](#6-finding-pattern-learning)
-7. [Enhanced Think Tool with Persistent Analysis](#7-enhanced-think-tool)
-8. [Multi-Review Aggregation](#8-multi-review-aggregation)
-9. [Global Tool Pruning](#9-global-tool-pruning)
-10. [Post-Analysis Self-Critique with Different Model](#10-post-analysis-self-critique)
-11. [Structured Output Enforcement](#11-structured-output-enforcement)
+2. [Evidence-vs-Claim Cross-Referencing](#2-evidence-vs-claim-cross-referencing)
+3. [Adaptive Tool Budget per PR Complexity](#3-adaptive-tool-budget)
+4. [Tool Description RAG](#4-tool-description-rag)
+5. [Cross-Model Validation](#5-cross-model-validation)
+6. [Scratchpad Tool with Forced Reasoning](#6-scratchpad-tool)
+7. [Finding Pattern Learning](#7-finding-pattern-learning)
+8. [Enhanced Think Tool with Persistent Analysis](#8-enhanced-think-tool)
+9. [Multi-Review Aggregation](#9-multi-review-aggregation)
+10. [Global Tool Pruning](#10-global-tool-pruning)
+11. [Post-Analysis Self-Critique with Different Model](#11-post-analysis-self-critique)
+12. [Structured Output Enforcement](#12-structured-output-enforcement)
 
 ---
 
@@ -62,7 +63,69 @@ Thresholds:
 
 ---
 
-## 2. Adaptive Tool Budget
+## 2. Evidence-vs-Claim Cross-Referencing
+
+**Priority: HIGH** | **Expected FP Reduction: 15-25%** | **Complexity: Medium-High**
+
+### Rationale
+
+The EvidenceAuditor currently checks "did you call tools on this file?" but never reads what the tools actually returned. When the model claims "find*usages showed 0 callers" but the tool result actually says "3 references found in src/bar.ts", the auditor has no way to detect this. Self-reflection scoring (Enhancement #1) won't catch these because the model is \_confidently wrong* — it will self-score high on a fabricated claim.
+
+This addresses a distinct class of FPs: **confident hallucinations about tool output**. The `ToolCallRecord.result` field contains the actual tool output but is currently only read by the narrow `checkDeletionSafety` check.
+
+### Research Evidence
+
+- LLM hallucination research consistently shows self-consistency checks fail for confident fabrications
+- RAG literature: grounding responses in retrieved content requires explicit verification, not self-assessment
+- Current data: `checkDeletionSafety` already demonstrates the pattern works (reads `tc.result` to verify zero-reference claims)
+
+### Implementation Sketch
+
+```
+Location: src/services/evidenceAuditor.ts (extend existing audit)
+Trigger: During evidence audit, after fabrication check passes
+
+Option A — Heuristic (no LLM calls, ~1-2 days):
+  For each finding with supporting tool calls:
+    1. Extract key claims from evidence text (numbers, "no callers", "not found")
+    2. Read corresponding ToolCallRecord.result content
+    3. Check for contradictions:
+       - Finding claims "0 results" but tool result has numbered matches
+       - Finding claims "X is missing" but tool result shows X exists
+       - Finding claims specific line numbers but tool result doesn't contain them
+    4. Downgrade or drop contradicted findings
+
+Option B — LLM-based (higher quality, ~3-5 days):
+  For each finding:
+    1. Collect finding claim + all supporting ToolCallRecord.result texts
+    2. Send to LLM: "Does this evidence support this claim? YES/NO + reason"
+    3. Drop findings where evidence contradicts the claim
+    Reuses existing subagent infrastructure from AdversarialVerifier
+
+Option C — Hybrid (recommended, ~2-3 days):
+  Heuristic catches obvious contradictions (zero/nonzero mismatches)
+  LLM-based only for ambiguous cases where heuristic is uncertain
+```
+
+### Dependencies
+
+- Self-Reflection Scoring implemented first (filters easy FPs, leaving cleaner signal)
+- ToolCallRecord.result access (already available)
+- For Option B/C: async EvidenceAuditor (pipeline change)
+
+### Risks
+
+- Heuristic version may have low recall (many ways to misstate evidence)
+- LLM version adds latency (N calls per finding)
+- Need to handle non-string tool results (some tools return JSON objects)
+
+### Sequencing Note
+
+Implement **after** Self-Reflection Scoring (#1). Self-reflection will filter ~30-50% of FPs. Remaining FPs will reveal what percentage are "confident fabrications" vs other causes, informing whether Option A (cheap) or Option B (thorough) is needed.
+
+---
+
+## 3. Adaptive Tool Budget
 
 **Priority: MEDIUM** | **Expected Impact: Efficiency** | **Complexity: Low**
 
@@ -95,7 +158,7 @@ When budget exhausted → force think_about_completion → submit_review
 
 ---
 
-## 3. Tool Description RAG
+## 4. Tool Description RAG
 
 **Priority: MEDIUM** | **Expected Impact: Tool Selection Accuracy** | **Complexity: Medium**
 
@@ -134,7 +197,7 @@ Phase → Tools mapping:
 
 ---
 
-## 4. Cross-Model Validation
+## 5. Cross-Model Validation
 
 **Priority: LOW** | **Expected FP Reduction: 40-60%** | **Complexity: High**
 
@@ -168,7 +231,7 @@ Intersection logic:
 
 ---
 
-## 5. Scratchpad Tool with Forced Reasoning
+## 6. Scratchpad Tool with Forced Reasoning
 
 **Priority: MEDIUM (blocked)** | **Expected Impact: GPT-4.1 reasoning quality** | **Complexity: Low (when unblocked)**
 
@@ -206,7 +269,7 @@ Alternative (no API support needed):
 
 ---
 
-## 6. Finding Pattern Learning
+## 7. Finding Pattern Learning
 
 **Priority: LOW** | **Expected Impact: Long-term FP reduction** | **Complexity: High**
 
@@ -244,7 +307,7 @@ Integration:
 
 ---
 
-## 7. Enhanced Think Tool with Persistent Analysis
+## 8. Enhanced Think Tool with Persistent Analysis
 
 **Priority: MEDIUM** | **Expected Impact: Better reasoning continuity** | **Complexity: Low**
 
@@ -288,7 +351,7 @@ Response enhancement:
 
 ---
 
-## 8. Multi-Review Aggregation
+## 9. Multi-Review Aggregation
 
 **Priority: LOW** | **Expected Impact: Confidence scoring** | **Complexity: Medium**
 
@@ -322,7 +385,7 @@ Finding matching:
 
 ---
 
-## 9. Global Tool Pruning
+## 10. Global Tool Pruning
 
 **Priority: MEDIUM** | **Expected Impact: Simplicity, maintenance** | **Complexity: Low**
 
@@ -349,7 +412,7 @@ Phase 3: Further pruning based on actual usage data
 
 ---
 
-## 10. Post-Analysis Self-Critique with Different Model
+## 11. Post-Analysis Self-Critique with Different Model
 
 **Priority: MEDIUM** | **Expected FP Reduction: 20-40%** | **Complexity: Medium**
 
@@ -385,7 +448,7 @@ Model pairing:
 
 ---
 
-## 11. Structured Output Enforcement
+## 12. Structured Output Enforcement
 
 **Priority: LOW** | **Expected Impact: Parsing reliability** | **Complexity: Medium**
 
@@ -427,29 +490,31 @@ FindingsSchema:
 
 ## Implementation Priority Matrix
 
-| #   | Enhancement              | Priority | Blocked? | Est. FP Impact    | Prerequisite       |
-| --- | ------------------------ | -------- | -------- | ----------------- | ------------------ |
-| 1   | Self-Reflection Scoring  | HIGH     | No       | -30-50% FP        | None               |
-| 2   | Adaptive Tool Budget     | MEDIUM   | No       | Efficiency        | PR metadata        |
-| 3   | Tool Description RAG     | MEDIUM   | No       | Tool accuracy     | Intent classifier  |
-| 7   | Enhanced Think Tool      | MEDIUM   | No       | Reasoning quality | Context changes    |
-| 9   | Global Tool Pruning      | MEDIUM   | No       | Simplicity        | Usage metrics      |
-| 10  | Cross-Model Critique     | MEDIUM   | No       | -20-40% FP        | Multi-model access |
-| 5   | Scratchpad (Forced)      | MEDIUM   | **Yes**  | GPT-4.1 reasoning | vscode.lm API      |
-| 4   | Cross-Model Validation   | LOW      | No       | -40-60% FP        | Multi-model orch.  |
-| 6   | Finding Pattern Learning | LOW      | No       | Long-term         | Feedback UI        |
-| 8   | Multi-Review Aggregation | LOW      | No       | Confidence        | Parallel orch.     |
-| 11  | Structured Output        | LOW      | **Yes**  | Parsing           | vscode.lm API      |
+| #   | Enhancement              | Priority | Blocked? | Est. FP Impact    | Prerequisite         |
+| --- | ------------------------ | -------- | -------- | ----------------- | -------------------- |
+| 1   | Self-Reflection Scoring  | HIGH     | No       | -30-50% FP        | None                 |
+| 2   | Evidence-vs-Claim Xref   | HIGH     | No       | -15-25% FP        | Self-Reflection (#1) |
+| 3   | Adaptive Tool Budget     | MEDIUM   | No       | Efficiency        | PR metadata          |
+| 4   | Tool Description RAG     | MEDIUM   | No       | Tool accuracy     | Intent classifier    |
+| 8   | Enhanced Think Tool      | MEDIUM   | No       | Reasoning quality | Context changes      |
+| 10  | Global Tool Pruning      | MEDIUM   | No       | Simplicity        | Usage metrics        |
+| 11  | Cross-Model Critique     | MEDIUM   | No       | -20-40% FP        | Multi-model access   |
+| 6   | Scratchpad (Forced)      | MEDIUM   | **Yes**  | GPT-4.1 reasoning | vscode.lm API        |
+| 5   | Cross-Model Validation   | LOW      | No       | -40-60% FP        | Multi-model orch.    |
+| 7   | Finding Pattern Learning | LOW      | No       | Long-term         | Feedback UI          |
+| 9   | Multi-Review Aggregation | LOW      | No       | Confidence        | Parallel orch.       |
+| 12  | Structured Output        | LOW      | **Yes**  | Parsing           | vscode.lm API        |
 
 ## Recommended Sequence
 
 1. **Self-Reflection Scoring** — Highest ROI, builds on existing pipeline, no new infra
-2. **Enhanced Think Tool** — Cheap improvement, better reasoning chain
-3. **Global Tool Pruning** — Simplifies codebase, reduces tool noise
-4. **Adaptive Tool Budget** — Prevents over-investigation pattern
-5. **Tool Description RAG** — Improves tool selection for all models
-6. **Cross-Model Critique** — When multi-model is needed
-7. Everything else based on observed needs
+2. **Evidence-vs-Claim Cross-Referencing** — Catches confident fabrications that self-reflection misses
+3. **Enhanced Think Tool** — Cheap improvement, better reasoning chain
+4. **Global Tool Pruning** — Simplifies codebase, reduces tool noise
+5. **Adaptive Tool Budget** — Prevents over-investigation pattern
+6. **Tool Description RAG** — Improves tool selection for all models
+7. **Cross-Model Critique** — When multi-model is needed
+8. Everything else based on observed needs
 
 ---
 
