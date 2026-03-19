@@ -126,7 +126,7 @@ describe('Calibration-aware prompt blocks', () => {
         it('should strengthen skepticism for dismissive models', () => {
             const methodology = generateAnalysisMethodology(DISMISSIVE_PROFILE);
             expect(methodology).toContain('submit_review will reject');
-            expect(methodology).toContain('MUST record at least one finding');
+            expect(methodology).toContain('revisit your strongest hypothesis');
         });
 
         it('should produce balanced output with balanced profile', () => {

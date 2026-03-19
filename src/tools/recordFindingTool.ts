@@ -124,15 +124,11 @@ export class RecordFindingTool extends BaseTool {
             return toolError('Finding store not available in this context');
         }
 
-        // Max findings cap: force the model to prioritize quality over quantity.
-        const maxFindings = context.calibrationProfile.maxFindingsPerReview;
-        if (maxFindings > 0 && store.size >= maxFindings) {
-            return toolError(
-                `Maximum findings reached (${maxFindings}). You have already recorded ${store.size} finding(s). ` +
-                    'Only the most critical issues should be recorded. ' +
-                    'If this finding is more important than an existing one, retract the weaker finding first.'
-            );
-        }
+        // Soft finding limit: warn the model but don't block recording.
+        // The post-analysis pipeline handles filtering — let the model record
+        // everything it finds, then the pipeline drops weak ones.
+        const softLimit = context.calibrationProfile.maxFindingsPerReview;
+        const overSoftLimit = softLimit > 0 && store.size >= softLimit;
 
         // Calibration gate: enforce minimum investigation before first finding.
         // Only applies to the FIRST finding — once investigation is established,
@@ -235,6 +231,11 @@ export class RecordFindingTool extends BaseTool {
             })),
         });
 
+        const softLimitWarning = overSoftLimit
+            ? `\n\n⚠️ You have now recorded ${store.size} finding(s), which exceeds the recommended limit of ${softLimit}. ` +
+              'Focus only on HIGH/CRITICAL issues from here. The post-analysis pipeline will filter weaker findings.'
+            : '';
+
         return toolSuccess(
             `Finding recorded: [${finding.id}] ${finding.severity} — ${finding.title}\n` +
                 `Evidence: ${args.verification_evidence}\n` +
@@ -244,7 +245,8 @@ export class RecordFindingTool extends BaseTool {
                 `1. Re-read your verification_evidence above. Does it cite a SPECIFIC tool output (not just reasoning)?\n` +
                 `2. Could this be INTENTIONAL design? Did you search for comments, docs, or commit history explaining the rationale?\n` +
                 `3. Is this MECHANICAL (provable by tools) or INTENT-BASED (requires knowing author's rationale)? Intent-based findings have the highest FP rate.\n` +
-                `If the answer to #1 is NO, call retract_finding immediately.`
+                `If the answer to #1 is NO, call retract_finding immediately.` +
+                softLimitWarning
         );
     }
 }

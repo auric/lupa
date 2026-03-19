@@ -207,8 +207,16 @@ function scoreModelBias(
     const weight = 8;
     const bias = calibrationProfile.findingBias;
 
+    // Under prosecution mode, dismissive models are pushed to report —
+    // the "if they report it, it must be real" assumption no longer holds.
+    // Only give bonus when the model is naturally reluctant (devils-advocate).
     let contribution: number;
-    if (bias === 'dismissive') {
+    if (
+        bias === 'dismissive' &&
+        calibrationProfile.challengeMode === 'prosecution'
+    ) {
+        contribution = 0;
+    } else if (bias === 'dismissive') {
         contribution = 8;
     } else if (bias === 'balanced') {
         contribution = 4;

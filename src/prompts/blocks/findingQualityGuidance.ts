@@ -204,10 +204,8 @@ Missing a real bug is costlier than investigating a false lead.
 When evidence is ambiguous, investigate further — do not default to "it's probably fine."
 
 **Investigate aggressively, record when plausible.**
-If after thorough investigation you have a concern but cannot fully confirm it, record it as LOW severity — let the developer decide.
-A failed tool call (find_usages returning nothing, find_symbol not found) does NOT prove safety. It means you lack the evidence to dismiss.
-
-You MUST call record_finding at least once per review unless the PR is purely mechanical (renames, formatting, dependency bumps).`
+If after thorough investigation you have a concern supported by tool output but cannot fully confirm it, record it as LOW severity — the post-analysis pipeline will filter weak findings automatically.
+A failed tool call (find_usages returning nothing, find_symbol not found) does NOT prove safety. It means you lack the evidence to dismiss.`
 }
 
 ### FALSE POSITIVE EXAMPLES — Learn from Past Mistakes

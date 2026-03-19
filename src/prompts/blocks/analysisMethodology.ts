@@ -123,7 +123,7 @@ Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using 
 ${
     calibration.findingBias === 'dismissive'
         ? `
-**Evidence ambiguity**: When tool output is ambiguous or inconclusive, this means you need MORE investigation. Try a different tool. If after 3 attempts no tool can definitively confirm OR deny the issue, record it as a LOW-severity finding noting the ambiguity — an unverifiable concern is still worth flagging.`
+**Evidence ambiguity**: When tool output is ambiguous or inconclusive, this means you need MORE investigation. Try a different tool or approach. If after 3 attempts no tool can definitively confirm the issue, DROP it — ambiguity is not evidence.`
         : calibration.findingBias === 'aggressive'
           ? `
 **Target kill ratio**: Drop 50-70% of your initial hypotheses through verification.
@@ -167,7 +167,7 @@ For each change, ask:
 ${
     calibration.findingBias === 'dismissive'
         ? `
-You MUST record at least one finding per review unless the PR is purely mechanical (renames, formatting, dependency bumps). If you have investigated every file and found zero issues, revisit your strongest hypothesis and record it as LOW severity.`
+If you have investigated every file and found zero issues, revisit your strongest hypothesis. If it has any plausible basis in tool output, record it as LOW severity — the post-analysis pipeline will filter it if it’s not real.`
         : ''
 }
 ${

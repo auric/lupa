@@ -107,16 +107,16 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
     includeRevertTest: false,
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
-    adversarialVerificationThreshold: 'HIGH',
-    adversarialBudget: 10,
+    adversarialVerificationThreshold: 'LOW',
+    adversarialBudget: 15,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 3,
         requiredToolsBeforeDone: [],
         investigationPreamble:
             'For each changed function: read the diff, then call find_usages to trace callers.\n' +
             'If a caller cannot handle the new behavior (return type, null case, error path), call record_finding immediately.\n' +
-            'If find_usages fails or returns no results for an exported/public function, record a LOW-severity finding — unverifiable callers are a risk.\n' +
-            'When uncertain, record a LOW-severity finding. Missing a real bug is worse than reporting a false positive.',
+            'If find_usages returns no results for an exported/public function, try search_for_pattern as a fallback.\n' +
+            'Only record findings supported by specific tool output. Do not record speculative concerns.',
     },
     disabledTools: [
         'batch_tools',
@@ -135,16 +135,16 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
     includeRevertTest: false,
     includeAgenticPreamble: true,
     evidenceThreshold: 'low',
-    adversarialVerificationThreshold: 'HIGH',
-    adversarialBudget: 10,
+    adversarialVerificationThreshold: 'LOW',
+    adversarialBudget: 15,
     investigationProtocol: {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: [],
         investigationPreamble:
             'For each changed function: read the diff, then call find_usages to trace callers.\n' +
             'If a caller cannot handle the new behavior (return type, null case, error path), call record_finding immediately.\n' +
-            'If find_usages fails or returns no results for an exported/public function, record a LOW-severity finding — unverifiable callers are a risk.\n' +
-            'When uncertain, record a LOW-severity finding. Missing a real bug is worse than reporting a false positive.',
+            'If find_usages returns no results for an exported/public function, try search_for_pattern as a fallback.\n' +
+            'Only record findings supported by specific tool output. Do not record speculative concerns.',
     },
     disabledTools: [
         'batch_tools',
