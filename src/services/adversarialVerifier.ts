@@ -1,4 +1,4 @@
-import type * as vscode from 'vscode';
+import * as vscode from 'vscode';
 import { Log } from './loggingService';
 import { SubagentExecutor } from './subagentExecutor';
 import { AdversarialPromptGenerator } from '../prompts/adversarialPromptGenerator';
@@ -16,6 +16,7 @@ export type AdversarialProgressCallback = (message: string) => void;
 export interface AdversarialResult {
     confirmed: string[];
     refuted: string[];
+    uncertain: string[];
     toolCallRecords: ToolCallRecord[];
 }
 
@@ -23,8 +24,9 @@ export interface AdversarialResult {
  * Runs adversarial verification on findings as visible subagents.
  *
  * Each finding is verified by a dedicated adversarial subagent that gets
- * full investigation tools including diff access. Findings that cannot be
- * independently confirmed are removed from the FindingStore.
+ * full investigation tools including diff access. Findings that are refuted
+ * are removed from the FindingStore. Uncertain findings (errors, timeouts,
+ * ambiguous output) are kept in the store but reported separately.
  */
 export class AdversarialVerifier {
     private readonly adversarialGen = new AdversarialPromptGenerator();
@@ -44,7 +46,12 @@ export class AdversarialVerifier {
         );
 
         if (findingsToVerify.length === 0) {
-            return { confirmed: [], refuted: [], toolCallRecords: [] };
+            return {
+                confirmed: [],
+                refuted: [],
+                uncertain: [],
+                toolCallRecords: [],
+            };
         }
 
         const toVerify = findingsToVerify.map((finding, index) => ({
@@ -85,9 +92,15 @@ export class AdversarialVerifier {
             })
         );
 
+        // Propagate cancellation after allSettled so callers observe it
+        if (token.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         // Process results sequentially after all complete
         const confirmed: string[] = [];
         const refuted: string[] = [];
+        const uncertain: string[] = [];
         const toolCallRecords: ToolCallRecord[] = [];
 
         for (const result of results) {
@@ -128,17 +141,17 @@ export class AdversarialVerifier {
                 Log.info(
                     `Adversarial uncertain for "${finding.title}" — keeping finding`
                 );
-                confirmed.push(finding.title);
+                uncertain.push(finding.title);
             }
         }
 
-        if (refuted.length > 0) {
+        if (refuted.length > 0 || uncertain.length > 0) {
             Log.info(
-                `Adversarial verification: ${refuted.length} refuted, ${confirmed.length} confirmed`
+                `Adversarial verification: ${confirmed.length} confirmed, ${refuted.length} refuted, ${uncertain.length} uncertain`
             );
         }
 
-        return { confirmed, refuted, toolCallRecords };
+        return { confirmed, refuted, uncertain, toolCallRecords };
     }
 
     private async verifyFinding(

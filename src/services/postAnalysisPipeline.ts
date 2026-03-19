@@ -291,12 +291,14 @@ export class PostAnalysisPipeline {
                     if (finding) {
                         const idx = severityOrder.indexOf(finding.severity);
                         if (idx > 0) {
+                            const oldSeverity = finding.severity;
+                            const newSeverity = severityOrder[idx - 1]!;
                             options.findingStore.updateSeverity(
                                 score.findingId,
-                                severityOrder[idx - 1]!
+                                newSeverity
                             );
                             Log.info(
-                                `FindingScorer: downgraded "${finding.title}" ${finding.severity} → ${severityOrder[idx - 1]} (score: ${score.overallScore})`
+                                `FindingScorer: downgraded "${finding.title}" ${oldSeverity} → ${newSeverity} (score: ${score.overallScore})`
                             );
                         }
                     }

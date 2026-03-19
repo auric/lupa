@@ -3,7 +3,8 @@ import { LOG_LEVELS } from './loggingTypes';
 
 /**
  * Hardcoded analysis limits — not user-configurable.
- * These are set to generous values that work well for all cases.
+ * Tuned for parallel subagent architecture: fewer root iterations
+ * (orchestration only) with higher subagent parallelism.
  */
 export const ANALYSIS_LIMITS = {
     maxIterations: 100,

@@ -661,11 +661,19 @@ export class ChatParticipantService implements vscode.Disposable {
                         messages,
                         systemPrompt
                     );
-                    const usagePercent = Math.round(
-                        (validation.totalTokens / validation.maxTokens) * 100
+                    const usagePercent = Math.min(
+                        100,
+                        Math.round(
+                            (validation.totalTokens / validation.maxTokens) *
+                                100
+                        )
                     );
-                    const remainingK = Math.round(
-                        (validation.maxTokens - validation.totalTokens) / 1000
+                    const remainingK = Math.max(
+                        0,
+                        Math.round(
+                            (validation.maxTokens - validation.totalTokens) /
+                                1000
+                        )
                     );
 
                     let suffix = '';
