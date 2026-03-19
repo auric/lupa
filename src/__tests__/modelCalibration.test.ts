@@ -117,7 +117,7 @@ describe('modelCalibration', () => {
             ).toHaveLength(0);
             expect(
                 profile.investigationProtocol.investigationPreamble
-            ).toContain('CRASH HYPOTHESES');
+            ).toContain('find_usages');
         });
 
         it('GPT-4o has anti-dismissal investigation protocol', () => {
@@ -130,7 +130,7 @@ describe('modelCalibration', () => {
             ).toHaveLength(0);
             expect(
                 profile.investigationProtocol.investigationPreamble
-            ).toContain('CRASH HYPOTHESES');
+            ).toContain('find_usages');
         });
 
         it('Claude has minimal investigation protocol', () => {
@@ -165,6 +165,39 @@ describe('modelCalibration', () => {
             expect(
                 profile.investigationProtocol.minToolCallsBeforeFirstFinding
             ).toBe(2);
+        });
+    });
+
+    describe('tool filtering and finding caps', () => {
+        it('GPT-4.1 disables cognitive-overload tools', () => {
+            const profile = getCalibrationProfile('gpt-4.1', 'gpt-4.1');
+            expect(profile.disabledTools).toContain('validate_claim');
+            expect(profile.disabledTools).toContain('batch_tools');
+            expect(profile.disabledTools).toContain('list_directory');
+            expect(profile.disabledTools).toContain('get_symbols_overview');
+            expect(profile.disabledTools).toContain('retract_finding');
+            expect(profile.disabledTools.length).toBeGreaterThanOrEqual(5);
+        });
+
+        it('GPT-4.1 has tight finding cap', () => {
+            const profile = getCalibrationProfile('gpt-4.1', 'gpt-4.1');
+            expect(profile.maxFindingsPerReview).toBe(5);
+        });
+
+        it('Claude has no disabled tools', () => {
+            const profile = getCalibrationProfile('claude', 'claude-sonnet');
+            expect(profile.disabledTools).toHaveLength(0);
+        });
+
+        it('Claude has generous finding cap', () => {
+            const profile = getCalibrationProfile('claude', 'claude-sonnet');
+            expect(profile.maxFindingsPerReview).toBe(15);
+        });
+
+        it('default profile matches Claude tool config', () => {
+            const defaultProfile = getCalibrationProfile('unknown', 'unknown');
+            expect(defaultProfile.disabledTools).toHaveLength(0);
+            expect(defaultProfile.maxFindingsPerReview).toBe(15);
         });
     });
 });

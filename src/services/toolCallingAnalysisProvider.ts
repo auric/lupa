@@ -321,6 +321,12 @@ export class ToolCallingAnalysisProvider {
             // each iteration to filter the tool list.
             const disabledToolNames = new Set<string>();
 
+            // Apply model-specific tool filtering from calibration profile.
+            // Research shows fewer tools = better selection accuracy for GPT-4.1.
+            for (const tool of calibrationProfile.disabledTools) {
+                disabledToolNames.add(tool);
+            }
+
             // Run conversation loop using extracted ConversationRunner
             analysisText = await conversationRunner.run(
                 {

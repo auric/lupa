@@ -174,7 +174,10 @@ export class SubagentExecutor {
             this.reportProgress(`Sub-analysis: ${taskLabel}`, 0.5);
 
             const conversation = new ConversationManager();
-            let filteredTools = this.filterTools(canRecurse);
+            let filteredTools = this.filterTools(
+                canRecurse,
+                options?.calibrationProfile
+            );
 
             // Apply additional tool exclusions (e.g., adversarial agents shouldn't have record_finding)
             if (options?.excludeTools?.length) {
@@ -547,14 +550,23 @@ export class SubagentExecutor {
      * When canRecurse is true, only exclude root-only tools (plan, review, reflection).
      * When canRecurse is false, exclude everything including run_subagent_batch (current flat behavior).
      */
-    private filterTools(canRecurse: boolean): ITool[] {
+    private filterTools(
+        canRecurse: boolean,
+        calibrationProfile?: ModelCalibrationProfile
+    ): ITool[] {
         const disallowed: readonly string[] = canRecurse
             ? RECURSIVE_CHILD_DISALLOWED_TOOLS
             : SubagentLimits.DISALLOWED_TOOLS;
 
+        const modelDisabled = new Set(calibrationProfile?.disabledTools ?? []);
+
         return this.toolRegistry
             .getAllTools()
-            .filter((tool) => !disallowed.includes(tool.name));
+            .filter(
+                (tool) =>
+                    !disallowed.includes(tool.name) &&
+                    !modelDisabled.has(tool.name)
+            );
     }
 
     /**

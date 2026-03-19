@@ -24,7 +24,6 @@ export function generateToolSelectionGuide(): string {
 | Track progress | \`update_plan\` |
 | Think through analysis | \`think\` |
 | Record confirmed issue | \`record_finding\` |
-| Check existing findings | \`list_findings\` |
 | Verify factual claim | \`validate_claim\` |
 | Deep investigation | \`run_subagent_batch\` |
 | Parallel tool calls | \`batch_tools\` |

@@ -20,7 +20,6 @@ export function generateRecursiveToolGuide(): string {
 | \`think_about_completion\` | Before final submission — verify all concerns were covered |
 | \`submit_review\` | **FINAL ACTION** — deliver aggregated, structured review |
 | \`record_finding\` | Commit findings as discovered — survives timeout |
-| \`list_findings\` | Check what other agents found — avoid duplicates |
 | \`validate_claim\` | LSP-verify critical claims before including in final review |
 | \`batch_tools\` | Wrap multiple independent tool calls into one parallel invocation |
 

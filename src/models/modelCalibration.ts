@@ -83,6 +83,20 @@ export interface ModelCalibrationProfile {
      * Critical for GPT-4.1 which tends to stop early without explicit guidance.
      */
     readonly investigationProtocol: InvestigationProtocol;
+
+    /**
+     * Tools to disable for this model family.
+     * Reduces cognitive overload for literal instruction followers (GPT-4.1).
+     * Research shows fewer tools = better tool selection accuracy.
+     */
+    readonly disabledTools: readonly string[];
+
+    /**
+     * Maximum number of findings per review.
+     * Forces prioritization: models must report only the most impactful issues.
+     * GPT-4.1 benefits from tight caps (keeps focus on quality over quantity).
+     */
+    readonly maxFindingsPerReview: number;
 }
 
 const GPT_41_PROFILE: ModelCalibrationProfile = {
@@ -99,18 +113,20 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
         minToolCallsBeforeFirstFinding: 3,
         requiredToolsBeforeDone: [],
         investigationPreamble:
-            'For EACH changed function, investigate in this exact order:\n' +
-            'Round 1 — CRASH HYPOTHESES: Could this function throw, panic, or crash? ' +
-            'Form a hypothesis BEFORE calling tools: "Function X could throw when Y because Z." ' +
-            'Then use find_usages and validate_claim to prove or disprove.\n' +
-            'Round 2 — WRONG RESULT HYPOTHESES: Could this function return incorrect data silently? ' +
-            'Check return types against what callers expect. Use find_usages on each changed function.\n' +
-            'Round 3 — CALLER MISMATCH: Do all callers of changed functions handle the new behavior correctly? ' +
-            'If a return type, parameter, or error behavior changed, check every call site.\n\n' +
-            'BEFORE calling any investigation tool, write your hypothesis. ' +
-            'If you cannot form a hypothesis, skip that tool call — do not call tools exploratorily.\n\n' +
-            'Call list_findings before recording to avoid duplicating what other agents already found.',
+            'For each changed function: read the diff, then call find_usages to trace every caller.\n' +
+            'Ask: does any caller break because of this change? If a caller cannot handle the new ' +
+            'return type, null case, or error behavior, that is a bug — record it immediately.\n' +
+            'If you cannot name a specific caller that breaks, do not record a finding.',
     },
+    disabledTools: [
+        'validate_claim',
+        'batch_tools',
+        'list_directory',
+        'find_files_by_pattern',
+        'get_symbols_overview',
+        'retract_finding',
+    ],
+    maxFindingsPerReview: 5,
 };
 
 const GPT_4O_PROFILE: ModelCalibrationProfile = {
@@ -127,18 +143,20 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
         minToolCallsBeforeFirstFinding: 2,
         requiredToolsBeforeDone: [],
         investigationPreamble:
-            'For EACH changed function, investigate in this exact order:\n' +
-            'Round 1 — CRASH HYPOTHESES: Could this function throw, panic, or crash? ' +
-            'Form a hypothesis BEFORE calling tools: "Function X could throw when Y because Z." ' +
-            'Then use find_usages and validate_claim to prove or disprove.\n' +
-            'Round 2 — WRONG RESULT HYPOTHESES: Could this function return incorrect data silently? ' +
-            'Check return types against what callers expect. Use find_usages on each changed function.\n' +
-            'Round 3 — CALLER MISMATCH: Do all callers of changed functions handle the new behavior correctly? ' +
-            'If a return type, parameter, or error behavior changed, check every call site.\n\n' +
-            'BEFORE calling any investigation tool, write your hypothesis. ' +
-            'If you cannot form a hypothesis, skip that tool call — do not call tools exploratorily.\n\n' +
-            'Call list_findings before recording to avoid duplicating what other agents already found.',
+            'For each changed function: read the diff, then call find_usages to trace every caller.\n' +
+            'Ask: does any caller break because of this change? If a caller cannot handle the new ' +
+            'return type, null case, or error behavior, that is a bug — record it immediately.\n' +
+            'If you cannot name a specific caller that breaks, do not record a finding.',
     },
+    disabledTools: [
+        'validate_claim',
+        'batch_tools',
+        'list_directory',
+        'find_files_by_pattern',
+        'get_symbols_overview',
+        'retract_finding',
+    ],
+    maxFindingsPerReview: 5,
 };
 
 const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
@@ -158,6 +176,8 @@ const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
             'Verify all claims with validate_claim before recording. ' +
             'Focus on precision — only record findings with concrete tool-confirmed evidence.',
     },
+    disabledTools: [],
+    maxFindingsPerReview: 10,
 };
 
 /**
@@ -182,6 +202,8 @@ const RAPTOR_MINI_PROFILE: ModelCalibrationProfile = {
             'Verify all claims with validate_claim before recording. ' +
             'Focus on precision — only record findings with concrete tool-confirmed evidence.',
     },
+    disabledTools: [],
+    maxFindingsPerReview: 10,
 };
 
 const CLAUDE_PROFILE: ModelCalibrationProfile = {
@@ -199,6 +221,8 @@ const CLAUDE_PROFILE: ModelCalibrationProfile = {
         requiredToolsBeforeDone: [],
         investigationPreamble: '',
     },
+    disabledTools: [],
+    maxFindingsPerReview: 15,
 };
 
 export const DEFAULT_PROFILE: ModelCalibrationProfile = {

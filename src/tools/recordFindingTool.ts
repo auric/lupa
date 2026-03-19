@@ -21,10 +21,10 @@ const VALID_CLAIM_TYPES: readonly ClaimType[] = [
 export class RecordFindingTool extends BaseTool {
     name = 'record_finding';
     description =
-        'MANDATORY: Record each confirmed finding IMMEDIATELY after verification. ' +
+        'Record a confirmed finding IMMEDIATELY after verification. ' +
         'Findings recorded here survive timeout — unrecorded findings are LOST. ' +
-        "PREREQUISITE: You must call validate_claim AND a devil's advocate think checkpoint before this tool. " +
-        'Only record findings that survived both LSP verification and your counter-argument.';
+        'Only record findings you have verified through code investigation (find_symbol, find_usages, etc.). ' +
+        'Findings without tool-confirmed evidence have a 90%+ false positive rate.';
 
     schema = z.object({
         severity: z
@@ -122,6 +122,16 @@ export class RecordFindingTool extends BaseTool {
         const store = context.findingStore;
         if (!store) {
             return toolError('Finding store not available in this context');
+        }
+
+        // Max findings cap: force the model to prioritize quality over quantity.
+        const maxFindings = context.calibrationProfile.maxFindingsPerReview;
+        if (maxFindings > 0 && store.size >= maxFindings) {
+            return toolError(
+                `Maximum findings reached (${maxFindings}). You have already recorded ${store.size} finding(s). ` +
+                    'Only the most critical issues should be recorded. ' +
+                    'If this finding is more important than an existing one, retract the weaker finding first.'
+            );
         }
 
         // Calibration gate: enforce minimum investigation before first finding.

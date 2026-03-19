@@ -744,6 +744,11 @@ export class ChatParticipantService implements vscode.Disposable {
         // each iteration to filter the tool list.
         const disabledToolNames = new Set<string>();
 
+        // Apply model-specific tool filtering from calibration profile.
+        for (const tool of calibrationProfile.disabledTools) {
+            disabledToolNames.add(tool);
+        }
+
         try {
             let analysisResult = await runner.run(
                 {
