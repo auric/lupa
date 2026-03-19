@@ -64,7 +64,7 @@ export class SubmitReviewTool extends BaseTool {
                 const titleWords = f.title
                     .toLowerCase()
                     .split(/\s+/)
-                    .filter((w) => w.length > 3);
+                    .filter((w) => w.length >= 3);
                 const titleMentioned = titleWords.some((word) =>
                     reviewLower.includes(word)
                 );

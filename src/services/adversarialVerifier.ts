@@ -25,13 +25,9 @@ export interface AdversarialResult {
  * Each finding is verified by a dedicated adversarial subagent that gets
  * full investigation tools including diff access. Findings that cannot be
  * independently confirmed are removed from the FindingStore.
- *
- * Confirmed findings are tracked to prevent re-verification on subsequent
- * rounds (when the main LLM rewrites and resubmits).
  */
 export class AdversarialVerifier {
     private readonly adversarialGen = new AdversarialPromptGenerator();
-    private readonly confirmedFindingIds = new Set<string>();
 
     async verify(
         findingStore: FindingStore,
@@ -51,28 +47,10 @@ export class AdversarialVerifier {
             return { confirmed: [], refuted: [], toolCallRecords: [] };
         }
 
-        // Separate already-confirmed from new findings
-        const alreadyConfirmed: string[] = [];
-        const toVerify: { finding: RecordedFinding; index: number }[] = [];
-        for (let i = 0; i < findingsToVerify.length; i++) {
-            const finding = findingsToVerify[i]!;
-            if (this.confirmedFindingIds.has(finding.id)) {
-                Log.info(
-                    `Adversarial skip (already confirmed): ${finding.title}`
-                );
-                alreadyConfirmed.push(finding.title);
-            } else {
-                toVerify.push({ finding, index: i });
-            }
-        }
-
-        if (toVerify.length === 0) {
-            return {
-                confirmed: alreadyConfirmed,
-                refuted: [],
-                toolCallRecords: [],
-            };
-        }
+        const toVerify = findingsToVerify.map((finding, index) => ({
+            finding,
+            index,
+        }));
 
         progressCallback?.(
             `Adversarial verification of ${toVerify.length} finding(s) in parallel...`
@@ -108,7 +86,7 @@ export class AdversarialVerifier {
         );
 
         // Process results sequentially after all complete
-        const confirmed: string[] = [...alreadyConfirmed];
+        const confirmed: string[] = [];
         const refuted: string[] = [];
         const toolCallRecords: ToolCallRecord[] = [];
 
@@ -142,7 +120,6 @@ export class AdversarialVerifier {
             });
 
             if (verdict === 'CONFIRMED') {
-                this.confirmedFindingIds.add(finding.id);
                 confirmed.push(finding.title);
             } else if (verdict === 'REFUTED') {
                 findingStore.remove(finding.id);
