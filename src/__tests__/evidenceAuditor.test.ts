@@ -87,19 +87,46 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.verdict).toBe('keep');
         });
 
-        it('drops finding when claimed tools were never called on the file', () => {
+        it('keeps finding when claimed tool not called but file was investigated', () => {
             const findings = [
                 createTestFinding({
-                    description:
-                        'find_usages showed no callers, validate_claim confirmed',
+                    description: 'find_usages showed no callers',
                     disproof: {
                         attempted: true,
-                        method: 'Used validate_claim to verify',
+                        method: 'Used find_usages to verify',
                         result: 'Confirmed',
                     },
                 }),
             ];
-            // Only read_file was called, but finding claims find_usages and validate_claim
+            // Only read_file was called, but finding claims find_usages.
+            // Since the file WAS investigated (read_file), this is misattribution not fabrication.
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.kept).toBe(0);
+            expect(result.downgraded).toBe(1);
+            expect(result.entries[0]!.verdict).toBe('downgrade');
+        });
+
+        it('drops finding when claimed tools never called and file not investigated', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/bar.ts',
+                    description: 'find_usages showed no callers on src/bar.ts',
+                    disproof: {
+                        attempted: true,
+                        method: 'Used find_usages to verify',
+                        result: 'Confirmed',
+                    },
+                }),
+            ];
+            // No tools called on src/bar.ts at all
             const records = [
                 createToolCallRecord({
                     toolName: 'read_file',
@@ -115,7 +142,7 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.reason).toContain('find_usages');
         });
 
-        it('drops finding when claimed tool was called on wrong file', () => {
+        it('keeps finding when claimed tool was called on wrong file but file was investigated', () => {
             const findings = [
                 createTestFinding({
                     file: 'src/foo.ts',
@@ -123,7 +150,8 @@ describe('EvidenceAuditor', () => {
                         'read_file and find_usages confirmed the issue',
                 }),
             ];
-            // find_usages was called but on a different file
+            // find_usages was called but on a different file; read_file was on the right file
+            // Since the file WAS investigated (read_file matched), this is misattribution
             const records = [
                 createToolCallRecord({
                     toolName: 'read_file',
@@ -140,9 +168,8 @@ describe('EvidenceAuditor', () => {
 
             const result = auditor.audit(findings, records);
 
-            expect(result.dropped).toBe(1);
-            expect(result.entries[0]!.reason).toContain('Fabricated evidence');
-            expect(result.entries[0]!.reason).toContain('find_usages');
+            // File was investigated via read_file — not fabricated, just misattributed
+            expect(result.entries[0]!.verdict).not.toBe('drop');
         });
 
         it('downgrades CRITICAL finding with only one investigation tool type', () => {
@@ -406,9 +433,10 @@ describe('EvidenceAuditor', () => {
         it('uses verificationEvidence field when available', () => {
             const findings = [
                 createTestFinding({
+                    file: 'src/unvisited.ts',
                     description: 'Some generic description',
                     verificationEvidence:
-                        'validate_claim confirmed symbol_unused on handleClick',
+                        'find_usages confirmed no callers for handleClick',
                     disproof: {
                         attempted: true,
                         method: 'Thought about it',
@@ -416,18 +444,18 @@ describe('EvidenceAuditor', () => {
                     },
                 }),
             ];
-            // validate_claim was never called on this file → fabricated
+            // No tools called on src/unvisited.ts at all → fabricated
             const records = [
                 createToolCallRecord({
                     toolName: 'read_file',
-                    arguments: { file_path: 'src/foo.ts' },
+                    arguments: { file_path: 'src/other.ts' },
                 }),
             ];
 
             const result = auditor.audit(findings, records);
 
             expect(result.dropped).toBe(1);
-            expect(result.entries[0]!.reason).toContain('validate_claim');
+            expect(result.entries[0]!.reason).toContain('find_usages');
         });
 
         it('handles finding with no evidence text mentioning tools', () => {
@@ -469,7 +497,7 @@ describe('EvidenceAuditor', () => {
                     id: 'f3',
                     severity: 'HIGH',
                     file: 'src/baz.ts',
-                    description: 'validate_claim confirmed',
+                    description: 'find_usages confirmed the issue',
                 }),
             ];
             const records = [
@@ -485,20 +513,21 @@ describe('EvidenceAuditor', () => {
                     toolName: 'read_file',
                     arguments: { file_path: 'src/bar.ts' },
                 }),
-                // No tools for src/baz.ts → validate_claim claim is fabricated
+                // No tools for src/baz.ts → find_usages claim is fabricated
             ];
 
             const result = auditor.audit(findings, records);
 
             expect(result.kept).toBe(1); // f1: MEDIUM with read_file + find_usages
             expect(result.downgraded).toBe(1); // f2: CRITICAL with only read_file
-            expect(result.dropped).toBe(1); // f3: claimed validate_claim but never called
+            expect(result.dropped).toBe(1); // f3: claimed find_usages but file never investigated
             expect(result.entries.length).toBe(3);
         });
 
         it('drops finding when deletion language + zero-reference evidence present', () => {
             const findings = [
                 createTestFinding({
+                    title: 'Unused function deleted',
                     description:
                         'The function handleClick was deleted but callers may break',
                     verificationEvidence:
@@ -531,6 +560,7 @@ describe('EvidenceAuditor', () => {
             const findings = [
                 createTestFinding({
                     severity: 'MEDIUM',
+                    title: 'Helper function removed',
                     description:
                         'The helper was removed but may still be imported elsewhere',
                 }),
@@ -541,8 +571,11 @@ describe('EvidenceAuditor', () => {
                     arguments: { file_path: 'src/foo.ts' },
                 }),
                 createToolCallRecord({
-                    toolName: 'search_for_pattern',
-                    arguments: { file_path: 'src/foo.ts', pattern: 'helper' },
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'helper',
+                    },
                     result: 'No results found',
                 }),
             ];
@@ -609,6 +642,76 @@ describe('EvidenceAuditor', () => {
 
             expect(result.entries[0]!.verdict).not.toBe('drop');
         });
+
+        it('keeps test-coverage findings even with deletion language and zero references', () => {
+            const findings = [
+                createTestFinding({
+                    title: 'Coverage gap: tests removed',
+                    description:
+                        'Tool thinking tests were deleted, reducing test coverage',
+                    file: 'src/__tests__/thinkTool.test.ts',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/__tests__/thinkTool.test.ts',
+                        symbol_name: 'thinkTool',
+                    },
+                    result: '0 results found',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // Test-coverage findings should NOT be dropped by deletion-safety
+            expect(result.entries[0]!.verdict).not.toBe('drop');
+        });
+
+        it('counts global search_for_pattern results as supporting evidence', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'LOW',
+                    file: 'src/utils/helper.ts',
+                    description: 'search_for_pattern found the issue',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'search_for_pattern',
+                    arguments: { pattern: 'helper', code_files_only: true },
+                    result: 'src/utils/helper.ts:42: export function helper() {',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // search_for_pattern result mentions the file → counts as evidence
+            expect(result.entries[0]!.actualToolsOnFile).toContain(
+                'search_for_pattern'
+            );
+            expect(result.kept).toBe(1);
+        });
+
+        it('does not extract non-investigation tools from evidence text', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    file: 'src/unvisited.ts',
+                    description:
+                        'validate_claim and think confirmed the issue, also used retract_finding',
+                }),
+            ];
+            const records: ToolCallRecord[] = [];
+
+            const result = auditor.audit(findings, records);
+
+            // Non-investigation tools should not trigger fabrication drops
+            expect(result.entries[0]!.claimedTools).toEqual([]);
+            // No investigation tools used → depth downgrade, not fabrication drop
+            expect(result.entries[0]!.verdict).not.toBe('drop');
+        });
     });
 });
 
@@ -622,8 +725,8 @@ describe('extractClaimedToolNames', () => {
     });
 
     it('handles tool names with parentheses', () => {
-        const text = 'validate_claim(symbol_unused, handleClick) returned true';
-        expect(extractClaimedToolNames(text)).toContain('validate_claim');
+        const text = 'find_usages(handleClick) returned 3 callers';
+        expect(extractClaimedToolNames(text)).toContain('find_usages');
     });
 
     it('handles tool names with spaces instead of underscores', () => {
@@ -648,11 +751,11 @@ describe('extractClaimedToolNames', () => {
 
     it('extracts multiple distinct tool names', () => {
         const text =
-            'read_file showed the code, find_symbol found the definition, validate_claim verified it';
+            'read_file showed the code, find_symbol found the definition, find_usages verified it';
         const tools = extractClaimedToolNames(text);
         expect(tools).toContain('read_file');
         expect(tools).toContain('find_symbol');
-        expect(tools).toContain('validate_claim');
+        expect(tools).toContain('find_usages');
     });
 });
 

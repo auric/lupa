@@ -2,12 +2,7 @@ import { Log } from './loggingService';
 import type { RecordedFinding, FindingSeverity } from '../types/findingTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { InvestigationDepth } from '../types/investigationTypes';
-import {
-    INVESTIGATION_TOOLS,
-    QUALITY_TOOLS,
-    PR_CONTEXT_TOOLS,
-    DIFF_TOOLS,
-} from '../models/toolConstants';
+import { INVESTIGATION_TOOLS, DIFF_TOOLS } from '../models/toolConstants';
 import {
     buildInvestigationAudit,
     flattenToolCalls,
@@ -34,26 +29,22 @@ const ZERO_REFERENCE_PATTERNS = [
     /0 occurrences/i,
 ] as const;
 
-const ZERO_REFERENCE_TOOL_NAMES = new Set([
-    'find_usages',
-    'find_symbol',
-    'search_for_pattern',
-]);
+const ZERO_REFERENCE_TOOL_NAMES = new Set(['find_usages', 'find_symbol']);
 
 /**
- * All known tool names the model might reference in evidence text.
- * Derived from existing tool constant arrays to avoid maintaining a separate list.
+ * Tools that target specific files and can be matched per-file.
+ * Excludes non-investigation tools (validate_claim, retract_finding, think, etc.)
+ * and global tools (search_for_pattern) that don't target a single file.
  */
-const ALL_TOOL_NAMES: readonly string[] = [
-    ...INVESTIGATION_TOOLS,
-    ...QUALITY_TOOLS,
-    ...PR_CONTEXT_TOOLS,
+const FILE_TARGETED_TOOL_NAMES: readonly string[] = [
+    ...INVESTIGATION_TOOLS.filter((t) => t !== 'search_for_pattern'),
     ...DIFF_TOOLS,
-    'validate_claim',
-    'run_subagent_batch',
-    'batch_tools',
-    'think',
 ];
+
+/**
+ * Global search tools that don't target a specific file but may mention
+ * the finding's file in their results.
+ */
 
 export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade';
 
@@ -130,28 +121,36 @@ export class EvidenceAuditor {
             flatRecords
         );
 
-        const supportingToolCallIds = matchingCalls.map((tc) => tc.id);
-        const actualToolsOnFile = [
-            ...new Set(matchingCalls.map((tc) => tc.toolName)),
+        // Step 1b: Also count global search tools whose results mention this file
+        const globalSearchCalls = this.findGlobalSearchCallsMentioningFile(
+            finding.file,
+            flatRecords
+        );
+        const allSupportingCalls = [...matchingCalls, ...globalSearchCalls];
+        const supportingToolCallIdsAll = [
+            ...new Set(allSupportingCalls.map((tc) => tc.id)),
         ];
 
         // Step 2: Extract tool names claimed in evidence text
         const evidenceText = this.getEvidenceText(finding);
         const claimedTools = extractClaimedToolNames(evidenceText);
 
+        const actualToolsOnFile = [
+            ...new Set(allSupportingCalls.map((tc) => tc.toolName)),
+        ];
+
         // Step 3: Populate supportingToolCalls on the finding
-        finding.supportingToolCalls = supportingToolCallIds;
+        finding.supportingToolCalls = supportingToolCallIdsAll;
 
         // Step 4: Check for deletion safety pattern (proved safe but still reported)
         const deletionVerdict = this.checkDeletionSafety(
             finding,
-            matchingCalls,
-            flatRecords
+            allSupportingCalls
         );
         if (deletionVerdict) {
             return {
                 ...deletionVerdict,
-                supportingToolCallIds,
+                supportingToolCallIds: supportingToolCallIdsAll,
                 claimedTools,
                 actualToolsOnFile,
             };
@@ -161,7 +160,7 @@ export class EvidenceAuditor {
         if (claimedTools.length > 0) {
             const fabricated = this.findFabricatedClaims(
                 claimedTools,
-                matchingCalls,
+                allSupportingCalls,
                 flatRecords
             );
             if (fabricated.length > 0) {
@@ -173,7 +172,7 @@ export class EvidenceAuditor {
                     finding,
                     verdict: 'drop',
                     reason,
-                    supportingToolCallIds,
+                    supportingToolCallIds: supportingToolCallIdsAll,
                     claimedTools,
                     actualToolsOnFile,
                 };
@@ -193,7 +192,7 @@ export class EvidenceAuditor {
                 finding,
                 verdict: 'downgrade',
                 reason,
-                supportingToolCallIds,
+                supportingToolCallIds: supportingToolCallIdsAll,
                 claimedTools,
                 actualToolsOnFile,
             };
@@ -203,7 +202,7 @@ export class EvidenceAuditor {
             finding,
             verdict: 'keep',
             reason: undefined,
-            supportingToolCallIds,
+            supportingToolCallIds: supportingToolCallIdsAll,
             claimedTools,
             actualToolsOnFile,
         };
@@ -237,43 +236,97 @@ export class EvidenceAuditor {
     }
 
     /**
+     * Find global search tool calls (e.g. search_for_pattern) whose results
+     * mention the finding's file. These tools don't have a file_path argument
+     * so they can't be matched by `findToolCallsForFile`, but their results
+     * may reference the file, making them valid supporting evidence.
+     */
+    private findGlobalSearchCallsMentioningFile(
+        findingFile: string,
+        toolCallRecords: ToolCallRecord[]
+    ): ToolCallRecord[] {
+        const normalizedTarget = findingFile.replace(/\\/g, '/');
+        const fileName = normalizedTarget.split('/').pop() ?? normalizedTarget;
+
+        return toolCallRecords.filter((tc) => {
+            if (!tc.success || typeof tc.result !== 'string') {
+                return false;
+            }
+            if (tc.toolName !== 'search_for_pattern') {
+                return false;
+            }
+            const normalizedResult = tc.result.replace(/\\/g, '/');
+            return (
+                normalizedResult.includes(normalizedTarget) ||
+                normalizedResult.includes(fileName)
+            );
+        });
+    }
+
+    /**
      * Check which claimed tools were never actually called on the finding's file.
-     * A tool is considered fabricated if:
-     * - It was mentioned in evidence text
-     * - It was never called at all, OR it was called but not on this file
+     * Only checks file-targeted investigation tools — non-file tools
+     * (validate_claim, think, etc.) and global tools (search_for_pattern)
+     * are excluded since they can't be matched to a specific file.
+     *
+     * A finding is only flagged as fabricated if:
+     * - It claims file-targeted tools that were never called on the file
+     * - AND no other investigation tools were called on the file either
+     *   (if the file WAS investigated, misattributing which tool found it is
+     *   an evidence quality issue, not fabrication)
      */
     private findFabricatedClaims(
         claimedTools: string[],
-        fileMatchingCalls: ToolCallRecord[],
+        fileSupportingCalls: ToolCallRecord[],
         allToolCallRecords: ToolCallRecord[]
     ): string[] {
-        const toolsCalledOnFile = new Set(
-            fileMatchingCalls.map((tc) => tc.toolName)
+        // Only check file-targeted tools, not validate_claim/think/etc.
+        const fileTargetedClaims = claimedTools.filter((t) =>
+            FILE_TARGETED_TOOL_NAMES.includes(t)
         );
+        if (fileTargetedClaims.length === 0) {
+            return [];
+        }
+
+        const toolsOnFile = new Set(
+            fileSupportingCalls.map((tc) => tc.toolName)
+        );
+
+        // If the file was investigated by ANY tool, don't flag as fabricated.
+        // The model found the issue — it just misattributed which tool it used.
+        if (toolsOnFile.size > 0) {
+            return [];
+        }
+
+        // No tools called on this file at all — check which claimed tools exist
         const allToolsEverCalled = new Set(
             allToolCallRecords
                 .filter((tc) => tc.success)
                 .map((tc) => tc.toolName)
         );
 
-        return claimedTools.filter((claimed) => {
-            // Tool was called on this specific file → not fabricated
-            if (toolsCalledOnFile.has(claimed)) {
-                return false;
-            }
-            // Tool was never called at all → fabricated
+        return fileTargetedClaims.filter((claimed) => {
             if (!allToolsEverCalled.has(claimed)) {
                 return true;
             }
-            // Tool was called on OTHER files but not this one → fabricated for this file
+            // Tool was called but on other files, not this one
             return true;
         });
     }
 
+    /**
+     * Check whether a finding about deleted/removed code was proven safe.
+     *
+     * Only triggers when ALL conditions are met:
+     * 1. Evidence text mentions deletion/removal
+     * 2. A reference-checking tool (find_usages, find_symbol) was called
+     *    specifically for this finding's file and returned zero references
+     * 3. The finding is NOT about test coverage or test removal
+     *    (zero references for a deleted test is expected, not proof of safety)
+     */
     private checkDeletionSafety(
         finding: RecordedFinding,
-        fileMatchingCalls: ToolCallRecord[],
-        allRecords: ToolCallRecord[]
+        fileSupportingCalls: ToolCallRecord[]
     ): Pick<EvidenceAuditEntry, 'finding' | 'verdict' | 'reason'> | null {
         const evidenceText = this.getEvidenceText(finding);
 
@@ -281,7 +334,13 @@ export class EvidenceAuditor {
             return null;
         }
 
-        const referenceToolCalls = [...fileMatchingCalls, ...allRecords].filter(
+        // Don't drop test coverage/removal findings — zero refs is expected for deleted tests
+        if (this.isTestCoverageFinding(finding)) {
+            return null;
+        }
+
+        // Only check reference tools called on THIS finding's file, not all records
+        const referenceToolCalls = fileSupportingCalls.filter(
             (tc) =>
                 tc.success &&
                 ZERO_REFERENCE_TOOL_NAMES.has(tc.toolName) &&
@@ -304,6 +363,16 @@ export class EvidenceAuditor {
             `EvidenceAuditor DROP [${finding.id}] "${finding.title}": ${reason}`
         );
         return { finding, verdict: 'drop', reason };
+    }
+
+    private isTestCoverageFinding(finding: RecordedFinding): boolean {
+        if (/\.(test|spec)\.(ts|js|tsx|jsx)$/.test(finding.file)) {
+            return true;
+        }
+        const text = `${finding.title} ${finding.description}`.toLowerCase();
+        return /\buntested\b|\bcoverage\s*(gap|loss|miss|reduc)|\btests?\s+(remov|delet|drop)|\btest\s+file\s+(remov|delet)/.test(
+            text
+        );
     }
 
     private getFileDepthScore(
@@ -357,8 +426,10 @@ export class EvidenceAuditor {
 }
 
 /**
- * Extract tool names mentioned in evidence text.
- * Looks for known tool names as identifiers (not substrings of other words).
+ * Extract file-targeted investigation tool names mentioned in evidence text.
+ * Only returns tools that target specific files (read_file, find_usages, etc.).
+ * Excludes non-investigation tools (validate_claim, think, record_finding, etc.)
+ * and global search tools (search_for_pattern) since they can't be matched per-file.
  */
 export function extractClaimedToolNames(text: string): string[] {
     if (!text) {
@@ -368,7 +439,7 @@ export function extractClaimedToolNames(text: string): string[] {
     const found: string[] = [];
     const lowerText = text.toLowerCase();
 
-    for (const toolName of ALL_TOOL_NAMES) {
+    for (const toolName of FILE_TARGETED_TOOL_NAMES) {
         // Match the tool name as a word boundary or followed by ( or space
         // This avoids partial matches like "find_files_by_pattern" matching "find"
         const pattern = new RegExp(

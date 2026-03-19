@@ -7,17 +7,16 @@ Roadmap of research-backed improvements for reducing false positives and improvi
 ## Table of Contents
 
 1. [Self-Reflection Scoring (Qodo-Style 2nd Pass)](#1-self-reflection-scoring)
-2. [Single-Pass Mode for Non-Reasoning Models](#2-single-pass-mode)
-3. [Adaptive Tool Budget per PR Complexity](#3-adaptive-tool-budget)
-4. [Tool Description RAG](#4-tool-description-rag)
-5. [Cross-Model Validation](#5-cross-model-validation)
-6. [Scratchpad Tool with Forced Reasoning](#6-scratchpad-tool)
-7. [Finding Pattern Learning](#7-finding-pattern-learning)
-8. [Enhanced Think Tool with Persistent Analysis](#8-enhanced-think-tool)
-9. [Multi-Review Aggregation](#9-multi-review-aggregation)
-10. [Global Tool Pruning](#10-global-tool-pruning)
-11. [Post-Analysis Self-Critique with Different Model](#11-post-analysis-self-critique)
-12. [Structured Output Enforcement](#12-structured-output-enforcement)
+2. [Adaptive Tool Budget per PR Complexity](#2-adaptive-tool-budget)
+3. [Tool Description RAG](#3-tool-description-rag)
+4. [Cross-Model Validation](#4-cross-model-validation)
+5. [Scratchpad Tool with Forced Reasoning](#5-scratchpad-tool)
+6. [Finding Pattern Learning](#6-finding-pattern-learning)
+7. [Enhanced Think Tool with Persistent Analysis](#7-enhanced-think-tool)
+8. [Multi-Review Aggregation](#8-multi-review-aggregation)
+9. [Global Tool Pruning](#9-global-tool-pruning)
+10. [Post-Analysis Self-Critique with Different Model](#10-post-analysis-self-critique)
+11. [Structured Output Enforcement](#11-structured-output-enforcement)
 
 ---
 
@@ -63,54 +62,7 @@ Thresholds:
 
 ---
 
-## 2. Single-Pass Mode
-
-**Priority: HIGH** | **Expected FP Reduction: 20-30%** | **Complexity: High**
-
-### Rationale
-
-CR-Bench (2024) shows single-pass reviews achieve **2x F1 score** compared to multi-agent approaches (PR-Review 18.73% vs CR-Agent 9.22%). Multi-turn conversations degrade non-reasoning LLM accuracy by ~39%. GPT-4.1 is a non-reasoning model — its 580 tool calls with 0 findings is the multi-turn degradation in action.
-
-### Research Evidence
-
-- CR-Bench: Single-pass F1 = 18.73%, Multi-agent F1 = 9.22%
-- "Multi-turn degrades LLMs by ~39%" — non-reasoning models are especially affected
-- Qodo PR-Agent uses single-pass YAML output, not iterative tool use
-- SWE-bench shows multi-step helps only for reasoning models (o1, Claude 3.5)
-
-### Implementation Sketch
-
-```
-New analysis mode: "single-pass" alongside existing "agentic"
-Triggered by: CalibrationProfile.analysisMode = 'single-pass' | 'agentic'
-
-Single-pass flow:
-  1. Collect ALL diff content upfront (get_file_diff for all files)
-  2. Build ONE mega-prompt with: role + diffs + finding format
-  3. Send single LLM request (no tool calling)
-  4. Parse structured output (YAML or JSON findings)
-  5. Run ParsedFindings through existing PostAnalysisPipeline
-
-Applicable to: GPT-4.1, GPT-4o (non-reasoning, dismissive)
-Keep agentic for: Claude, GPT-5-mini, Raptor (reasoning or balanced)
-```
-
-### Dependencies
-
-- New prompt template optimized for single-pass (no tool references)
-- YAML/JSON parsing of findings from unstructured output
-- CalibrationProfile: `analysisMode: 'single-pass' | 'agentic'`
-- Diff collection service that fetches all diffs upfront
-
-### Risks
-
-- Loses the investigation depth of agentic mode
-- Large PRs may exceed context window
-- Need fallback to agentic mode for PRs > N files
-
----
-
-## 3. Adaptive Tool Budget
+## 2. Adaptive Tool Budget
 
 **Priority: MEDIUM** | **Expected Impact: Efficiency** | **Complexity: Low**
 
@@ -143,7 +95,7 @@ When budget exhausted → force think_about_completion → submit_review
 
 ---
 
-## 4. Tool Description RAG
+## 3. Tool Description RAG
 
 **Priority: MEDIUM** | **Expected Impact: Tool Selection Accuracy** | **Complexity: Medium**
 
@@ -182,7 +134,7 @@ Phase → Tools mapping:
 
 ---
 
-## 5. Cross-Model Validation
+## 4. Cross-Model Validation
 
 **Priority: LOW** | **Expected FP Reduction: 40-60%** | **Complexity: High**
 
@@ -216,7 +168,7 @@ Intersection logic:
 
 ---
 
-## 6. Scratchpad Tool with Forced Reasoning
+## 5. Scratchpad Tool with Forced Reasoning
 
 **Priority: MEDIUM (blocked)** | **Expected Impact: GPT-4.1 reasoning quality** | **Complexity: Low (when unblocked)**
 
@@ -254,7 +206,7 @@ Alternative (no API support needed):
 
 ---
 
-## 7. Finding Pattern Learning
+## 6. Finding Pattern Learning
 
 **Priority: LOW** | **Expected Impact: Long-term FP reduction** | **Complexity: High**
 
@@ -292,7 +244,7 @@ Integration:
 
 ---
 
-## 8. Enhanced Think Tool with Persistent Analysis
+## 7. Enhanced Think Tool with Persistent Analysis
 
 **Priority: MEDIUM** | **Expected Impact: Better reasoning continuity** | **Complexity: Low**
 
@@ -336,7 +288,7 @@ Response enhancement:
 
 ---
 
-## 9. Multi-Review Aggregation
+## 8. Multi-Review Aggregation
 
 **Priority: LOW** | **Expected Impact: Confidence scoring** | **Complexity: Medium**
 
@@ -370,7 +322,7 @@ Finding matching:
 
 ---
 
-## 10. Global Tool Pruning
+## 9. Global Tool Pruning
 
 **Priority: MEDIUM** | **Expected Impact: Simplicity, maintenance** | **Complexity: Low**
 
@@ -397,7 +349,7 @@ Phase 3: Further pruning based on actual usage data
 
 ---
 
-## 11. Post-Analysis Self-Critique with Different Model
+## 10. Post-Analysis Self-Critique with Different Model
 
 **Priority: MEDIUM** | **Expected FP Reduction: 20-40%** | **Complexity: Medium**
 
@@ -433,7 +385,7 @@ Model pairing:
 
 ---
 
-## 12. Structured Output Enforcement
+## 11. Structured Output Enforcement
 
 **Priority: LOW** | **Expected Impact: Parsing reliability** | **Complexity: Medium**
 
@@ -478,28 +430,26 @@ FindingsSchema:
 | #   | Enhancement              | Priority | Blocked? | Est. FP Impact    | Prerequisite       |
 | --- | ------------------------ | -------- | -------- | ----------------- | ------------------ |
 | 1   | Self-Reflection Scoring  | HIGH     | No       | -30-50% FP        | None               |
-| 2   | Single-Pass Mode         | HIGH     | No       | -20-30% FP        | Diff collection    |
-| 3   | Adaptive Tool Budget     | MEDIUM   | No       | Efficiency        | PR metadata        |
-| 4   | Tool Description RAG     | MEDIUM   | No       | Tool accuracy     | Intent classifier  |
-| 8   | Enhanced Think Tool      | MEDIUM   | No       | Reasoning quality | Context changes    |
-| 10  | Global Tool Pruning      | MEDIUM   | No       | Simplicity        | Usage metrics      |
-| 11  | Cross-Model Critique     | MEDIUM   | No       | -20-40% FP        | Multi-model access |
-| 6   | Scratchpad (Forced)      | MEDIUM   | **Yes**  | GPT-4.1 reasoning | vscode.lm API      |
-| 5   | Cross-Model Validation   | LOW      | No       | -40-60% FP        | Multi-model orch.  |
-| 7   | Finding Pattern Learning | LOW      | No       | Long-term         | Feedback UI        |
-| 9   | Multi-Review Aggregation | LOW      | No       | Confidence        | Parallel orch.     |
-| 12  | Structured Output        | LOW      | **Yes**  | Parsing           | vscode.lm API      |
+| 2   | Adaptive Tool Budget     | MEDIUM   | No       | Efficiency        | PR metadata        |
+| 3   | Tool Description RAG     | MEDIUM   | No       | Tool accuracy     | Intent classifier  |
+| 7   | Enhanced Think Tool      | MEDIUM   | No       | Reasoning quality | Context changes    |
+| 9   | Global Tool Pruning      | MEDIUM   | No       | Simplicity        | Usage metrics      |
+| 10  | Cross-Model Critique     | MEDIUM   | No       | -20-40% FP        | Multi-model access |
+| 5   | Scratchpad (Forced)      | MEDIUM   | **Yes**  | GPT-4.1 reasoning | vscode.lm API      |
+| 4   | Cross-Model Validation   | LOW      | No       | -40-60% FP        | Multi-model orch.  |
+| 6   | Finding Pattern Learning | LOW      | No       | Long-term         | Feedback UI        |
+| 8   | Multi-Review Aggregation | LOW      | No       | Confidence        | Parallel orch.     |
+| 11  | Structured Output        | LOW      | **Yes**  | Parsing           | vscode.lm API      |
 
 ## Recommended Sequence
 
 1. **Self-Reflection Scoring** — Highest ROI, builds on existing pipeline, no new infra
-2. **Single-Pass Mode** — Addresses the fundamental multi-turn degradation for GPT-4.1
-3. **Enhanced Think Tool** — Cheap improvement, better reasoning chain
-4. **Global Tool Pruning** — Simplifies codebase, reduces tool noise
-5. **Adaptive Tool Budget** — Prevents over-investigation pattern
-6. **Tool Description RAG** — Improves tool selection for all models
-7. **Cross-Model Critique** — When multi-model is needed
-8. Everything else based on observed needs
+2. **Enhanced Think Tool** — Cheap improvement, better reasoning chain
+3. **Global Tool Pruning** — Simplifies codebase, reduces tool noise
+4. **Adaptive Tool Budget** — Prevents over-investigation pattern
+5. **Tool Description RAG** — Improves tool selection for all models
+6. **Cross-Model Critique** — When multi-model is needed
+7. Everything else based on observed needs
 
 ---
 
