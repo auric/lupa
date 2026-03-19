@@ -121,7 +121,7 @@ src/
 │   │ # Workflow Tools
 │   ├── updatePlanTool.ts         # Create and track review plan
 │   ├── submitReviewTool.ts       # Explicit completion signal
-│   ├── runSubagentTool.ts        # Delegate investigations
+│   ├── runSubagentBatchTool.ts    # Delegate batched investigations
 │   │
 │   │ # Utilities
 │   ├── definitionFormatter.ts    # Format symbol definitions

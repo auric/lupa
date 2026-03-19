@@ -1,4 +1,4 @@
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import { Log } from './loggingService';
 import { SubagentExecutor } from './subagentExecutor';
 import { AdversarialPromptGenerator } from '../prompts/adversarialPromptGenerator';
@@ -144,9 +144,14 @@ export class AdversarialVerifier {
             if (verdict === 'CONFIRMED') {
                 this.confirmedFindingIds.add(finding.id);
                 confirmed.push(finding.title);
-            } else {
+            } else if (verdict === 'REFUTED') {
                 findingStore.remove(finding.id);
                 refuted.push(finding.title);
+            } else {
+                Log.info(
+                    `Adversarial uncertain for "${finding.title}" — keeping finding`
+                );
+                confirmed.push(finding.title);
             }
         }
 
