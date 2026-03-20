@@ -66,7 +66,7 @@ ${categoryChecklist}
 - LSP disproved a factual claim
 - The finding targets unchanged/pre-existing code
 
-**UNCERTAIN** — You couldn't determine either way (treated as REFUTED for safety)
+**UNCERTAIN** — You couldn't determine either way (finding will be kept but flagged as uncertain)
 
 ## Response Format
 

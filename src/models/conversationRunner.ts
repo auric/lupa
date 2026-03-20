@@ -323,11 +323,12 @@ export class ConversationRunner {
                     token
                 );
 
-                // Reset rate-limit counter after successful API call.
-                // Without this, a later rate-limit hit would continue from
+                // Reset retry counters after successful API call.
+                // Without this, a later error would continue from
                 // the old retry count and prematurely exhaust retries.
                 rateLimitRetries = 0;
                 consecutiveErrors = 0;
+                responseTooLongRetries = 0;
 
                 if (token.isCancellationRequested) {
                     Log.info(`${logPrefix} Cancelled by user`);
