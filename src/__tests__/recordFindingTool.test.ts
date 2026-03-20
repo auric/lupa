@@ -23,6 +23,9 @@ const BASE_FINDING_ARGS = {
         'search_for_pattern(catch, src/api.ts) showed empty catch block at line 15 with no logging or rethrow',
     disproof_note:
         'Checked if error is logged elsewhere — no other error handling found',
+    affected_component: 'handleRequest()',
+    failure_mechanism: 'runtime_exception' as const,
+    verifiable_claims: [],
 };
 
 /** Tool call counts that satisfy minToolCallsBeforeFirstFinding for the default profile */
@@ -317,6 +320,8 @@ describe('RecordFindingTool', () => {
                 supportingToolCalls: [],
                 disproof: { attempted: false, method: '', result: '' },
                 verifiableClaims: [],
+                affectedComponent: 'test()',
+                failureMechanism: 'wrong_return_value',
             });
 
             const ctx = createMockExecutionContext({
@@ -410,6 +415,23 @@ describe('RecordFindingTool', () => {
 
             const result = await tool.execute(
                 { ...BASE_FINDING_ARGS, file: 'd:/project/src/api.ts' },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+            expect(store.size).toBe(1);
+        });
+
+        it('accepts finding when investigatedFiles contains a parent directory', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/services']),
+            });
+
+            const result = await tool.execute(
+                { ...BASE_FINDING_ARGS, file: 'src/services/auth.ts' },
                 ctx
             );
 

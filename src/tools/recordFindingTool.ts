@@ -192,7 +192,9 @@ export class RecordFindingTool extends BaseTool {
                 context.investigatedFiles.has(normalizedFile) ||
                 [...context.investigatedFiles].some(
                     (f) =>
-                        normalizedFile.endsWith(f) || f.endsWith(normalizedFile)
+                        normalizedFile.endsWith(f) ||
+                        f.endsWith(normalizedFile) ||
+                        normalizedFile.startsWith(f + '/')
                 );
 
             if (!hasInvestigated) {
