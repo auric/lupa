@@ -100,7 +100,7 @@ describe('WorkspaceSettingsSchema', () => {
         it('should have reasonable constant values', () => {
             expect(ANALYSIS_LIMITS.maxIterations).toBe(100);
             expect(ANALYSIS_LIMITS.requestTimeoutSeconds).toBe(240);
-            expect(ANALYSIS_LIMITS.maxSubagentsPerSession).toBe(150);
+            expect(ANALYSIS_LIMITS.maxSubagentsPerSession).toBe(200);
             expect(ANALYSIS_LIMITS.toolCallMultiplier).toBe(3);
         });
     });
