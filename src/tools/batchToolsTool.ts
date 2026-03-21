@@ -21,8 +21,9 @@ const OVERHEAD_CHARS_PER_RESULT = 100;
 /**
  * Tools that cannot be called via batch_tools.
  * - batch_tools: prevent infinite recursion
+ * - run_subagent_batch: bypasses afterToolCalls coverage gap tracking
  */
-const DISALLOWED_TOOLS = new Set(['batch_tools']);
+const DISALLOWED_TOOLS = new Set(['batch_tools', 'run_subagent_batch']);
 
 const callSchema = z.object({
     tool: z.string().describe('Name of the tool to call'),
@@ -198,7 +199,6 @@ IMPORTANT: "calls" must be a JSON array, not a string. Do NOT stringify the arra
             );
 
             // Format results as indexed sections for clear LLM consumption
-            let totalChars = 0;
             const sections = results.map((result, i) => {
                 const call = calls[i]!;
                 const header = `[${i + 1}/${results.length}] ${call.tool}`;
@@ -213,7 +213,6 @@ IMPORTANT: "calls" must be a JSON array, not a string. Do NOT stringify the arra
                 } else {
                     section = `${header}: ✗ ${result.error ?? 'unknown error'}`;
                 }
-                totalChars += section.length;
                 return section;
             });
 

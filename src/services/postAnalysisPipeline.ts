@@ -456,9 +456,12 @@ export class PostAnalysisPipeline {
                             droppedTitle.toLowerCase().trim()
                     );
                     if (finding) {
-                        options.findingStore.remove(finding.id);
-                        dropped.push(finding.title);
-                        Log.info(`Self-critique: dropped "${finding.title}"`);
+                        if (options.findingStore.remove(finding.id)) {
+                            dropped.push(finding.title);
+                            Log.info(
+                                `Self-critique: dropped "${finding.title}"`
+                            );
+                        }
                     }
                 }
             }
