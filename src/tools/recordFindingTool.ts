@@ -18,6 +18,21 @@ const VALID_CLAIM_TYPES: readonly ClaimType[] = [
     'no_implementation',
 ] as const;
 
+/**
+ * Checks if fullPath ends with suffix at a path boundary (/ or start of string).
+ * Prevents 'bighelper.ts' from matching 'helper.ts' — requires the character
+ * before the suffix to be '/' or the paths to be equal.
+ */
+function pathSuffixMatch(fullPath: string, suffix: string): boolean {
+    if (fullPath === suffix) {
+        return true;
+    }
+    if (!fullPath.endsWith(suffix)) {
+        return false;
+    }
+    return fullPath[fullPath.length - suffix.length - 1] === '/';
+}
+
 export class RecordFindingTool extends BaseTool {
     name = 'record_finding';
     description =
@@ -170,7 +185,8 @@ export class RecordFindingTool extends BaseTool {
                 changedFiles.has(normalizedFile) ||
                 [...changedFiles].some(
                     (f) =>
-                        normalizedFile.endsWith(f) || f.endsWith(normalizedFile)
+                        pathSuffixMatch(normalizedFile, f) ||
+                        pathSuffixMatch(f, normalizedFile)
                 );
 
             if (!isInDiff) {
@@ -192,8 +208,8 @@ export class RecordFindingTool extends BaseTool {
                 context.investigatedFiles.has(normalizedFile) ||
                 [...context.investigatedFiles].some(
                     (f) =>
-                        normalizedFile.endsWith(f) ||
-                        f.endsWith(normalizedFile) ||
+                        pathSuffixMatch(normalizedFile, f) ||
+                        pathSuffixMatch(f, normalizedFile) ||
                         normalizedFile.startsWith(f + '/')
                 );
 

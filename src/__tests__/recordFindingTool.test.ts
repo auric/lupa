@@ -28,6 +28,16 @@ const BASE_FINDING_ARGS = {
     verifiable_claims: [],
 };
 
+function mockDiff(...filePaths: string[]) {
+    return filePaths.map((filePath) => ({
+        filePath,
+        hunks: [],
+        isNewFile: false,
+        isDeletedFile: false,
+        originalHeader: `diff --git a/${filePath} b/${filePath}`,
+    }));
+}
+
 /** Tool call counts that satisfy minToolCallsBeforeFirstFinding for the default profile */
 function investigatedToolCalls(): Map<string, number> {
     return new Map([
@@ -107,6 +117,8 @@ describe('RecordFindingTool', () => {
                 method: 'Checked if error is logged elsewhere — no other error handling found',
                 result: 'Checked if error is logged elsewhere — no other error handling found',
             },
+            affectedComponent: 'handleRequest()',
+            failureMechanism: 'runtime_exception',
             verifiableClaims: [],
         });
     });
@@ -358,6 +370,88 @@ describe('RecordFindingTool', () => {
         });
     });
 
+    describe('changedFiles (parsedDiff) gate', () => {
+        it('rejects finding when file is not in changed files', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/other.ts']),
+                parsedDiff: mockDiff('src/other.ts'),
+            });
+
+            const result = await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('not in the changed files');
+            expect(store.size).toBe(0);
+        });
+
+        it('accepts finding when file matches exactly', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+                parsedDiff: mockDiff('src/api.ts'),
+            });
+
+            const result = await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            expect(result.success).toBe(true);
+            expect(store.size).toBe(1);
+        });
+
+        it('accepts finding when LLM provides absolute path matching changed file', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+                parsedDiff: mockDiff('src/api.ts'),
+            });
+
+            const result = await tool.execute(
+                { ...BASE_FINDING_ARGS, file: 'd:/project/src/api.ts' },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+        });
+
+        it('rejects finding when suffix matches without path boundary', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['bigapi.ts']),
+                parsedDiff: mockDiff('api.ts'),
+            });
+
+            const result = await tool.execute(
+                { ...BASE_FINDING_ARGS, file: 'bigapi.ts' },
+                ctx
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('not in the changed files');
+        });
+
+        it('skips gate when parsedDiff is undefined', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+                parsedDiff: undefined,
+            });
+
+            const result = await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            expect(result.success).toBe(true);
+        });
+    });
+
     describe('file investigation gate', () => {
         it('rejects finding when file has not been investigated', async () => {
             const store = new FindingStore();
@@ -437,6 +531,23 @@ describe('RecordFindingTool', () => {
 
             expect(result.success).toBe(true);
             expect(store.size).toBe(1);
+        });
+
+        it('rejects finding when investigation suffix matches without path boundary', async () => {
+            const store = new FindingStore();
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['api.ts']),
+            });
+
+            const result = await tool.execute(
+                { ...BASE_FINDING_ARGS, file: 'bigapi.ts' },
+                ctx
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('you have not investigated');
         });
 
         it('skips gate when investigatedFiles is undefined', async () => {
