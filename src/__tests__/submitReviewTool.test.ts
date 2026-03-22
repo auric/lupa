@@ -5,6 +5,8 @@ import {
     createMockExecutionContext,
     createCancelledExecutionContext,
 } from './testUtils/mockFactories';
+import { FindingStore } from '../sessions/findingStore';
+import type { RecordedFinding } from '../types/findingTypes';
 
 // Mock the logging service
 vi.mock('../services/loggingService', () => ({
@@ -215,6 +217,124 @@ const x = 1;
             // requiredToolsBeforeDone enforcement lives in toolCallingAnalysisProvider (orchestrator level).
             // See think_about_completion gate describe block for full rationale.
             expect(true).toBe(true);
+        });
+    });
+
+    describe('FindingStore gate', () => {
+        function createFindingStore(
+            ...partials: Partial<
+                Omit<RecordedFinding, 'id' | 'timestamp' | 'lspValidation'>
+            >[]
+        ): FindingStore {
+            const store = new FindingStore();
+            for (const p of partials) {
+                store.record({
+                    agentId: p.agentId ?? 'agent-1',
+                    severity: p.severity ?? 'HIGH',
+                    category: p.category ?? 'logic_error',
+                    title: p.title ?? 'Null dereference in handler',
+                    file: p.file ?? 'src/handler.ts',
+                    lineRange: p.lineRange ?? [10, 15],
+                    description: p.description ?? 'desc',
+                    affectedComponent: p.affectedComponent ?? 'Handler',
+                    failureMechanism: p.failureMechanism ?? 'NPE',
+                    supportingToolCalls: p.supportingToolCalls ?? ['read_file'],
+                    disproof: p.disproof ?? {
+                        attempted: true,
+                        method: 'test',
+                        result: 'confirmed',
+                    },
+                    verifiableClaims: p.verifiableClaims ?? [],
+                });
+            }
+            return store;
+        }
+
+        it('rejects review that omits a recorded finding', async () => {
+            const store = createFindingStore({
+                title: 'Null dereference in handler',
+                file: 'src/handler.ts',
+            });
+            const ctx = ctxWithReflection({ findingStore: store });
+
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'This PR looks good. No issues found. Approved with no concerns whatsoever.',
+                },
+                ctx
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Review rejected');
+            expect(result.error).toContain('Null dereference in handler');
+        });
+
+        it('accepts review that mentions finding title', async () => {
+            const store = createFindingStore({
+                title: 'Null dereference in handler',
+                file: 'src/handler.ts',
+            });
+            const ctx = ctxWithReflection({ findingStore: store });
+
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'Found a null dereference issue in the codebase. Recommend fixing before merge.',
+                },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+        });
+
+        it('accepts review that mentions finding file', async () => {
+            const store = createFindingStore({
+                title: 'Null dereference in handler',
+                file: 'src/handler.ts',
+            });
+            const ctx = ctxWithReflection({ findingStore: store });
+
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'Issues were found in src/handler.ts that require attention before merging.',
+                },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+        });
+
+        it('rejects when one of multiple findings is missing', async () => {
+            const store = createFindingStore(
+                { title: 'SQL injection risk', file: 'src/db.ts' },
+                { title: 'Unrelated obscure bug', file: 'src/obscure.ts' }
+            );
+            const ctx = ctxWithReflection({ findingStore: store });
+
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'Found a SQL injection risk in src/db.ts. This needs to be fixed urgently.',
+                },
+                ctx
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('1 are missing');
+            expect(result.error).toContain('Unrelated obscure bug');
+        });
+
+        it('succeeds with no findingStore in context', async () => {
+            const ctx = ctxWithReflection({ findingStore: undefined });
+
+            const result = await tool.execute(
+                { review_content: 'Clean review with no findings at all.' },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
         });
     });
 });
