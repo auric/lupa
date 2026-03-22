@@ -54,7 +54,7 @@ export const DIFF_TOOLS = ['get_file_diff'] as const;
  * Investigation tools that should be removed from the recursive root agent
  * after the orientation phase (first subagent round).
  * The root is a controller — after it delegates, it should only retain
- * controller tools (run_subagent_batch, update_plan, think_about_*, submit_review).
+ * controller tools (run_subagent_batch, update_plan, think_about_completion, submit_review).
  */
 export const INVESTIGATION_TOOLS = [
     'get_file_diff',
