@@ -627,7 +627,7 @@ Lupa uses a Recursive Language Model (RLM) approach where a root agent decompose
 | ------------------- | ------- | ---------------------------------------------------- |
 | `maxRecursionDepth` | 2       | Maximum agent depth (0 = no recursion, 1+ = enabled) |
 
-Total spawns per analysis are capped by `maxSubagentsPerSession` (hardcoded to 150).
+Total spawns per analysis are capped by `maxSubagentsPerSession` (hardcoded to 200).
 
 **Recursive mode activates** when `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. The root agent reads at most 1 key diff (the most impactful file) for orientation, then MUST delegate all investigation to sub-agents via `run_subagent_batch` when there are 3+ files to review. Sub-agents are spawned in parallel (all in the same turn) and each reads their own diffs via `get_file_diff`. Child agents with `canRecurse=true` MUST spawn sub-agents to further decompose when assigned 4+ files — this is enforced as a MANDATORY rule in the system prompts.
 
@@ -637,7 +637,7 @@ Total spawns per analysis are capped by `maxSubagentsPerSession` (hardcoded to 1
 
 - Registers agents with parent-child relationships and depth tracking
 - Enforces `maxRecursionDepth` via `canSpawnChild()` (total spawn count is guarded by `SubagentSessionManager`)
-- Uses an **independent budget model**: each agent receives `DEFAULT_CHILD_BUDGET` (50 iterations) regardless of other agents' usage. For example, at depth 2 with 3 sub-agents each spawning 2 sub-sub-agents, the system runs up to 9 agents × 50 iterations = 450 total iterations, bounded by `maxSubagentsPerSession` (150)
+- Uses an **independent budget model**: each agent receives `DEFAULT_CHILD_BUDGET` (50 iterations) regardless of other agents' usage. For example, at depth 2 with 3 sub-agents each spawning 2 sub-sub-agents, the system runs up to 9 agents × 50 iterations = 450 total iterations, bounded by `maxSubagentsPerSession` (200)
 - Tracks file coverage across completed agents to avoid redundant analysis (only `get_file_diff` calls count — `read_file` for context does not constitute reviewing a file's diff)
 - Manages agent lifecycle (registered → running → completed/failed/cancelled)
 

@@ -399,7 +399,7 @@ Hierarchical naming enables:
 ### 6.3 Loop Prevention
 
 1. **Hard depth limit**: `maxDepth` setting (default 2)
-2. **Session spawn cap**: `maxSubagentsPerSession` constant (currently 75)
+2. **Session spawn cap**: `maxSubagentsPerSession` constant (currently 200)
 3. **Minimum budget**: Won't spawn with < MIN_VIABLE_BUDGET (3) iterations allocated
 4. **File deduplication**: Warns if spawning agent for files already covered
 5. **Cancellation cascade**: Parent cancel → all children cancelled
@@ -962,7 +962,7 @@ The system programmatically verifies that every changed file has been reviewed v
 }
 ```
 
-> Note: `maxSubagentsPerSession` (75) and `maxIterations` (600) are now hardcoded constants in `ANALYSIS_LIMITS`, not user-configurable settings.
+> Note: `maxSubagentsPerSession` (200) and `maxIterations` (100) are now hardcoded constants in `ANALYSIS_LIMITS`, not user-configurable settings.
 
 ### Setting Definitions
 

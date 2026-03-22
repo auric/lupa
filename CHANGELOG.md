@@ -71,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Model recommendations updated**: Raptor Mini and GPT-5 mini now provide excellent analysis quality with parallel batch execution.
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2. Set to 0 in `.vscode/lupa.json` to use flat single-agent analysis.
 - **Tool response limit tripled** (20K → 60K chars) and **file read limit doubled** (200 → 400 lines) for better context gathering.
-- **Removed `maxTotalAgents` setting**: `maxSubagentsPerSession` (hardcoded to 75) is the single spawn cap for both flat and recursive modes.
+- **Removed `maxTotalAgents` setting**: `maxSubagentsPerSession` (hardcoded to 200) is the single spawn cap for both flat and recursive modes.
 - **`generateToolCallingUserPrompt` renamed to `generateUserPrompt`**: The method now accepts `recursiveMode` and `maxSubagents` parameters for recursive prompt generation.
 - **Updated documentation**: Architecture docs, component inventory, and project overview updated for RLM architecture.
 
