@@ -1,6 +1,8 @@
 import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import type { ToolResultMetadata } from '../types/toolResultTypes';
+import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import { TokenConstants } from '../models/tokenConstants';
 import { Log } from '../services/loggingService';
@@ -22,8 +24,13 @@ const OVERHEAD_CHARS_PER_RESULT = 100;
  * Tools that cannot be called via batch_tools.
  * - batch_tools: prevent infinite recursion
  * - run_subagent_batch: bypasses afterToolCalls coverage gap tracking
+ * - submit_review: completion detection relies on top-level tool call visibility
  */
-const DISALLOWED_TOOLS = new Set(['batch_tools', 'run_subagent_batch']);
+const DISALLOWED_TOOLS = new Set([
+    'batch_tools',
+    'run_subagent_batch',
+    'submit_review',
+]);
 
 const callSchema = z.object({
     tool: z.string().describe('Name of the tool to call'),
@@ -217,7 +224,30 @@ IMPORTANT: "calls" must be a JSON array, not a string. Do NOT stringify the arra
             });
 
             const summary = `Batch complete: ${succeeded}/${results.length} succeeded [${elapsed}ms]`;
-            return toolSuccess(`${summary}\n\n${sections.join('\n\n---\n\n')}`);
+
+            // Propagate inner tool calls as nestedToolCalls so evidence auditor
+            // and finding scorer can see investigation tools called through batch_tools
+            const nestedToolCalls: ToolCallRecord[] = results.map(
+                (result, i) => {
+                    const call = calls[i]!;
+                    return {
+                        id: `batch-${i}`,
+                        toolName: call.tool,
+                        arguments: call.args as Record<string, unknown>,
+                        result: result.result ?? result.error ?? '',
+                        success: result.success,
+                        error: result.error,
+                        durationMs: undefined,
+                        timestamp: startTime,
+                        nestedCalls: result.metadata?.nestedToolCalls,
+                    };
+                }
+            );
+            const metadata: ToolResultMetadata = { nestedToolCalls };
+            return toolSuccess(
+                `${summary}\n\n${sections.join('\n\n---\n\n')}`,
+                metadata
+            );
         } catch (error) {
             // CancellationError must propagate
             if (isCancellationError(error)) {

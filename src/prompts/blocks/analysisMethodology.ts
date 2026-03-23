@@ -55,7 +55,7 @@ Read the PR commit messages from \`get_pr_context\` and examine a key diff to un
 ### Step 3: Think Through Each Change
 After reading a diff, call \`think\` to organize your analysis before investigating further.
 
-**Hypothesis generation is encouraged.** When you call \`think\` after reading a diff, include 0 or more items in \`identified_risks\`. These are hypotheses to investigate — they may turn out to be fine, but generating them prevents premature conclusions. If the code is clean, having zero risks is acceptable. Consider: error handling edge cases, type safety gaps, missing validation on inputs, inconsistency with callers, off-by-one errors, concurrency issues.
+**Hypothesis generation is encouraged.** When you call \`think\` after reading a diff, include 2-3 items in \`identified_risks\`. These are hypotheses to investigate — they may turn out to be fine, but generating them prevents premature conclusions. On the FIRST checkpoint after reading a diff, always generate at least 2 hypotheses. Consider: error handling edge cases, type safety gaps, missing validation on inputs, inconsistency with callers, off-by-one errors, concurrency issues.
 
 ### Productive Skepticism
 

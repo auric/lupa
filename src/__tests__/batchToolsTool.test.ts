@@ -518,5 +518,71 @@ describe('BatchToolsTool', () => {
             // At least one result should have been truncated
             expect(data).toContain('(truncated from');
         });
+
+        it('should reject submit_review in batch', async () => {
+            const result = await batchTool.execute(
+                {
+                    calls: [
+                        {
+                            tool: 'submit_review',
+                            args: { review_content: 'test' },
+                        },
+                        { tool: 'read_file', args: { file_path: 'a.ts' } },
+                    ],
+                },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('submit_review');
+        });
+
+        it('should propagate inner tool calls as nestedToolCalls metadata', async () => {
+            const result = await batchTool.execute(
+                {
+                    calls: [
+                        { tool: 'read_file', args: { file_path: 'a.ts' } },
+                        {
+                            tool: 'search_for_pattern',
+                            args: { pattern: 'foo' },
+                        },
+                    ],
+                },
+                context
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.metadata).toBeDefined();
+            expect(result.metadata!.nestedToolCalls).toHaveLength(2);
+
+            const [readCall, searchCall] = result.metadata!.nestedToolCalls!;
+            expect(readCall!.toolName).toBe('read_file');
+            expect(readCall!.arguments).toEqual({ file_path: 'a.ts' });
+            expect(readCall!.success).toBe(true);
+
+            expect(searchCall!.toolName).toBe('search_for_pattern');
+            expect(searchCall!.arguments).toEqual({ pattern: 'foo' });
+            expect(searchCall!.success).toBe(true);
+        });
+
+        it('should include failed tool calls in nestedToolCalls metadata', async () => {
+            const result = await batchTool.execute(
+                {
+                    calls: [
+                        { tool: 'read_file', args: { file_path: 'a.ts' } },
+                        { tool: 'failing_tool', args: { input: 'test' } },
+                    ],
+                },
+                context
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.metadata!.nestedToolCalls).toHaveLength(2);
+
+            const failedCall = result.metadata!.nestedToolCalls![1]!;
+            expect(failedCall.toolName).toBe('failing_tool');
+            expect(failedCall.success).toBe(false);
+            expect(failedCall.error).toBe('Simulated failure');
+        });
     });
 });
