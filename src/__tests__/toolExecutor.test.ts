@@ -479,6 +479,33 @@ describe('ToolExecutor', () => {
             );
         });
 
+        it('should use per-tool maxResponseChars when set', async () => {
+            const customLimit = 120_000;
+            const customLimitTool: ITool = {
+                name: 'custom_limit_tool',
+                description: 'Tool with custom response limit',
+                schema: z.object({}),
+                maxResponseChars: customLimit,
+                getVSCodeTool: () => ({
+                    name: 'custom_limit_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> =>
+                    toolSuccess('x'.repeat(80_000)),
+            };
+
+            toolRegistry.registerTool(customLimitTool);
+            const result = await toolExecutor.executeTool(
+                'custom_limit_tool',
+                {}
+            );
+
+            // 80K chars would fail the default 60K limit, but passes with 120K custom limit
+            expect(result.success).toBe(true);
+            expect(result.result).toHaveLength(80_000);
+        });
+
         it('should skip size validation for failed tool results', async () => {
             // toolError() returns don't have data, so size check is skipped
             const failingTool: ITool = {

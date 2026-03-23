@@ -49,6 +49,10 @@ const createMockExecutorWithResults = (
     return { execute: mock } as unknown as SubagentExecutor;
 };
 
+const createMockSessionManager = (): SubagentSessionManager => {
+    return new SubagentSessionManager(createMockWorkspaceSettings());
+};
+
 const createBatchExecutionContext = (
     executor: SubagentExecutor,
     sessionManager: SubagentSessionManager,
@@ -1066,6 +1070,82 @@ describe('RunSubagentBatchTool', () => {
             );
 
             expect(result.metadata?.iterationsUsed).toBe(13);
+        });
+    });
+
+    describe('Response Truncation', () => {
+        let tool: RunSubagentBatchTool;
+
+        beforeEach(() => {
+            tool = new RunSubagentBatchTool(workspaceSettings);
+        });
+
+        it('should return full responses when within budget', async () => {
+            const response = 'Investigation complete: no issues found.';
+            const executor = createMockExecutor({ response });
+            const sessionManager = createMockSessionManager();
+            const context = createBatchExecutionContext(
+                executor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                {
+                    tasks: [
+                        { task: VALID_TASK },
+                        {
+                            task: 'Check error handling in API endpoints for proper status codes',
+                        },
+                    ],
+                },
+                context
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.data).toContain(response);
+            expect(result.data).not.toContain('truncated');
+        });
+
+        it('should truncate individual responses proportionally when total exceeds budget', async () => {
+            // Create responses that collectively exceed MAX_SUBAGENT_RESPONSE_CHARS (150K)
+            const largeResponse = 'A'.repeat(60_000);
+            const executor = createMockExecutorWithResults([
+                { response: largeResponse },
+                { response: largeResponse },
+                { response: largeResponse },
+            ]);
+            const sessionManager = createMockSessionManager();
+            const context = createBatchExecutionContext(
+                executor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                {
+                    tasks: [
+                        { task: VALID_TASK },
+                        {
+                            task: 'Check error handling in API endpoints for proper status codes',
+                        },
+                        {
+                            task: 'Review database queries for SQL injection vulnerabilities',
+                        },
+                    ],
+                },
+                context
+            );
+
+            expect(result.success).toBe(true);
+            // Should contain truncation markers
+            expect(result.data).toContain('truncated');
+            // Should still contain all subagent headers
+            expect(result.data).toContain('Subagent #1');
+            expect(result.data).toContain('Subagent #2');
+            expect(result.data).toContain('Subagent #3');
+        });
+
+        it('should have maxResponseChars set to 150000', () => {
+            expect(tool.maxResponseChars).toBe(150_000);
         });
     });
 });

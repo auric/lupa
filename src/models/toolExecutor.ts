@@ -187,9 +187,13 @@ export class ToolExecutor {
 
             // Validate response size only for successful results with data
             if (toolResult.success && toolResult.data) {
+                const maxChars =
+                    tool.maxResponseChars ??
+                    TokenConstants.MAX_TOOL_RESPONSE_CHARS;
                 const validationResult = this.validateResponseSize(
                     toolResult.data,
-                    name
+                    name,
+                    maxChars
                 );
                 if (!validationResult.isValid) {
                     Log.warn(
@@ -377,14 +381,15 @@ export class ToolExecutor {
      */
     private validateResponseSize(
         result: string,
-        toolName: string
+        toolName: string,
+        maxChars: number
     ): { isValid: boolean; errorMessage?: string } {
         try {
             // Check if result exceeds maximum allowed size
-            if (result.length > TokenConstants.MAX_TOOL_RESPONSE_CHARS) {
+            if (result.length > maxChars) {
                 return {
                     isValid: false,
-                    errorMessage: `${TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE} Tool '${toolName}' returned ${result.length} characters, maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS}.`,
+                    errorMessage: `${TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE} Tool '${toolName}' returned ${result.length} characters, maximum allowed: ${maxChars}.`,
                 };
             }
 

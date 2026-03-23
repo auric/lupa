@@ -34,6 +34,9 @@ export interface ITool {
     /** Zod schema for validating tool arguments */
     schema: z.ZodType;
 
+    /** Maximum response size in chars. Defaults to TokenConstants.MAX_TOOL_RESPONSE_CHARS. */
+    maxResponseChars?: number;
+
     /** Returns VS Code LanguageModelChatTool for API registration */
     getVSCodeTool(): vscode.LanguageModelChatTool;
 

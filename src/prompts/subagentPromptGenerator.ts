@@ -318,6 +318,9 @@ ${
         : ''
 }
 If you find NO issues after investigation, state what you checked and why it passed. Finding zero issues is a valid and expected outcome for well-written code.
+
+### Length Budget
+Keep your total response under 8000 characters. Be concise: cite evidence precisely (tool name + key output) without quoting large code blocks. Use file path + line numbers instead of pasting code.
 </response_requirements>
 
 <constraints>

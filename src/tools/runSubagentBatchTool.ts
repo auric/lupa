@@ -26,6 +26,7 @@ import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { DiffHunk } from '../types/contextTypes';
 
 const MAX_TASK_LABEL_LENGTH = 80;
+const MAX_SUBAGENT_RESPONSE_CHARS = 150_000;
 
 interface TaskAllocation {
     index: number;
@@ -53,6 +54,7 @@ type TaskOutcome =
 
 export class RunSubagentBatchTool extends BaseTool {
     name = 'run_subagent_batch';
+    override maxResponseChars = MAX_SUBAGENT_RESPONSE_CHARS;
     description = `Spawn multiple focused investigation sub-agents in ONE tool call — all run in parallel.
 
 Accepts an array of tasks; each gets its own isolated context window and tool access.
@@ -583,7 +585,15 @@ RULES:
         outcomes: TaskOutcome[],
         tasks: { task: string }[]
     ): string {
-        const parts: string[] = [];
+        const OVERHEAD_PER_RESULT = 200; // headers, separators, audit lines
+
+        // Build all parts, tracking which are completed (and thus truncatable)
+        const rawParts: {
+            text: string;
+            truncatable: boolean;
+            responseStart: number;
+            responseEnd: number;
+        }[] = [];
 
         for (const outcome of outcomes) {
             const index =
@@ -599,26 +609,95 @@ RULES:
             if (outcome.status === 'completed') {
                 const audit = buildInvestigationAudit(outcome.result.toolCalls);
                 const auditLine = formatCompactAudit(audit);
-                parts.push(
+                const header =
                     `### Subagent #${outcome.subagentId} — ${label}\n\n` +
-                        `**Tool calls made:** ${outcome.result.toolCallsMade}\n\n` +
-                        `---\n\n${outcome.result.response}` +
-                        auditLine
-                );
+                    `**Tool calls made:** ${outcome.result.toolCallsMade}\n\n` +
+                    `---\n\n`;
+                const response = outcome.result.response;
+                const text = header + response + auditLine;
+                rawParts.push({
+                    text,
+                    truncatable: true,
+                    responseStart: header.length,
+                    responseEnd: header.length + response.length,
+                });
             } else if (outcome.status === 'failed') {
-                parts.push(
-                    `### Subagent #${outcome.subagentId} — FAILED\n\n` +
-                        `${outcome.error}`
-                );
+                rawParts.push({
+                    text:
+                        `### Subagent #${outcome.subagentId} — FAILED\n\n` +
+                        `${outcome.error}`,
+                    truncatable: false,
+                    responseStart: 0,
+                    responseEnd: 0,
+                });
             } else {
-                parts.push(
-                    `### Task #${index + 1} — SKIPPED\n\n` +
-                        `Reason: ${outcome.reason}`
-                );
+                rawParts.push({
+                    text:
+                        `### Task #${index + 1} — SKIPPED\n\n` +
+                        `Reason: ${outcome.reason}`,
+                    truncatable: false,
+                    responseStart: 0,
+                    responseEnd: 0,
+                });
             }
         }
 
-        return parts.join('\n\n');
+        const separator = '\n\n';
+        const totalChars =
+            rawParts.reduce((sum, p) => sum + p.text.length, 0) +
+            separator.length * Math.max(0, rawParts.length - 1);
+
+        // If within budget, return as-is
+        if (totalChars <= MAX_SUBAGENT_RESPONSE_CHARS) {
+            return rawParts.map((p) => p.text).join(separator);
+        }
+
+        // Proportional truncation: distribute budget across completed responses
+        const nonTruncatableChars = rawParts
+            .filter((p) => !p.truncatable)
+            .reduce((sum, p) => sum + p.text.length, 0);
+        const separatorChars =
+            separator.length * Math.max(0, rawParts.length - 1);
+        const truncatableCount = rawParts.filter((p) => p.truncatable).length;
+        const availableForResponses =
+            MAX_SUBAGENT_RESPONSE_CHARS -
+            nonTruncatableChars -
+            separatorChars -
+            truncatableCount * OVERHEAD_PER_RESULT;
+        const perResponseBudget = Math.max(
+            500,
+            Math.floor(availableForResponses / Math.max(1, truncatableCount))
+        );
+
+        Log.warn(
+            `Subagent batch response too large (${totalChars} chars), truncating ${truncatableCount} responses to ~${perResponseBudget} chars each`
+        );
+
+        const parts = rawParts.map((p) => {
+            if (!p.truncatable) {
+                return p.text;
+            }
+            const responseLength = p.responseEnd - p.responseStart;
+            const overhead = p.text.length - responseLength;
+            const responseBudget = Math.max(200, perResponseBudget - overhead);
+            if (responseLength <= responseBudget) {
+                return p.text;
+            }
+            // Truncate the response portion, keeping header and audit
+            const truncatedResponse =
+                p.text.slice(
+                    p.responseStart,
+                    p.responseStart + responseBudget
+                ) +
+                `\n\n... [truncated ${responseLength - responseBudget} chars]`;
+            return (
+                p.text.slice(0, p.responseStart) +
+                truncatedResponse +
+                p.text.slice(p.responseEnd)
+            );
+        });
+
+        return parts.join(separator);
     }
 
     private aggregateMetadata(outcomes: TaskOutcome[]): ToolResultMetadata {
