@@ -178,10 +178,22 @@ export class ConversationRunner {
         let lastSubstantiveResponse = '';
         let windDownInjected = false;
         let windDownNudged = false;
+        let urgentWindDownNudged = false;
         const WIND_DOWN_THRESHOLD = 0.85;
+        const URGENT_WIND_DOWN_THRESHOLD = 0.92;
+        const FINAL_BUFFER_ITERATIONS = 2;
         const windDownIteration = Math.floor(
             config.maxIterations * WIND_DOWN_THRESHOLD
         );
+        const urgentWindDownIteration = Math.floor(
+            config.maxIterations * URGENT_WIND_DOWN_THRESHOLD
+        );
+        // Only buffer multiple final iterations when budget is large enough
+        // to justify the overhead (>10 iterations).
+        const finalBufferStart =
+            config.maxIterations > 10
+                ? config.maxIterations - FINAL_BUFFER_ITERATIONS + 1
+                : config.maxIterations;
         const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
         this._hitMaxIterations = false;
@@ -213,7 +225,7 @@ export class ConversationRunner {
                     .filter((tool) => !config.disabledToolNames?.has(tool.name))
                     .map((tool) => tool.getVSCodeTool());
 
-                // Early wind-down nudge at ~80% of budget for subagents.
+                // Early wind-down nudge at ~85% of budget for subagents.
                 // Prompt-based budget management doesn't work — LLMs can't count
                 // iterations. This code-injected message gives a concrete signal.
                 if (
@@ -232,16 +244,37 @@ export class ConversationRunner {
                     );
                 }
 
-                // Wind-down: on the last iteration for non-explicit-completion
-                // conversations (subagents), force text response by removing tools
-                // and injecting a wrap-up message.
-                const isLastIteration = iteration === config.maxIterations;
-                const forceFinalResponse =
-                    isLastIteration &&
+                // Urgent wind-down nudge at ~92% — escalate urgency.
+                // Only fires if not already in the final buffer zone
+                // (where tools are removed anyway).
+                if (
                     !config.requiresExplicitCompletion &&
-                    !windDownInjected;
+                    iteration === urgentWindDownIteration &&
+                    iteration < finalBufferStart &&
+                    !urgentWindDownNudged
+                ) {
+                    urgentWindDownNudged = true;
+                    const remaining = config.maxIterations - iteration;
+                    conversation.addUserMessage(
+                        `⚠️ URGENT: Only ${remaining} iteration(s) remaining out of ${config.maxIterations}. ` +
+                            `Stop starting new investigations. Wrap up your current analysis and ` +
+                            `produce your complete findings immediately. ` +
+                            `A thorough partial answer is far more valuable than running out of budget with no written findings.`
+                    );
+                    Log.info(
+                        `${logPrefix} Urgent wind-down nudge injected at iteration ${iteration}/${config.maxIterations}`
+                    );
+                }
 
-                if (forceFinalResponse) {
+                // Final buffer: remove tools and force text response for
+                // the last N iterations of non-explicit-completion conversations
+                // (subagents). Giving 2 iterations instead of 1 provides a
+                // retry opportunity if the first forced-text response is poor.
+                const isInFinalBuffer =
+                    !config.requiresExplicitCompletion &&
+                    iteration >= finalBufferStart;
+
+                if (isInFinalBuffer && !windDownInjected) {
                     windDownInjected = true;
                     conversation.addUserMessage(
                         'This is your final iteration. Please provide your complete findings as a text response. ' +
@@ -250,7 +283,7 @@ export class ConversationRunner {
                 }
 
                 const effectiveTools =
-                    forceFinalResponse || windDownInjected ? [] : vscodeTools;
+                    isInFinalBuffer || windDownInjected ? [] : vscodeTools;
 
                 let messages = this.prepareMessagesForLLM(
                     config.systemPrompt,
