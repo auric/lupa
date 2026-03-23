@@ -271,11 +271,11 @@ Child agents: RecursionConstants.DEFAULT_CHILD_BUDGET (50) each
               — independent of parent budget, NOT deducted from parent
 
 Total compute bounded by:
-  - maxSubagentsPerSession (currently 75): session-level hard cap across all depths
+  - maxSubagentsPerSession (currently 200): session-level hard cap across all depths
   - maxRecursionDepth (default 2): limits nesting depth
   - RecursionConstants.MIN_VIABLE_BUDGET (3): minimum to spawn a new agent
 
-Example with maxSubagentsPerSession=75:
+Example with maxSubagentsPerSession=200:
   Root: 100 iterations
   Up to 30 child agents, each with 30 iterations
   Total worst-case: 100 + (30 × 30) = 1000 iterations
