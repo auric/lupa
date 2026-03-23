@@ -793,6 +793,15 @@ RULES:
             return exactMatch.filePath;
         }
 
+        // Case-insensitive fallback — models often use wrong casing for file paths
+        const lowerRequested = requestedPath.toLowerCase();
+        const caseInsensitiveMatch = parsedDiff.find(
+            (f) => f.filePath.toLowerCase() === lowerRequested
+        );
+        if (caseInsensitiveMatch) {
+            return caseInsensitiveMatch.filePath;
+        }
+
         const suffixMatches = parsedDiff.filter((f) =>
             f.filePath.endsWith('/' + requestedPath)
         );
