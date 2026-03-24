@@ -5,6 +5,20 @@ import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { flexibleStringArrayNonEmpty } from './schemaHelpers';
 
+/**
+ * Path suffix match with boundary checking — requires the character
+ * before the suffix to be '/' or the paths to be equal.
+ */
+function pathSuffixMatch(fullPath: string, suffix: string): boolean {
+    if (fullPath === suffix) {
+        return true;
+    }
+    if (!fullPath.endsWith(suffix)) {
+        return false;
+    }
+    return fullPath[fullPath.length - suffix.length - 1] === '/';
+}
+
 const Recommendation = z.enum([
     'approve',
     'approve_with_suggestions',
@@ -81,9 +95,8 @@ export class ThinkAboutCompletionTool extends BaseTool {
                 const normalizedClaimed = claimed.replace(/\\/g, '/');
                 return ![...context.investigatedFiles!].some(
                     (actual) =>
-                        normalizedClaimed.endsWith(actual) ||
-                        actual.endsWith(normalizedClaimed) ||
-                        normalizedClaimed === actual
+                        pathSuffixMatch(normalizedClaimed, actual) ||
+                        pathSuffixMatch(actual, normalizedClaimed)
                 );
             });
             if (uninvestigated.length > 0) {
