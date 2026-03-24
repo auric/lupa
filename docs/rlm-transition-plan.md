@@ -111,7 +111,7 @@ ToolCallingAnalysisProvider.analyze()
 ConversationRunner.run() — Main Loop (up to maxIterations)
     ├── LLM receives: system prompt + full diff + accumulated tool results
     ├── LLM calls tools: read_file, find_symbol, search_for_pattern, etc.
-    ├── LLM may call run_subagent (flat, depth=1 only)
+    ├── LLM may call run_subagent_batch (flat, depth=1 only)
     ├── Tool results accumulate in conversation history
     ├── Context window fills → quality degrades
     │
@@ -124,8 +124,8 @@ LLM calls submit_review → Final review output
 - **SubagentSessionManager**: Flat counter (total spawns, can-spawn check)
 - **SubagentExecutor**: Spawns isolated agents with filtered tools
 - **RunSubagentTool**: The LLM-callable tool for spawning
-- **DISALLOWED_TOOLS**: `['run_subagent', 'update_plan', 'submit_review', ...]`
-    - Subagents **cannot** call `run_subagent` → no recursion
+- **DISALLOWED_TOOLS**: `['run_subagent_batch', 'update_plan', 'submit_review', ...]`
+    - Subagents **cannot** call `run_subagent_batch` → no recursion
     - Subagents **cannot** see the diff → investigate current code only
 
 ### 3.3 Current Prompt Architecture
@@ -152,17 +152,17 @@ LLM calls submit_review → Final review output
 
 ### 4.1 Concept Mapping
 
-| RLM Paper Concept         | Lupa Extension Equivalent          | Notes                                                 |
-| ------------------------- | ---------------------------------- | ----------------------------------------------------- |
-| **Python REPL**           | `ToolRegistry` + `ToolExecutor`    | Tools ARE the environment interface                   |
-| **Context variable** `C`  | Git diff + codebase                | Accessible via ReadFile, FindSymbol, SearchForPattern |
-| **`rlm_agent(q, C)`**     | `run_subagent(task, context)`      | Spawns isolated ConversationRunner                    |
-| **REPL stdout**           | `ToolResult` strings               | Text-based tool responses                             |
-| **Environment `E`**       | `ExecutionContext`                 | Per-analysis dependencies                             |
-| **Recursion depth**       | `currentDepth` in ExecutionContext | Tracked by RecursiveStateManager                      |
-| **Context decomposition** | Root's decomposition phase         | Diff → concern groups → sub-tasks                     |
-| **Result aggregation**    | Root's synthesis phase             | Structured findings → final review                    |
-| **`exec(code)`**          | `ToolExecutor.executeTool()`       | Controlled execution environment                      |
+| RLM Paper Concept         | Lupa Extension Equivalent           | Notes                                                 |
+| ------------------------- | ----------------------------------- | ----------------------------------------------------- |
+| **Python REPL**           | `ToolRegistry` + `ToolExecutor`     | Tools ARE the environment interface                   |
+| **Context variable** `C`  | Git diff + codebase                 | Accessible via ReadFile, FindSymbol, SearchForPattern |
+| **`rlm_agent(q, C)`**     | `run_subagent_batch(task, context)` | Spawns isolated ConversationRunner                    |
+| **REPL stdout**           | `ToolResult` strings                | Text-based tool responses                             |
+| **Environment `E`**       | `ExecutionContext`                  | Per-analysis dependencies                             |
+| **Recursion depth**       | `currentDepth` in ExecutionContext  | Tracked by RecursiveStateManager                      |
+| **Context decomposition** | Root's decomposition phase          | Diff → concern groups → sub-tasks                     |
+| **Result aggregation**    | Root's synthesis phase              | Structured findings → final review                    |
+| **`exec(code)`**          | `ToolExecutor.executeTool()`        | Controlled execution environment                      |
 
 ### 4.2 Operation Mapping
 
@@ -171,7 +171,7 @@ LLM calls submit_review → Final review output
 | `context[:1000]` (peek)         | `read_file` with line range          | ✅ Exists                               |
 | `re.findall(pattern, context)`  | `search_for_pattern` (ripgrep)       | ✅ Exists                               |
 | `context.split('\n')` + iterate | `get_changed_files` + per-file reads | ✅ Exists                               |
-| `rlm_agent(query, chunk)`       | `run_subagent(task, context)`        | ⚠️ Needs recursion support              |
+| `rlm_agent(query, chunk)`       | `run_subagent_batch(task, context)`  | ⚠️ Needs recursion support              |
 | `len(context)`                  | Diff statistics                      | ✅ Available                            |
 | Custom filtering                | `find_symbol`, `find_usages`         | ✅ Exists                               |
 | Structured output               | `submit_review`                      | ⚠️ Needs structured format for children |
@@ -419,15 +419,15 @@ review controller that decomposes the PR into focused investigations and synthes
 You are the ROOT AGENT in a recursive review system:
 
 1. **Decompose** — Break the PR into logical review concerns
-2. **Delegate** — Spawn focused sub-agents for each concern via `run_subagent`
+2. **Delegate** — Spawn focused sub-agents for each concern via `run_subagent_batch`
 3. **Aggregate** — Synthesize sub-agent findings into a coherent review
 4. **Cross-cut** — Identify issues that span multiple concerns
 
 ## Critical Rules
 
-- **Delegate investigations** — Use `run_subagent` for deep code inspection
+- **Delegate investigations** — Use `run_subagent_batch` for deep code inspection
 - **You may orient yourself** using `list_directory`, `get_symbols_overview`, `read_file` (sparingly)
-- **Your primary tool is `run_subagent`** — It does the heavy investigation
+- **Your primary tool is `run_subagent_batch`** — It does the heavy investigation
 - For each concern, include relevant diff hunks in the `context` field
 - Sub-agents can investigate both current code AND diff changes you provide
 
@@ -461,7 +461,7 @@ Call `update_plan` with your decomposition:
 
 ### Step 3: Spawn Sub-Agents
 
-For each concern group, call `run_subagent`:
+For each concern group, call `run_subagent_batch`:
 
 ```
 task: "Review [concern] in [files].
@@ -544,7 +544,7 @@ provided the relevant diff context above. Your job is to:
 - Use `find_usages` to check all callers of changed functions
 - Use `search_for_pattern` to find related patterns across the codebase
 - Use `read_file` for configuration files or when you need full file context
-${canRecurse ? `- Use \`run_subagent\` to delegate deep dependency investigations` : ''}
+${canRecurse ? `- Use \`run_subagent_batch\` to delegate deep dependency investigations` : ''}
 
 ### When to ${canRecurse ? 'Recurse (Spawn Sub-Agents)' : 'Stay Focused'}
 ${canRecurse ? `
@@ -625,7 +625,7 @@ focused sub-agents for each. Include relevant diff hunks in each sub-agent's con
 
 1. Scan the diff structure and classify changes
 2. Call `update_plan` with your decomposition plan
-3. Spawn `run_subagent` for each concern group (include diff context!)
+3. Spawn `run_subagent_batch` for each concern group (include diff context!)
 4. After all agents return, aggregate findings
 5. Check for cross-concern issues
 6. Call `think_about_completion`, then `submit_review`
@@ -674,8 +674,8 @@ Changes:
 
 - Accept `recursionDepth` parameter in `execute()`
 - Conditionally filter tools based on depth vs. maxDepth
-- When `depth < maxDepth`: Include `run_subagent` in available tools + provide `subagentExecutor` and `subagentSessionManager` in child's ExecutionContext
-- When `depth >= maxDepth`: Exclude `run_subagent` (current behavior)
+- When `depth < maxDepth`: Include `run_subagent_batch` in available tools + provide `subagentExecutor` and `subagentSessionManager` in child's ExecutionContext
+- When `depth >= maxDepth`: Exclude `run_subagent_batch` (current behavior)
 - Pass `recursiveState`, `currentDepth`, `currentAgentId` via ExecutionContext
 - Use depth-aware prompt generation
 
@@ -689,8 +689,8 @@ async execute(task, token, subagentId, options?: { recursionDepth?: number }): P
 
     // Determine disallowed tools based on recursion capability
     const disallowed = canRecurse
-        ? MAIN_ANALYSIS_ONLY_TOOLS  // Allow run_subagent, block main-only tools
-        : SubagentLimits.DISALLOWED_TOOLS;  // Block everything including run_subagent
+        ? MAIN_ANALYSIS_ONLY_TOOLS  // Allow run_subagent_batch, block main-only tools
+        : SubagentLimits.DISALLOWED_TOOLS;  // Block everything including run_subagent_batch
 
     // Create depth-aware ExecutionContext
     const childContext: ExecutionContext = {
@@ -888,7 +888,7 @@ The root agent naturally falls back to direct investigation if decomposition isn
 
 The system programmatically verifies that every changed file has been reviewed via `get_file_diff` — the tool that shows actual PR changes. Other tools (`read_file`, `find_symbol`, etc.) read current file state for context but do not constitute reviewing a file's diff.
 
-**Mechanism**: An `afterToolCalls` callback on `ConversationRunnerConfig` fires after each tool execution iteration. When `run_subagent` calls complete, `RecursiveStateManager.getCoverageGapMessage()` compares covered files (aggregated from ALL completed agents across all depths) against the full changed-file list. If gaps exist, a message listing uncovered files is injected into the conversation, instructing the root to spawn additional subagents.
+**Mechanism**: An `afterToolCalls` callback on `ConversationRunnerConfig` fires after each tool execution iteration. When `run_subagent_batch` calls complete, `RecursiveStateManager.getCoverageGapMessage()` compares covered files (aggregated from ALL completed agents across all depths) against the full changed-file list. If gaps exist, a message listing uncovered files is injected into the conversation, instructing the root to spawn additional subagents.
 
 **Why root-level tracking is sufficient**: The root's coverage view is global — it aggregates `get_file_diff` calls from every agent in the tree (depth 0, 1, 2...). If a depth-2 sub-sub-agent skips a file, the root catches the gap after the batch completes. The root can then re-assign uncovered files to new subagents, regardless of which branch originally "owned" them.
 
@@ -914,8 +914,8 @@ The system programmatically verifies that every changed file has been reviewed v
 
 **SubagentExecutor depth awareness** (`recursiveSubagentExecutor.test.ts`):
 
-- Depth 0 child includes `run_subagent` in tools
-- Depth maxDepth child excludes `run_subagent`
+- Depth 0 child includes `run_subagent_batch` in tools
+- Depth maxDepth child excludes `run_subagent_batch`
 - ExecutionContext properly populated at each depth
 - Budget passed correctly to ConversationRunner
 
@@ -972,7 +972,7 @@ The system programmatically verifies that every changed file has been reviewed v
 
 ### Behavior When `maxRecursionDepth = 0`
 
-Identical to current linear behavior. SubagentExecutor uses existing DISALLOWED_TOOLS (no `run_subagent` for children). Backward compatible.
+Identical to current linear behavior. SubagentExecutor uses existing DISALLOWED_TOOLS (no `run_subagent_batch` for children). Backward compatible.
 
 ### Constants (Non-Configurable)
 
@@ -1044,12 +1044,12 @@ const RecursionConstants = {
      │                 │── update_plan ──>  │                     │
      │                 │<─ plan created ──  │                     │
      │                 │                    │                     │
-     │                 │── run_subagent ──> │                     │
+     │                 │── run_subagent_batch > │                  │
      │                 │  (auth concern)    │                     │
      │                 │                    │── find_symbol ──>   │
      │                 │                    │<─ function body ──  │
      │                 │                    │                     │
-     │                 │                    │── run_subagent ───> │
+     │                 │                    │── run_subagent_batch > │
      │                 │                    │  (trace dep chain)  │
      │                 │                    │                     │── find_usages
      │                 │                    │                     │<─ usages
@@ -1062,7 +1062,7 @@ const RecursionConstants = {
      │                 │<─ structured ────  │                     │
      │                 │   findings         │                     │
      │                 │                    │                     │
-     │                 │── run_subagent ──> │2                    │
+     │                 │── run_subagent_batch > │2                 │
      │                 │  (logic concern)   │                     │
      │                 │<─ findings ──────  │                     │
      │                 │                    │                     │
