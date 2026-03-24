@@ -229,7 +229,11 @@ export class ToolExecutor {
                 const parsed = validatedArgs as Record<string, unknown>;
                 const filePath =
                     parsed.file_path ?? parsed.file ?? parsed.relative_path;
-                if (filePath && typeof filePath === 'string') {
+                if (
+                    filePath &&
+                    typeof filePath === 'string' &&
+                    filePath !== '.'
+                ) {
                     this.executionContext.investigatedFiles.add(
                         filePath.replace(/\\/g, '/')
                     );

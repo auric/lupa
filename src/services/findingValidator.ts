@@ -59,23 +59,6 @@ const SINGLE_THREADED_EXTENSIONS = new Set([
     '.php',
 ]);
 
-function isSingleThreadedProject(filePaths: string[]): boolean {
-    const codeFiles = filePaths.filter(
-        (f) =>
-            !f.endsWith('.md') &&
-            !f.endsWith('.json') &&
-            !f.endsWith('.yaml') &&
-            !f.endsWith('.yml')
-    );
-    if (codeFiles.length === 0) {
-        return false;
-    }
-    const singleThreaded = codeFiles.filter((f) =>
-        SINGLE_THREADED_EXTENSIONS.has(extname(f).toLowerCase())
-    );
-    return singleThreaded.length / codeFiles.length > 0.5;
-}
-
 const STATIC_TYPE_EXTENSIONS = new Set([
     '.ts',
     '.mts',
@@ -97,25 +80,16 @@ const STATIC_TYPE_EXTENSIONS = new Set([
     '.h',
 ]);
 
-function hasStaticTypeSystem(filePaths: string[]): boolean {
-    const codeFiles = filePaths.filter(
-        (f) =>
-            !f.endsWith('.md') &&
-            !f.endsWith('.json') &&
-            !f.endsWith('.yaml') &&
-            !f.endsWith('.yml')
-    );
-    if (codeFiles.length === 0) {
-        return false;
-    }
-    const staticTyped = codeFiles.filter((f) =>
-        STATIC_TYPE_EXTENSIONS.has(extname(f).toLowerCase())
-    );
-    return staticTyped.length / codeFiles.length > 0.5;
-}
-
 export class FindingValidator {
     constructor(private readonly lspValidation: LspValidationService) {}
+
+    private isSingleThreadedFile(filePath: string): boolean {
+        return SINGLE_THREADED_EXTENSIONS.has(extname(filePath).toLowerCase());
+    }
+
+    private hasStaticTypes(filePath: string): boolean {
+        return STATIC_TYPE_EXTENSIONS.has(extname(filePath).toLowerCase());
+    }
 
     async validate(
         findings: RecordedFinding[],
@@ -126,9 +100,6 @@ export class FindingValidator {
         const deletedFiles = new Set(
             parsedDiff.filter((d) => d.isDeletedFile).map((d) => d.filePath)
         );
-        const filePaths = parsedDiff.map((d) => d.filePath);
-        const singleThreaded = isSingleThreadedProject(filePaths);
-        const staticTypes = hasStaticTypeSystem(filePaths);
         const validated: ValidatedFinding[] = [];
 
         for (const finding of findings) {
@@ -163,7 +134,7 @@ export class FindingValidator {
                 }
             }
 
-            if (verdict !== 'drop' && singleThreaded) {
+            if (verdict !== 'drop' && this.isSingleThreadedFile(finding.file)) {
                 const concurrencyViolation =
                     this.checkConcurrencyFalsePositive(finding);
                 if (concurrencyViolation) {
@@ -175,7 +146,7 @@ export class FindingValidator {
             if (verdict !== 'drop') {
                 const patternViolation = this.checkExcludedPatterns(
                     finding,
-                    staticTypes
+                    this.hasStaticTypes(finding.file)
                 );
                 if (patternViolation) {
                     violations.push(patternViolation);
