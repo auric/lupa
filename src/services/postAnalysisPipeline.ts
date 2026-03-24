@@ -29,6 +29,7 @@ export interface PostAnalysisPipelineOptions {
     conversationRunner: ConversationRunner;
     systemPrompt: string;
     availableTools: ITool[];
+    disabledToolNames?: Set<string>;
     token: vscode.CancellationToken;
     handler: ToolCallHandler;
     feedbackStore?: FeedbackStoreType;
@@ -108,6 +109,7 @@ export class PostAnalysisPipeline {
                         systemPrompt: options.systemPrompt,
                         maxIterations: WORKFLOW_BUDGET,
                         tools: options.availableTools,
+                        disabledToolNames: options.disabledToolNames,
                         label: 'Workflow Completion',
                         requiresExplicitCompletion: true,
                     },
@@ -150,6 +152,7 @@ export class PostAnalysisPipeline {
                         systemPrompt: options.systemPrompt,
                         maxIterations: CHALLENGE_BUDGET,
                         tools: options.availableTools,
+                        disabledToolNames: options.disabledToolNames,
                         label: 'Zero-Finding Challenge',
                         requiresExplicitCompletion: true,
                     },
@@ -337,6 +340,7 @@ export class PostAnalysisPipeline {
                     systemPrompt: options.systemPrompt,
                     maxIterations: REWRITE_BUDGET,
                     tools: options.availableTools,
+                    disabledToolNames: options.disabledToolNames,
                     label: 'Rewrite Phase',
                     requiresExplicitCompletion: true,
                 },
@@ -433,6 +437,7 @@ export class PostAnalysisPipeline {
                 systemPrompt: options.systemPrompt,
                 maxIterations: SELF_CRITIQUE_BUDGET,
                 tools: options.availableTools,
+                disabledToolNames: options.disabledToolNames,
                 label: 'Self-Critique',
                 requiresExplicitCompletion: true,
             },

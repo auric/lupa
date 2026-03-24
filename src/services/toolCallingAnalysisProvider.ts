@@ -364,6 +364,7 @@ export class ToolCallingAnalysisProvider {
                     conversationRunner,
                     systemPrompt,
                     availableTools: availableTools,
+                    disabledToolNames,
                     token,
                     handler,
                     progressCallback: progressCallback

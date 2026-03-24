@@ -802,6 +802,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 conversationRunner: runner,
                 systemPrompt,
                 availableTools,
+                disabledToolNames,
                 token,
                 handler: recordingHandler,
                 progressCallback: (msg) =>
