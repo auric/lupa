@@ -231,6 +231,8 @@ export const DEFAULT_PROFILE: ModelCalibrationProfile = {
  * Uses startsWith/includes matching to handle version suffixes
  * (e.g., "gpt-4.1-2025-04-14" matches "gpt-4.1").
  */
+// Order is load-bearing: more specific matchers (e.g. Raptor Mini by id) must
+// precede broader family matchers (e.g. gpt-5-mini) to avoid mis-classification.
 const MODEL_MATCHERS: Array<{
     test: (family: string, id: string) => boolean;
     profile: ModelCalibrationProfile;

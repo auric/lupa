@@ -278,7 +278,7 @@ export class EvidenceAuditor {
     private findFabricatedClaims(
         claimedTools: string[],
         fileSupportingCalls: ToolCallRecord[],
-        allToolCallRecords: ToolCallRecord[]
+        _allToolCallRecords: ToolCallRecord[]
     ): string[] {
         // Only check file-targeted tools, not validate_claim/think/etc.
         const fileTargetedClaims = claimedTools.filter((t) =>
@@ -298,20 +298,8 @@ export class EvidenceAuditor {
             return [];
         }
 
-        // No tools called on this file at all — check which claimed tools exist
-        const allToolsEverCalled = new Set(
-            allToolCallRecords
-                .filter((tc) => tc.success)
-                .map((tc) => tc.toolName)
-        );
-
-        return fileTargetedClaims.filter((claimed) => {
-            if (!allToolsEverCalled.has(claimed)) {
-                return true;
-            }
-            // Tool was called but on other files, not this one
-            return true;
-        });
+        // No tools called on this file at all — all claimed file-targeted tools are fabricated
+        return fileTargetedClaims;
     }
 
     /**

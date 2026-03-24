@@ -436,8 +436,7 @@ export class PostAnalysisPipeline {
             {
                 systemPrompt: options.systemPrompt,
                 maxIterations: SELF_CRITIQUE_BUDGET,
-                tools: options.availableTools,
-                disabledToolNames: options.disabledToolNames,
+                tools: [],
                 label: 'Self-Critique',
             },
             options.conversationManager,
