@@ -85,11 +85,18 @@ export class GetFileDiffTool extends BaseTool {
 
             // Case-insensitive fallback — models often use PascalCase for camelCase files
             if (!fileDiff) {
-                const caseInsensitiveMatch = parsedDiff.find(
+                const ciMatches = parsedDiff.filter(
                     (f) =>
                         f.filePath.toLowerCase() === requestedPath.toLowerCase()
                 );
-                fileDiff = caseInsensitiveMatch;
+                if (ciMatches.length === 1) {
+                    fileDiff = ciMatches[0];
+                } else if (ciMatches.length > 1) {
+                    notFound.push(
+                        `${requestedPath} (ambiguous — matches: ${ciMatches.map((m) => m.filePath).join(', ')})`
+                    );
+                    continue;
+                }
             }
 
             if (!fileDiff) {

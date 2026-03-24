@@ -795,11 +795,11 @@ RULES:
 
         // Case-insensitive fallback — models often use wrong casing for file paths
         const lowerRequested = requestedPath.toLowerCase();
-        const caseInsensitiveMatch = parsedDiff.find(
+        const ciMatches = parsedDiff.filter(
             (f) => f.filePath.toLowerCase() === lowerRequested
         );
-        if (caseInsensitiveMatch) {
-            return caseInsensitiveMatch.filePath;
+        if (ciMatches.length === 1) {
+            return ciMatches[0]!.filePath;
         }
 
         const suffixMatches = parsedDiff.filter((f) =>
