@@ -3,6 +3,7 @@ import type {
     FindingCategory,
     FindingSeverity,
 } from '../types/findingTypes';
+import { FAILURE_MECHANISMS } from '../types/findingTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
 import { flattenToolCalls } from '../utils/investigationAudit';
@@ -295,16 +296,9 @@ function scoreFeedbackHistory(rejectionRate: number): SignalBreakdown {
 const ABSENCE_LANGUAGE_PATTERN =
     /\b(missing|lacks|doesn't check|no validation|not validated|doesn't handle|no error handling|absent|omitted|doesn't verify|no check|not checked)\b/i;
 
-const CONCRETE_FAILURE_MECHANISMS = new Set([
-    'wrong_return_value',
-    'runtime_exception',
-    'data_corruption',
-    'security_bypass',
-    'resource_leak',
-    'type_error',
-    'contract_violation',
-    'race_condition',
-]);
+const CONCRETE_FAILURE_MECHANISMS: ReadonlySet<string> = new Set(
+    FAILURE_MECHANISMS
+);
 
 function scoreAbsencePattern(finding: RecordedFinding): SignalBreakdown {
     const weight = 15;

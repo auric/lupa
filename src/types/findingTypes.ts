@@ -19,6 +19,18 @@ export const ALLOWED_FINDING_CATEGORIES = [
 ] as const;
 export type FindingCategory = (typeof ALLOWED_FINDING_CATEGORIES)[number];
 
+export const FAILURE_MECHANISMS = [
+    'wrong_return_value',
+    'runtime_exception',
+    'data_corruption',
+    'security_bypass',
+    'resource_leak',
+    'type_error',
+    'contract_violation',
+    'race_condition',
+] as const;
+export type FailureMechanism = (typeof FAILURE_MECHANISMS)[number];
+
 export interface RecordedFinding {
     id: string;
     agentId: string;
@@ -30,7 +42,7 @@ export interface RecordedFinding {
     lineRange: [number, number];
     description: string;
     affectedComponent: string;
-    failureMechanism: string;
+    failureMechanism: FailureMechanism;
     verificationEvidence?: string;
     supportingToolCalls: string[];
     disproof: FindingDisproof;

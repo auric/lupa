@@ -6,6 +6,7 @@ import type { ExecutionContext } from '../types/executionContext';
 import {
     FINDING_SEVERITIES,
     ALLOWED_FINDING_CATEGORIES,
+    FAILURE_MECHANISMS,
 } from '../types/findingTypes';
 import type { ClaimType } from '../types/claimTypes';
 
@@ -95,16 +96,7 @@ export class RecordFindingTool extends BaseTool {
                     'Must be a real symbol — if you cannot name one, the finding is speculative.'
             ),
         failure_mechanism: z
-            .enum([
-                'wrong_return_value',
-                'runtime_exception',
-                'data_corruption',
-                'security_bypass',
-                'resource_leak',
-                'type_error',
-                'contract_violation',
-                'race_condition',
-            ])
+            .enum(FAILURE_MECHANISMS)
             .describe(
                 'HOW the failure manifests at runtime. Choose the most specific mechanism. ' +
                     '"Missing validation" or "missing logging" are NOT failure mechanisms — ' +
