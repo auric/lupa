@@ -474,7 +474,9 @@ export class PostAnalysisPipeline {
         if (response) {
             const lines = response.split('\n');
             for (const line of lines) {
-                const match = line.match(/^DROP:\s*"?(.+?)"?\s*$/i);
+                const match = line.match(
+                    /^(?:[-*•]\s+|\d+[.)]\s+)?DROP:\s*"?([^"]+?)"?\s*(?:[-—(].*)?$/i
+                );
                 if (match) {
                     const droppedTitle = match[1]!.trim();
                     // Find matching finding by title (fuzzy: case-insensitive, trimmed)
