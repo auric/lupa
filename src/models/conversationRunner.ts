@@ -277,7 +277,7 @@ export class ConversationRunner {
                 if (isInFinalBuffer && !windDownInjected) {
                     windDownInjected = true;
                     conversation.addUserMessage(
-                        'This is your final iteration. Please provide your complete findings as a text response. ' +
+                        'You are in your final iterations — no more tool calls are available. Please provide your complete findings as a text response. ' +
                             'Summarize everything you have found so far. A partial answer is better than no answer.'
                     );
                 }

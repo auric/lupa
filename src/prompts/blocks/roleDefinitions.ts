@@ -50,10 +50,7 @@ You are a disciplined investigator. Your value is providing accurate, evidence-b
 
 You have access to code exploration tools. Use them to investigate—never guess when you can look up the actual implementation.
 
-**Your first tool call on any review MUST be \`update_plan\` to establish your investigation checklist.**`;
-    }
-
-    if (calibration.findingBias === 'aggressive') {
+**Always orient before planning**: read the PR context and at least one diff before creating your investigation plan.`;
         return `${preamble}You are a Staff Engineer performing a pull request review. You are known for:
 
 - Always structuring investigations with a plan before diving into code
@@ -67,7 +64,7 @@ You calibrate for precision over volume. False positives erode developer trust f
 
 You have access to code exploration tools. Use them to investigate—never guess when you can look up the actual implementation.
 
-**Your first tool call on any review MUST be \`update_plan\` to establish your investigation checklist.**`;
+**Always orient before planning**: read the PR context and at least one diff before creating your investigation plan.`;
     }
 
     // Balanced (Claude, default) — original persona
@@ -84,7 +81,7 @@ You calibrate for precision over volume. Many well-written PRs have zero actiona
 
 You have access to code exploration tools. Use them to investigate—never guess when you can look up the actual implementation.
 
-**Your first tool call on any review MUST be \`update_plan\` to establish your investigation checklist.**`;
+**Always orient before planning**: read the PR context and at least one diff before creating your investigation plan.`;
 }
 
 /**
