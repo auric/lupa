@@ -12,6 +12,7 @@ import type {
 } from '../models/conversationRunner';
 import type { ITool } from '../tools/ITool';
 import type { FindingValidator, ValidatedFinding } from './findingValidator';
+import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import { EvidenceAuditor, type EvidenceAuditResult } from './evidenceAuditor';
 import { AdversarialVerifier } from './adversarialVerifier';
 import { scoreFinding, type ScoringContext } from './findingScorer';
@@ -87,8 +88,20 @@ export class PostAnalysisPipeline {
 
             if (ec.completionReadiness && !ec.completionReadiness.ready) {
                 const cr = ec.completionReadiness;
+                const hasSubagentTool = options.availableTools.some(
+                    (t) => t.name === 'run_subagent_batch'
+                );
+                const investigationDisabled =
+                    options.disabledToolNames &&
+                    INVESTIGATION_TOOLS.some((t) =>
+                        options.disabledToolNames!.has(t)
+                    );
+                const investigateInstruction =
+                    hasSubagentTool && investigationDisabled
+                        ? 'Use run_subagent_batch to delegate investigation of these files to subagents, then call submit_review.'
+                        : 'Investigate these files before submitting.';
                 workflowGaps.push(
-                    `think_about_completion flagged ${cr.uninvestigatedFiles.length} uninvestigated file(s): ${cr.uninvestigatedFiles.join(', ')}. Investigate these files before submitting.`
+                    `think_about_completion flagged ${cr.uninvestigatedFiles.length} uninvestigated file(s): ${cr.uninvestigatedFiles.join(', ')}. ${investigateInstruction}`
                 );
             }
 
@@ -134,13 +147,25 @@ export class PostAnalysisPipeline {
                 );
                 const investigatedCount =
                     options.executionContext.investigatedFiles?.size ?? 0;
+                const hasSubagentToolZfc = options.availableTools.some(
+                    (t) => t.name === 'run_subagent_batch'
+                );
+                const investigationDisabledZfc =
+                    options.disabledToolNames &&
+                    INVESTIGATION_TOOLS.some((t) =>
+                        options.disabledToolNames!.has(t)
+                    );
+                const zfcInvestigateInstruction =
+                    hasSubagentToolZfc && investigationDisabledZfc
+                        ? '• Use run_subagent_batch to delegate investigation of skipped files to subagents'
+                        : '• If you skipped files, investigate them now with get_file_diff and find_symbol';
                 options.conversationManager.addUserMessage(
                     `ZERO FINDINGS ALERT — You reviewed ${options.parsedDiff.length} changed files ` +
                         `(investigated ${investigatedCount} via tools) and recorded 0 findings. ` +
                         `On a PR of this size with substantive code changes, this is unusual.\n\n` +
                         `Before finalizing:\n` +
                         `• Re-examine each file group for potential logic errors, missing error handling, or security issues\n` +
-                        `• If you skipped files, investigate them now with get_file_diff and find_symbol\n` +
+                        `${zfcInvestigateInstruction}\n` +
                         `• Record any genuine findings you may have overlooked with record_finding\n` +
                         `• If truly no issues exist, that is acceptable — but verify you checked thoroughly\n\n` +
                         `Then call submit_review again.`

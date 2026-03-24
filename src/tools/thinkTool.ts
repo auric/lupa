@@ -100,8 +100,6 @@ export class ThinkTool extends BaseTool {
                     : 'No risks identified.';
         const actionNote = next_action ? ` Next: ${next_action}.` : '';
 
-        return toolSuccess(
-            `Checkpoint "${topic}": ${riskNote}${actionNote} Call think again after your next investigation step.`
-        );
+        return toolSuccess(`Checkpoint "${topic}": ${riskNote}${actionNote}`);
     }
 }
