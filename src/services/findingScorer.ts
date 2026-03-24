@@ -299,13 +299,11 @@ const CONCRETE_FAILURE_MECHANISMS = new Set([
     'wrong_return_value',
     'runtime_exception',
     'data_corruption',
-    'infinite_loop',
-    'deadlock',
-    'memory_leak',
-    'use_after_free',
-    'buffer_overflow',
-    'sql_injection',
-    'xss',
+    'security_bypass',
+    'resource_leak',
+    'type_error',
+    'contract_violation',
+    'race_condition',
 ]);
 
 function scoreAbsencePattern(finding: RecordedFinding): SignalBreakdown {
