@@ -9,6 +9,7 @@ import type { DiffHunk } from '../types/contextTypes';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+import { AsyncSemaphore } from '../utils/asyncSemaphore';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 
 export type AdversarialProgressCallback = (message: string) => void;
@@ -30,6 +31,9 @@ export interface AdversarialResult {
  */
 export class AdversarialVerifier {
     private readonly adversarialGen = new AdversarialPromptGenerator();
+
+    /** Max parallel adversarial subagents to avoid API rate-limit bursts. */
+    private static readonly CONCURRENCY_LIMIT = 3;
 
     async verify(
         findingStore: FindingStore,
@@ -68,27 +72,35 @@ export class AdversarialVerifier {
 
         let completed = 0;
         const totalToVerify = toVerify.length;
+        const semaphore = new AsyncSemaphore(
+            AdversarialVerifier.CONCURRENCY_LIMIT
+        );
 
-        // Launch all verifications in parallel
+        // Launch all verifications with bounded concurrency
         const results = await Promise.allSettled(
             toVerify.map(async ({ finding, index }) => {
-                if (token.isCancellationRequested) {
-                    throw new vscode.CancellationError();
+                await semaphore.acquire(token);
+                try {
+                    if (token.isCancellationRequested) {
+                        throw new vscode.CancellationError();
+                    }
+                    const { verdict, toolCalls } = await this.verifyFinding(
+                        finding,
+                        index,
+                        calibrationProfile,
+                        subagentExecutor,
+                        parsedDiff,
+                        findingStore,
+                        token
+                    );
+                    completed++;
+                    progressCallback?.(
+                        `Adversarial: ${completed}/${totalToVerify} verified`
+                    );
+                    return { finding, verdict, toolCalls };
+                } finally {
+                    semaphore.release();
                 }
-                const { verdict, toolCalls } = await this.verifyFinding(
-                    finding,
-                    index,
-                    calibrationProfile,
-                    subagentExecutor,
-                    parsedDiff,
-                    findingStore,
-                    token
-                );
-                completed++;
-                progressCallback?.(
-                    `Adversarial: ${completed}/${totalToVerify} verified`
-                );
-                return { finding, verdict, toolCalls };
             })
         );
 

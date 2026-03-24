@@ -428,7 +428,7 @@ export class PostAnalysisPipeline {
                 `• Would you spend engineering time fixing this, or would you dismiss it as noise?\n` +
                 `• Is this about MISSING features/tests/docs rather than INCORRECT behavior?\n\n` +
                 `Reply with ONLY the titles of findings to DROP (those that are speculative, cosmetic, or describe missing features rather than bugs), ` +
-                `one per line prefixed with "DROP: ". If all findings are valid, reply with "ALL VALID". Then call submit_review.`
+                `one per line prefixed with "DROP: ". If all findings are valid, reply with "ALL VALID".`
         );
 
         const SELF_CRITIQUE_BUDGET = 10;
@@ -439,7 +439,6 @@ export class PostAnalysisPipeline {
                 tools: options.availableTools,
                 disabledToolNames: options.disabledToolNames,
                 label: 'Self-Critique',
-                requiresExplicitCompletion: true,
             },
             options.conversationManager,
             options.token,
