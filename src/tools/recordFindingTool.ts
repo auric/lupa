@@ -9,6 +9,7 @@ import {
     FAILURE_MECHANISMS,
 } from '../types/findingTypes';
 import type { ClaimType } from '../types/claimTypes';
+import { pathSuffixMatch } from '../utils/pathUtils';
 
 const VALID_CLAIM_TYPES: readonly ClaimType[] = [
     'symbol_unused',
@@ -18,23 +19,6 @@ const VALID_CLAIM_TYPES: readonly ClaimType[] = [
     'no_callers',
     'no_implementation',
 ] as const;
-
-/**
- * Checks if fullPath ends with suffix at a path boundary (/ or start of string).
- * Prevents 'bighelper.ts' from matching 'helper.ts' — requires the character
- * before the suffix to be '/' or the paths to be equal.
- */
-function pathSuffixMatch(fullPath: string, suffix: string): boolean {
-    const fp = fullPath.toLowerCase();
-    const sf = suffix.toLowerCase();
-    if (fp === sf) {
-        return true;
-    }
-    if (!fp.endsWith(sf)) {
-        return false;
-    }
-    return fp[fp.length - sf.length - 1] === '/';
-}
 
 export class RecordFindingTool extends BaseTool {
     name = 'record_finding';

@@ -4,22 +4,7 @@ import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { flexibleStringArrayNonEmpty } from './schemaHelpers';
-
-/**
- * Path suffix match with boundary checking — requires the character
- * before the suffix to be '/' or the paths to be equal.
- */
-function pathSuffixMatch(fullPath: string, suffix: string): boolean {
-    const fp = fullPath.toLowerCase();
-    const sf = suffix.toLowerCase();
-    if (fp === sf) {
-        return true;
-    }
-    if (!fp.endsWith(sf)) {
-        return false;
-    }
-    return fp[fp.length - sf.length - 1] === '/';
-}
+import { pathSuffixMatch } from '../utils/pathUtils';
 
 const Recommendation = z.enum([
     'approve',
