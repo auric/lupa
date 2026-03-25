@@ -100,7 +100,7 @@ describe('Calibration-aware prompt blocks', () => {
         it('should produce balanced output with balanced profile', () => {
             const role = generatePRReviewerRole(BALANCED_PROFILE);
             expect(role).toContain('Staff Engineer');
-            expect(role).toContain('update_plan');
+            expect(role).toContain('orient before planning');
         });
     });
 
