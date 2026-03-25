@@ -200,7 +200,7 @@ export class PostAnalysisPipeline {
 
         // Stage 3: Finding validation
         const survivingFindings = options.findingStore.getAll();
-        if (survivingFindings.length > 0 && options.parsedDiff) {
+        if (survivingFindings.length > 0 && options.parsedDiff?.length) {
             options.progressCallback?.('Validating findings...', 0.5);
             const validation = await this.findingValidator.validate(
                 survivingFindings,
