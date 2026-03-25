@@ -49,6 +49,7 @@ type TaskOutcome =
           error: string;
           subagentId: number;
           allocation: TaskAllocation;
+          result?: SubagentResult;
       }
     | { status: 'skipped'; reason: string; index: number; task: string };
 
@@ -491,6 +492,7 @@ RULES:
                         : msg,
                     subagentId: alloc.subagentId,
                     allocation: alloc,
+                    result,
                 };
             }
 
@@ -504,6 +506,7 @@ RULES:
                         : msg,
                     subagentId: alloc.subagentId,
                     allocation: alloc,
+                    result,
                 };
             }
 
@@ -517,6 +520,7 @@ RULES:
                         : msg,
                     subagentId: alloc.subagentId,
                     allocation: alloc,
+                    result,
                 };
             }
 
@@ -706,7 +710,16 @@ RULES:
         let totalIterationsUsed = 0;
 
         for (const outcome of outcomes) {
-            if (outcome.status !== 'completed') {
+            if (outcome.status === 'skipped') {
+                continue;
+            }
+
+            const result =
+                outcome.status === 'completed'
+                    ? outcome.result
+                    : outcome.result;
+
+            if (!result) {
                 continue;
             }
 
@@ -716,21 +729,21 @@ RULES:
                 id: `subagent-${outcome.subagentId}`,
                 toolName: 'run_subagent_batch',
                 arguments: { task: outcome.allocation.task },
-                result: outcome.result.response,
-                success: outcome.result.success,
-                error: outcome.result.error,
+                result: result.response,
+                success: result.success,
+                error: result.error,
                 durationMs: undefined,
                 timestamp: Date.now(),
-                nestedCalls: outcome.result.toolCalls,
-                executionTimeMs: outcome.result.executionTimeMs,
-                iterationsUsed: outcome.result.iterationsUsed,
+                nestedCalls: result.toolCalls,
+                executionTimeMs: result.executionTimeMs,
+                iterationsUsed: result.iterationsUsed,
             });
 
-            if (outcome.result.executionTimeMs !== undefined) {
-                totalExecutionTimeMs += outcome.result.executionTimeMs;
+            if (result.executionTimeMs !== undefined) {
+                totalExecutionTimeMs += result.executionTimeMs;
             }
-            if (outcome.result.iterationsUsed !== undefined) {
-                totalIterationsUsed += outcome.result.iterationsUsed;
+            if (result.iterationsUsed !== undefined) {
+                totalIterationsUsed += result.iterationsUsed;
             }
         }
 
