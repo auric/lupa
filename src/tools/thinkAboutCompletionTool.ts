@@ -10,13 +10,15 @@ import { flexibleStringArrayNonEmpty } from './schemaHelpers';
  * before the suffix to be '/' or the paths to be equal.
  */
 function pathSuffixMatch(fullPath: string, suffix: string): boolean {
-    if (fullPath === suffix) {
+    const fp = fullPath.toLowerCase();
+    const sf = suffix.toLowerCase();
+    if (fp === sf) {
         return true;
     }
-    if (!fullPath.endsWith(suffix)) {
+    if (!fp.endsWith(sf)) {
         return false;
     }
-    return fullPath[fullPath.length - suffix.length - 1] === '/';
+    return fp[fp.length - sf.length - 1] === '/';
 }
 
 const Recommendation = z.enum([
