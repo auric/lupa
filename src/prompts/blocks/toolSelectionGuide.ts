@@ -41,7 +41,7 @@ export function generateToolSelectionGuide(): string {
 
 ### Anti-Patterns
 
-- ❌ Investigating code without first creating a plan with \`update_plan\`
+- ❌ Deep investigation (reading files, finding symbols) without first creating a plan with \`update_plan\`
 - ❌ Reading files when you only need one function (use \`find_symbol\`)
 - ❌ Sequential tool calls that could be parallel — use \`batch_tools\` if needed
 - ❌ Claims without tool verification
