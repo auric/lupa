@@ -86,9 +86,6 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             case 'read_file':
                 return `${ACTIVITY.reading} Read \`${sanitizeForMarkdown(args.file_path, 'file')}\``;
 
-            case 'list_directory':
-                return `${ACTIVITY.reading} Listed \`${sanitizeForMarkdown(args.relative_path, 'directory')}\``;
-
             case 'get_symbols_overview':
                 return `${ACTIVITY.analyzing} Analyzed symbols in \`${sanitizeForMarkdown(args.path, 'file')}\``;
 

@@ -98,7 +98,7 @@ get_file_diff({file_paths: ["src/auth.ts"]})
 → record_finding({severity: "HIGH", title: "Timing attack on password comparison", file: "src/auth.ts", line: 42, description: "...", disproof_note: "validate_claim: timingSafeEqual not found. Devil's advocate: no middleware handles this."})
 \`\`\`
 
-**Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
+**Do NOT call tools without reading your task context first** — your task already tells you which files to examine.`
                 : hasDiffTools
                   ? `
 1. **Read the Diff**: Call \`get_file_diff\` ONCE with ALL file paths in the \`file_paths\` array (e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts"]})\`). This gives you orientation — what changed and where.
@@ -140,7 +140,7 @@ get_file_diff({file_paths: ["src/auth.ts"]})
 → record_finding({severity: "HIGH", ..., disproof_note: "validate_claim confirmed. Devil's advocate: no centralized handler."})
 \`\`\`
 
-**Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
+**Do NOT call tools without reading your task context first** — your task already tells you which files to examine.`
                   : `
 1. **Review Parent Context**: Study the code and information the parent agent provided in context above — this is your primary input.
 

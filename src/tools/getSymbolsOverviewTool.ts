@@ -30,8 +30,7 @@ Supports hierarchy control, symbol filtering, and body inclusion for detailed co
 Output format: "lineNumber: symbolName (symbolType)" with optional indentation for hierarchy.
 
 USE THIS to understand file/module structure and orient on unfamiliar code.
-PREFER find_symbol when you know a specific symbol name.
-PREFER list_directory for file-only listing without symbol extraction.`;
+PREFER find_symbol when you know a specific symbol name.`;
 
     schema = z.object({
         path: z

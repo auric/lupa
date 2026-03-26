@@ -14,7 +14,6 @@ export function generateRecursiveToolGuide(): string {
 | \`get_file_diff\` | **SECOND** — read 1 key diff (largest/riskiest) to understand the PR's purpose |
 | \`update_plan\` | **THIRD** — decompose PR into concern groups |
 | \`run_subagent_batch\` | **PRIMARY TOOL** — put ALL investigation tasks into ONE call (parallel execution) |
-| \`list_directory\` | Orient yourself — understand project structure |
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |
 | \`think\` | Think through code changes, context, or progress |
 | \`think_about_completion\` | Before final submission — verify all concerns were covered |

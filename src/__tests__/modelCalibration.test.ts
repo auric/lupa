@@ -172,11 +172,10 @@ describe('modelCalibration', () => {
         it('GPT-4.1 disables cognitive-overload tools', () => {
             const profile = getCalibrationProfile('gpt-4.1', 'gpt-4.1');
             expect(profile.disabledTools).toContain('batch_tools');
-            expect(profile.disabledTools).toContain('list_directory');
             expect(profile.disabledTools).toContain('get_symbols_overview');
             expect(profile.disabledTools).not.toContain('validate_claim');
             expect(profile.disabledTools).not.toContain('retract_finding');
-            expect(profile.disabledTools.length).toBe(4);
+            expect(profile.disabledTools.length).toBe(3);
         });
 
         it('GPT-4.1 has tight finding cap', () => {

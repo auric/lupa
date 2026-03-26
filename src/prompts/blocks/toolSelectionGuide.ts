@@ -17,7 +17,6 @@ export function generateToolSelectionGuide(): string {
 | Find all callers | \`find_usages\` |
 | Search patterns | \`search_for_pattern\` |
 | File structure | \`get_symbols_overview\` |
-| List directory | \`list_directory\` |
 | Find files | \`find_files_by_pattern\` |
 | Read config/docs | \`read_file\` |
 | PR intent/commits | \`get_pr_context\` |
@@ -63,7 +62,6 @@ export function generateExplorationToolGuide(): string {
 | Find all callers | \`find_usages\` |
 | Search patterns | \`search_for_pattern\` |
 | File structure | \`get_symbols_overview\` |
-| List directory | \`list_directory\` |
 | Find files | \`find_files_by_pattern\` |
 | Read config/docs | \`read_file\` |
 | Deep investigation | \`run_subagent_batch\` |

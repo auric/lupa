@@ -16,6 +16,7 @@ import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import { EvidenceAuditor, type EvidenceAuditResult } from './evidenceAuditor';
 import { AdversarialVerifier } from './adversarialVerifier';
 import { scoreFinding, type ScoringContext } from './findingScorer';
+import { runSelfReflection } from './selfReflectionScorer';
 import type { FeedbackStore as FeedbackStoreType } from './feedbackStore';
 import { Log } from './loggingService';
 
@@ -326,14 +327,25 @@ export class PostAnalysisPipeline {
             }
         }
 
-        // Stage 5b: Self-critique — fresh perspective on surviving findings
+        // Stage 5b: Self-reflection scoring (Qodo-style confidence re-evaluation)
+        // Presents ALL surviving findings back to the model for 1-10 confidence scoring.
+        // Findings below the per-model threshold are dropped. Replaces the binary self-critique.
         if (
             options.findingStore.size > 0 &&
             !options.token.isCancellationRequested
         ) {
-            options.progressCallback?.('Self-critiquing findings...', 0.75);
-            const selfCritiqueDrops = await this.runSelfCritique(options);
-            droppedTitles.push(...selfCritiqueDrops);
+            options.progressCallback?.('Self-reflection scoring...', 0.75);
+            const reflectionResult = await runSelfReflection({
+                findingStore: options.findingStore,
+                parsedDiff: options.parsedDiff,
+                calibrationProfile: options.calibrationProfile,
+                conversationManager: options.conversationManager,
+                conversationRunner: options.conversationRunner,
+                systemPrompt: options.systemPrompt,
+                token: options.token,
+                handler: options.handler,
+            });
+            droppedTitles.push(...reflectionResult.dropped);
         }
 
         // Stage 6: Unified rewrite
@@ -406,95 +418,5 @@ export class PostAnalysisPipeline {
                 findingStore.updateSeverity(v.finding.id, v.downgradedSeverity);
             }
         }
-    }
-
-    /**
-     * Stage 5b: Self-critique — asks the model to re-evaluate its own
-     * surviving findings from a senior developer perspective.
-     *
-     * Implements the "self-critique pass" pattern (Graphite: 5-8% FP rate).
-     * The model reviews each finding and lists those that are speculative,
-     * cosmetic, or based on absence of features rather than concrete bugs.
-     */
-    private async runSelfCritique(
-        options: PostAnalysisPipelineOptions
-    ): Promise<string[]> {
-        const findings = options.findingStore.getAll();
-        if (findings.length === 0) {
-            return [];
-        }
-
-        const findingsList = findings
-            .map(
-                (f, i) =>
-                    `${i + 1}. [${f.severity}] "${f.title}" (${f.file}:${f.lineRange[0]})\n` +
-                    `   Description: ${f.description}\n` +
-                    `   Affected component: ${f.affectedComponent || 'N/A'}\n` +
-                    `   Failure mechanism: ${f.failureMechanism || 'N/A'}\n` +
-                    `   Evidence: ${f.disproof.attempted ? f.disproof.result : 'none recorded'}`
-            )
-            .join('\n\n');
-
-        options.conversationManager.addUserMessage(
-            `SELF-CRITIQUE REVIEW — Imagine you are a DIFFERENT senior engineer receiving this code review. ` +
-                `The following ${findings.length} finding(s) survived all previous verification stages:\n\n` +
-                findingsList +
-                `\n\nFor each finding, critically evaluate:\n` +
-                `• Does this describe a CONCRETE behavioral bug (wrong output, crash, security bypass, data corruption)?\n` +
-                `• Is the evidence based on actual code you examined, or on speculation about what MIGHT happen?\n` +
-                `• Would you spend engineering time fixing this, or would you dismiss it as noise?\n` +
-                `• Is this about MISSING features/tests/docs rather than INCORRECT behavior?\n\n` +
-                `Reply with ONLY the titles of findings to DROP (those that are speculative, cosmetic, or describe missing features rather than bugs), ` +
-                `one per line prefixed with "DROP: ". If all findings are valid, reply with "ALL VALID".`
-        );
-
-        const SELF_CRITIQUE_BUDGET = 10;
-        const response = await options.conversationRunner.run(
-            {
-                systemPrompt: options.systemPrompt,
-                maxIterations: SELF_CRITIQUE_BUDGET,
-                tools: [],
-                label: 'Self-Critique',
-            },
-            options.conversationManager,
-            options.token,
-            options.handler
-        );
-
-        // Parse DROP directives from the model's response
-        const dropped: string[] = [];
-        if (response) {
-            const lines = response.split('\n');
-            for (const line of lines) {
-                const match = line.match(
-                    /^(?:[-*•]\s+|\d+[.)]\s+)?DROP:\s*"?([^"]+?)"?\s*(?:[-—(].*)?$/i
-                );
-                if (match) {
-                    const droppedTitle = match[1]!.trim();
-                    // Find matching finding by title (fuzzy: case-insensitive, trimmed)
-                    const finding = findings.find(
-                        (f) =>
-                            f.title.toLowerCase().trim() ===
-                            droppedTitle.toLowerCase().trim()
-                    );
-                    if (finding) {
-                        if (options.findingStore.remove(finding.id)) {
-                            dropped.push(finding.title);
-                            Log.info(
-                                `Self-critique: dropped "${finding.title}"`
-                            );
-                        }
-                    }
-                }
-            }
-        }
-
-        if (dropped.length === 0 && findings.length > 0) {
-            Log.info(
-                `Self-critique: all ${findings.length} finding(s) survived`
-            );
-        }
-
-        return dropped;
     }
 }

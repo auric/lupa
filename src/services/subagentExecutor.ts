@@ -261,11 +261,7 @@ export class SubagentExecutor {
             // Track nudge state. Each nudge type fires at most once to avoid infinite loops.
             let shallowInvestigationNudged = false;
             let evidenceDepthNudged = false;
-            const ORIENTATION_ONLY_TOOLS = new Set([
-                'get_file_diff',
-                'list_directory',
-                'think',
-            ]);
+            const ORIENTATION_ONLY_TOOLS = new Set(['get_file_diff', 'think']);
             const protocol =
                 childContext.calibrationProfile.investigationProtocol;
 
