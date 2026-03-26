@@ -31,6 +31,17 @@ export const FAILURE_MECHANISMS = [
 ] as const;
 export type FailureMechanism = (typeof FAILURE_MECHANISMS)[number];
 
+/** Subset of failure mechanisms that are concrete and directly testable.
+ *  Excludes speculative mechanisms (contract_violation, race_condition) for scoring purposes. */
+export const CONCRETE_FAILURE_MECHANISMS: readonly FailureMechanism[] = [
+    'wrong_return_value',
+    'runtime_exception',
+    'data_corruption',
+    'security_bypass',
+    'resource_leak',
+    'type_error',
+] as const satisfies readonly FailureMechanism[];
+
 export interface RecordedFinding {
     id: string;
     agentId: string;
