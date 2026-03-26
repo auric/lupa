@@ -193,10 +193,17 @@ function findByFuzzyTitle(
         return exact;
     }
 
-    return findings.find(
+    const matches = findings.filter(
         (f) =>
             f.title.toLowerCase().trim().includes(normalizedTitle) ||
             normalizedTitle.includes(f.title.toLowerCase().trim())
+    );
+
+    if (matches.length === 0) {
+        return undefined;
+    }
+    return matches.reduce((shortest, f) =>
+        f.title.length < shortest.title.length ? f : shortest
     );
 }
 

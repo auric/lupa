@@ -474,6 +474,20 @@ describe('parseSelfReflectionResponse', () => {
         expect(scores).toHaveLength(1);
         expect(scores[0]!.title).toBe('Bug in parser');
     });
+
+    it('picks the most specific match when multiple findings match fuzzily', () => {
+        const localStore = new FindingStore();
+        const localFindings = [
+            localStore.record(
+                makeFinding({ title: 'Missing null check in handler' })
+            ),
+            localStore.record(makeFinding({ title: 'Missing null check' })),
+        ];
+        const response = 'SCORE: null check | 8 | valid';
+        const scores = parseSelfReflectionResponse(response, localFindings);
+        expect(scores).toHaveLength(1);
+        expect(scores[0]!.findingId).toBe(localFindings[1]!.id);
+    });
 });
 
 describe('runSelfReflection', () => {
