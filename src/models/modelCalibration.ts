@@ -132,6 +132,7 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
         'batch_tools',
         'find_files_by_pattern',
         'get_symbols_overview',
+        'score_finding',
     ],
     maxFindingsPerReview: 5,
     selfReflectionThreshold: 5,
@@ -160,6 +161,7 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
         'batch_tools',
         'find_files_by_pattern',
         'get_symbols_overview',
+        'score_finding',
     ],
     maxFindingsPerReview: 5,
     selfReflectionThreshold: 5,
@@ -182,7 +184,7 @@ const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
             'Verify all claims with validate_claim before recording. ' +
             'Focus on precision — only record findings with concrete tool-confirmed evidence.',
     },
-    disabledTools: [],
+    disabledTools: ['score_finding'],
     maxFindingsPerReview: 10,
     selfReflectionThreshold: 8,
 };
@@ -209,7 +211,7 @@ const RAPTOR_MINI_PROFILE: ModelCalibrationProfile = {
             'Verify all claims with validate_claim before recording. ' +
             'Focus on precision — only record findings with concrete tool-confirmed evidence.',
     },
-    disabledTools: [],
+    disabledTools: ['score_finding'],
     maxFindingsPerReview: 10,
     selfReflectionThreshold: 7,
 };
@@ -229,7 +231,7 @@ const CLAUDE_PROFILE: ModelCalibrationProfile = {
         requiredToolsBeforeDone: [],
         investigationPreamble: '',
     },
-    disabledTools: [],
+    disabledTools: ['score_finding'],
     maxFindingsPerReview: 15,
     selfReflectionThreshold: 7,
 };
