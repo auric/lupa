@@ -11,6 +11,7 @@ import type {
     ToolCallHandler,
 } from '../models/conversationRunner';
 import type { ITool } from '../tools/ITool';
+import type { ToolRegistry } from '../models/toolRegistry';
 import type { FindingValidator, ValidatedFinding } from './findingValidator';
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import { EvidenceAuditor, type EvidenceAuditResult } from './evidenceAuditor';
@@ -34,6 +35,7 @@ export interface PostAnalysisPipelineOptions {
     disabledToolNames?: Set<string>;
     token: vscode.CancellationToken;
     handler: ToolCallHandler;
+    toolRegistry: ToolRegistry;
     feedbackStore?: FeedbackStoreType;
     progressCallback?: (message: string, increment?: number) => void;
 }
@@ -344,6 +346,7 @@ export class PostAnalysisPipeline {
                 systemPrompt: options.systemPrompt,
                 token: options.token,
                 handler: options.handler,
+                toolRegistry: options.toolRegistry,
             });
             droppedTitles.push(...reflectionResult.dropped);
         }

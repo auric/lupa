@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
     buildSelfReflectionPrompt,
     getDiffSnippetForFinding,
-    parseSelfReflectionResponse,
     runSelfReflection,
 } from '../services/selfReflectionScorer';
 import { FindingStore } from '../sessions/findingStore';
@@ -115,9 +114,23 @@ describe('buildSelfReflectionPrompt', () => {
         expect(prompt).toContain('Crashes on null input');
     });
 
+    it('includes finding IDs', () => {
+        const store = new FindingStore();
+        const f = store.record(makeFinding({ title: 'Some bug' }));
+
+        const prompt = buildSelfReflectionPrompt([f], [], 5);
+
+        expect(prompt).toContain(`ID: ${f.id}`);
+    });
+
     it('includes threshold value in the prompt', () => {
         const prompt = buildSelfReflectionPrompt([], [], 7);
         expect(prompt).toContain('score 7');
+    });
+
+    it('instructs to call score_finding tool', () => {
+        const prompt = buildSelfReflectionPrompt([], [], 5);
+        expect(prompt).toContain('call the score_finding tool');
     });
 
     it('includes diff snippets when available', () => {
@@ -331,172 +344,18 @@ describe('getDiffSnippetForFinding', () => {
     });
 });
 
-describe('parseSelfReflectionResponse', () => {
-    let store: FindingStore;
-    let findings: RecordedFinding[];
-
-    beforeEach(() => {
-        store = new FindingStore();
-        findings = [
-            store.record(makeFinding({ title: 'Bug in parser' })),
-            store.record(makeFinding({ title: 'Missing null check' })),
-        ];
-    });
-
-    it('parses clean SCORE lines', () => {
-        const response =
-            'SCORE: Bug in parser | 7 | Solid evidence from tool output';
-        const scores = parseSelfReflectionResponse(response, findings);
-
-        expect(scores).toHaveLength(1);
-        expect(scores[0]!.title).toBe('Bug in parser');
-        expect(scores[0]!.score).toBe(7);
-        expect(scores[0]!.rationale).toBe('Solid evidence from tool output');
-        expect(scores[0]!.findingId).toBe(findings[0]!.id);
-    });
-
-    it('parses quoted titles', () => {
-        const response = 'SCORE: "Bug in parser" | 8 | Well supported';
-        const scores = parseSelfReflectionResponse(response, findings);
-
-        expect(scores).toHaveLength(1);
-        expect(scores[0]!.title).toBe('Bug in parser');
-        expect(scores[0]!.score).toBe(8);
-    });
-
-    it('parses 7/10 format', () => {
-        const response = 'SCORE: Bug in parser | 7/10 | Good evidence';
-        const scores = parseSelfReflectionResponse(response, findings);
-
-        expect(scores).toHaveLength(1);
-        expect(scores[0]!.score).toBe(7);
-    });
-
-    it('handles multiple findings', () => {
-        const response = [
-            'SCORE: Bug in parser | 8 | Strong evidence',
-            'SCORE: Missing null check | 3 | Speculative',
-        ].join('\n');
-
-        const scores = parseSelfReflectionResponse(response, findings);
-
-        expect(scores).toHaveLength(2);
-        expect(scores[0]!.title).toBe('Bug in parser');
-        expect(scores[1]!.title).toBe('Missing null check');
-    });
-
-    it('ignores non-SCORE lines', () => {
-        const response = [
-            'Let me evaluate each finding:',
-            '',
-            'SCORE: Bug in parser | 7 | Evidence based',
-            '',
-            'Overall the findings are reasonable.',
-        ].join('\n');
-
-        const scores = parseSelfReflectionResponse(response, findings);
-
-        expect(scores).toHaveLength(1);
-        expect(scores[0]!.title).toBe('Bug in parser');
-    });
-
-    it('ignores scores below 1', () => {
-        const response = 'SCORE: Bug in parser | 0 | Invalid';
-        const scores = parseSelfReflectionResponse(response, findings);
-        expect(scores).toHaveLength(0);
-    });
-
-    it('ignores scores above 10', () => {
-        const response = 'SCORE: Bug in parser | 11 | Invalid';
-        const scores = parseSelfReflectionResponse(response, findings);
-        expect(scores).toHaveLength(0);
-    });
-
-    it('skips unrecognized titles', () => {
-        const response = 'SCORE: Nonexistent finding | 7 | Some rationale';
-        const scores = parseSelfReflectionResponse(response, findings);
-        expect(scores).toHaveLength(0);
-    });
-
-    it('handles empty response', () => {
-        const scores = parseSelfReflectionResponse('', findings);
-        expect(scores).toHaveLength(0);
-    });
-
-    it('deduplicates same finding scored twice, keeping first', () => {
-        const response = [
-            'SCORE: Bug in parser | 8 | First assessment',
-            'SCORE: Bug in parser | 3 | Revised assessment',
-        ].join('\n');
-
-        const scores = parseSelfReflectionResponse(response, findings);
-
-        expect(scores).toHaveLength(1);
-        expect(scores[0]!.score).toBe(8);
-        expect(scores[0]!.rationale).toBe('First assessment');
-    });
-
-    it('fuzzy matches by substring (response title is substring of finding title)', () => {
-        const response = 'SCORE: null check | 6 | Partial match';
-        const scores = parseSelfReflectionResponse(response, findings);
-
-        expect(scores).toHaveLength(1);
-        expect(scores[0]!.title).toBe('Missing null check');
-    });
-
-    it('fuzzy matches by substring (finding title is substring of response title)', () => {
-        const response =
-            'SCORE: Bug in parser function handling | 6 | Extended title match';
-        const scores = parseSelfReflectionResponse(response, findings);
-
-        expect(scores).toHaveLength(1);
-        expect(scores[0]!.title).toBe('Bug in parser');
-    });
-
-    it('prefers exact match over fuzzy match', () => {
-        const localStore = new FindingStore();
-        const localFindings = [
-            localStore.record(makeFinding({ title: 'null check' })),
-            localStore.record(makeFinding({ title: 'Missing null check' })),
-        ];
-
-        const response = 'SCORE: null check | 9 | Exact match preferred';
-        const scores = parseSelfReflectionResponse(response, localFindings);
-
-        expect(scores).toHaveLength(1);
-        expect(scores[0]!.title).toBe('null check');
-    });
-
-    it('is case-insensitive for title matching', () => {
-        const response = 'SCORE: BUG IN PARSER | 7 | Case insensitive';
-        const scores = parseSelfReflectionResponse(response, findings);
-
-        expect(scores).toHaveLength(1);
-        expect(scores[0]!.title).toBe('Bug in parser');
-    });
-
-    it('picks the most specific match when multiple findings match fuzzily', () => {
-        const localStore = new FindingStore();
-        const localFindings = [
-            localStore.record(
-                makeFinding({ title: 'Missing null check in handler' })
-            ),
-            localStore.record(makeFinding({ title: 'Missing null check' })),
-        ];
-        const response = 'SCORE: null check | 8 | valid';
-        const scores = parseSelfReflectionResponse(response, localFindings);
-        expect(scores).toHaveLength(1);
-        expect(scores[0]!.findingId).toBe(localFindings[1]!.id);
-    });
-});
-
 describe('runSelfReflection', () => {
     let store: FindingStore;
     let token: ReturnType<typeof createMockCancellationToken>;
     let profile: ModelCalibrationProfile;
     let mockConversationManager: { addUserMessage: ReturnType<typeof vi.fn> };
     let mockConversationRunner: { run: ReturnType<typeof vi.fn> };
-    let mockHandler: Record<string, unknown>;
+    let mockHandler: {
+        onToolCallStart?: ReturnType<typeof vi.fn>;
+        onToolCallComplete?: ReturnType<typeof vi.fn>;
+    };
+    let mockScoreFindingTool: { name: string };
+    let mockToolRegistry: { getTool: ReturnType<typeof vi.fn> };
 
     beforeEach(() => {
         store = new FindingStore();
@@ -504,7 +363,14 @@ describe('runSelfReflection', () => {
         profile = makeProfile({ selfReflectionThreshold: 5 });
         mockConversationManager = { addUserMessage: vi.fn() };
         mockConversationRunner = { run: vi.fn().mockResolvedValue('') };
-        mockHandler = {};
+        mockHandler = {
+            onToolCallStart: vi.fn(),
+            onToolCallComplete: vi.fn(),
+        };
+        mockScoreFindingTool = { name: 'score_finding' };
+        mockToolRegistry = {
+            getTool: vi.fn().mockReturnValue(mockScoreFindingTool),
+        };
     });
 
     function runWithDefaults(overrides: Record<string, unknown> = {}) {
@@ -516,7 +382,8 @@ describe('runSelfReflection', () => {
             conversationRunner: mockConversationRunner as never,
             systemPrompt: 'You are a code reviewer.',
             token,
-            handler: mockHandler,
+            handler: mockHandler as never,
+            toolRegistry: mockToolRegistry as never,
             ...overrides,
         });
     }
@@ -529,10 +396,32 @@ describe('runSelfReflection', () => {
         expect(mockConversationRunner.run).not.toHaveBeenCalled();
     });
 
-    it('drops findings below threshold', async () => {
+    it('returns empty result when score_finding tool not in registry', async () => {
+        store.record(makeFinding({ title: 'Some finding' }));
+        mockToolRegistry.getTool.mockReturnValue(undefined);
+
+        const result = await runWithDefaults();
+
+        expect(result).toEqual({ scores: [], dropped: [], kept: [] });
+        expect(mockConversationRunner.run).not.toHaveBeenCalled();
+    });
+
+    it('drops findings below threshold via tool call', async () => {
         const f = store.record(makeFinding({ title: 'Weak finding' }));
-        mockConversationRunner.run.mockResolvedValue(
-            'SCORE: Weak finding | 3 | Speculative with no evidence'
+        mockConversationRunner.run.mockImplementation(
+            async (_config: any, _cm: any, _token: any, handler: any) => {
+                handler.onToolCallComplete(
+                    'call-1',
+                    'score_finding',
+                    { findingId: f.id, score: 3, rationale: 'Speculative' },
+                    'ok',
+                    true,
+                    undefined,
+                    100,
+                    undefined
+                );
+                return '';
+            }
         );
 
         const result = await runWithDefaults();
@@ -543,9 +432,21 @@ describe('runSelfReflection', () => {
     });
 
     it('keeps findings at or above threshold', async () => {
-        store.record(makeFinding({ title: 'Strong finding' }));
-        mockConversationRunner.run.mockResolvedValue(
-            'SCORE: Strong finding | 7 | Solid evidence'
+        const f = store.record(makeFinding({ title: 'Strong finding' }));
+        mockConversationRunner.run.mockImplementation(
+            async (_config: any, _cm: any, _token: any, handler: any) => {
+                handler.onToolCallComplete(
+                    'call-1',
+                    'score_finding',
+                    { findingId: f.id, score: 7, rationale: 'Solid evidence' },
+                    'ok',
+                    true,
+                    undefined,
+                    100,
+                    undefined
+                );
+                return '';
+            }
         );
 
         const result = await runWithDefaults();
@@ -556,9 +457,21 @@ describe('runSelfReflection', () => {
     });
 
     it('keeps findings at exact threshold', async () => {
-        store.record(makeFinding({ title: 'Borderline finding' }));
-        mockConversationRunner.run.mockResolvedValue(
-            'SCORE: Borderline finding | 5 | Just enough evidence'
+        const f = store.record(makeFinding({ title: 'Borderline finding' }));
+        mockConversationRunner.run.mockImplementation(
+            async (_config: any, _cm: any, _token: any, handler: any) => {
+                handler.onToolCallComplete(
+                    'call-1',
+                    'score_finding',
+                    { findingId: f.id, score: 5, rationale: 'Just enough' },
+                    'ok',
+                    true,
+                    undefined,
+                    100,
+                    undefined
+                );
+                return '';
+            }
         );
 
         const result = await runWithDefaults();
@@ -569,9 +482,7 @@ describe('runSelfReflection', () => {
 
     it('keeps findings with no score from model (fail-safe)', async () => {
         store.record(makeFinding({ title: 'Unscored finding' }));
-        mockConversationRunner.run.mockResolvedValue(
-            'I could not evaluate the findings properly.'
-        );
+        // Runner resolves without calling onToolCallComplete for score_finding
 
         const result = await runWithDefaults();
 
@@ -582,7 +493,6 @@ describe('runSelfReflection', () => {
 
     it('calls conversationManager.addUserMessage with prompt', async () => {
         store.record(makeFinding({ title: 'Test finding' }));
-        mockConversationRunner.run.mockResolvedValue('');
 
         await runWithDefaults();
 
@@ -593,16 +503,15 @@ describe('runSelfReflection', () => {
         expect(prompt).toContain('SELF-REFLECTION SCORING');
     });
 
-    it('calls conversationRunner.run with correct config', async () => {
+    it('calls conversationRunner.run with score_finding tool in config', async () => {
         store.record(makeFinding());
-        mockConversationRunner.run.mockResolvedValue('');
 
         await runWithDefaults();
 
         expect(mockConversationRunner.run).toHaveBeenCalledOnce();
         const config = mockConversationRunner.run.mock.calls[0]![0];
         expect(config).toMatchObject({
-            tools: [],
+            tools: [mockScoreFindingTool],
             label: 'Self-Reflection Scoring',
             systemPrompt: 'You are a code reviewer.',
         });
@@ -610,9 +519,25 @@ describe('runSelfReflection', () => {
 
     it('uses calibrationProfile.selfReflectionThreshold', async () => {
         const highThreshold = makeProfile({ selfReflectionThreshold: 8 });
-        store.record(makeFinding({ title: 'Decent finding' }));
-        mockConversationRunner.run.mockResolvedValue(
-            'SCORE: Decent finding | 7 | Good evidence but not enough'
+        const f = store.record(makeFinding({ title: 'Decent finding' }));
+        mockConversationRunner.run.mockImplementation(
+            async (_config: any, _cm: any, _token: any, handler: any) => {
+                handler.onToolCallComplete(
+                    'call-1',
+                    'score_finding',
+                    {
+                        findingId: f.id,
+                        score: 7,
+                        rationale: 'Good but not enough',
+                    },
+                    'ok',
+                    true,
+                    undefined,
+                    100,
+                    undefined
+                );
+                return '';
+            }
         );
 
         const result = await runWithDefaults({
@@ -624,15 +549,42 @@ describe('runSelfReflection', () => {
     });
 
     it('handles mixed kept, dropped, and unscored findings', async () => {
-        store.record(makeFinding({ title: 'Good finding' }));
-        store.record(makeFinding({ title: 'Bad finding' }));
+        const f1 = store.record(makeFinding({ title: 'Good finding' }));
+        const f2 = store.record(makeFinding({ title: 'Bad finding' }));
         store.record(makeFinding({ title: 'Unscored finding' }));
 
-        mockConversationRunner.run.mockResolvedValue(
-            [
-                'SCORE: Good finding | 8 | Strong evidence',
-                'SCORE: Bad finding | 2 | Pure speculation',
-            ].join('\n')
+        mockConversationRunner.run.mockImplementation(
+            async (_config: any, _cm: any, _token: any, handler: any) => {
+                handler.onToolCallComplete(
+                    'call-1',
+                    'score_finding',
+                    {
+                        findingId: f1.id,
+                        score: 8,
+                        rationale: 'Strong evidence',
+                    },
+                    'ok',
+                    true,
+                    undefined,
+                    100,
+                    undefined
+                );
+                handler.onToolCallComplete(
+                    'call-2',
+                    'score_finding',
+                    {
+                        findingId: f2.id,
+                        score: 2,
+                        rationale: 'Pure speculation',
+                    },
+                    'ok',
+                    true,
+                    undefined,
+                    100,
+                    undefined
+                );
+                return '';
+            }
         );
 
         const result = await runWithDefaults();
@@ -644,15 +596,106 @@ describe('runSelfReflection', () => {
         expect(store.size).toBe(2);
     });
 
-    it('passes token and handler to conversationRunner.run', async () => {
+    it('passes token and conversation manager to runner', async () => {
         store.record(makeFinding());
-        mockConversationRunner.run.mockResolvedValue('');
 
         await runWithDefaults();
 
         const callArgs = mockConversationRunner.run.mock.calls[0]!;
         expect(callArgs[1]).toBe(mockConversationManager);
         expect(callArgs[2]).toBe(token);
-        expect(callArgs[3]).toBe(mockHandler);
+    });
+
+    it('passes a wrapped handler that delegates to original', async () => {
+        const f = store.record(makeFinding({ title: 'Test' }));
+        mockConversationRunner.run.mockImplementation(
+            async (_config: any, _cm: any, _token: any, handler: any) => {
+                handler.onToolCallComplete(
+                    'call-1',
+                    'score_finding',
+                    { findingId: f.id, score: 7, rationale: 'Good' },
+                    'ok',
+                    true,
+                    undefined,
+                    100,
+                    undefined
+                );
+                return '';
+            }
+        );
+
+        await runWithDefaults();
+
+        // The wrapped handler should delegate onToolCallComplete to the original
+        expect(mockHandler.onToolCallComplete).toHaveBeenCalledWith(
+            'call-1',
+            'score_finding',
+            { findingId: f.id, score: 7, rationale: 'Good' },
+            'ok',
+            true,
+            undefined,
+            100,
+            undefined
+        );
+    });
+
+    it('ignores score_finding calls with success=false', async () => {
+        const f = store.record(makeFinding({ title: 'Failed score' }));
+        mockConversationRunner.run.mockImplementation(
+            async (_config: any, _cm: any, _token: any, handler: any) => {
+                handler.onToolCallComplete(
+                    'call-1',
+                    'score_finding',
+                    { findingId: f.id, score: 3, rationale: 'Bad' },
+                    'error',
+                    false,
+                    undefined,
+                    100,
+                    undefined
+                );
+                return '';
+            }
+        );
+
+        const result = await runWithDefaults();
+
+        // No score recorded — finding kept via fail-safe
+        expect(result.scores).toHaveLength(0);
+        expect(result.kept).toContain('Failed score');
+    });
+
+    it('deduplicates same finding scored twice, keeping first', async () => {
+        const f = store.record(makeFinding({ title: 'Dup finding' }));
+        mockConversationRunner.run.mockImplementation(
+            async (_config: any, _cm: any, _token: any, handler: any) => {
+                handler.onToolCallComplete(
+                    'call-1',
+                    'score_finding',
+                    { findingId: f.id, score: 8, rationale: 'First' },
+                    'ok',
+                    true,
+                    undefined,
+                    100,
+                    undefined
+                );
+                handler.onToolCallComplete(
+                    'call-2',
+                    'score_finding',
+                    { findingId: f.id, score: 2, rationale: 'Revised' },
+                    'ok',
+                    true,
+                    undefined,
+                    100,
+                    undefined
+                );
+                return '';
+            }
+        );
+
+        const result = await runWithDefaults();
+
+        expect(result.scores).toHaveLength(1);
+        expect(result.scores[0]!.score).toBe(8);
+        expect(result.scores[0]!.rationale).toBe('First');
     });
 });

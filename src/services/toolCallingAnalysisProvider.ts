@@ -367,6 +367,7 @@ export class ToolCallingAnalysisProvider {
                     disabledToolNames,
                     token,
                     handler,
+                    toolRegistry: this.toolRegistry,
                     progressCallback: progressCallback
                         ? (msg, inc) => progressCallback(msg, inc)
                         : undefined,

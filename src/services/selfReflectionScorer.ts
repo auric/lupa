@@ -7,11 +7,13 @@ import type {
     ToolCallHandler,
 } from '../models/conversationRunner';
 import type { FindingStore } from '../sessions/findingStore';
+import type { ToolRegistry } from '../models/toolRegistry';
 import type * as vscode from 'vscode';
 import { Log } from './loggingService';
 
 const SELF_REFLECTION_BUDGET = 10;
 const DIFF_SNIPPET_CONTEXT_LINES = 5;
+const SCORE_FINDING_TOOL_NAME = 'score_finding';
 
 export interface SelfReflectionScore {
     findingId: string;
@@ -35,6 +37,7 @@ export interface SelfReflectionOptions {
     systemPrompt: string;
     token: vscode.CancellationToken;
     handler: ToolCallHandler;
+    toolRegistry: ToolRegistry;
 }
 
 export function buildSelfReflectionPrompt(
@@ -47,6 +50,7 @@ export function buildSelfReflectionPrompt(
             const diffSnippet = getDiffSnippetForFinding(f, parsedDiff);
             return (
                 `--- Finding ${i + 1} ---\n` +
+                `ID: ${f.id}\n` +
                 `Title: ${f.title}\n` +
                 `Severity: ${f.severity}\n` +
                 `Category: ${f.category}\n` +
@@ -62,7 +66,7 @@ export function buildSelfReflectionPrompt(
 
     return (
         `SELF-REFLECTION SCORING — You are re-evaluating your own code review findings.\n\n` +
-        `For each finding, assign a confidence score from 1 to 10:\n` +
+        `For each finding, call the score_finding tool with your confidence score from 1 to 10:\n` +
         `- 1-3: Almost certainly wrong (speculative, cosmetic, missing-feature complaints, hypothetical scenarios)\n` +
         `- 4-6: Possibly valid but weak evidence or unlikely scenario\n` +
         `- 7-8: Likely valid with concrete evidence from tool output\n` +
@@ -79,8 +83,7 @@ export function buildSelfReflectionPrompt(
         `   - Suggestions for adding tests/docs/validation (these are enhancements, not bugs)\n\n` +
         `Findings below score ${threshold} will be dropped from the review.\n\n` +
         `FINDINGS TO EVALUATE:\n\n${findingsList}\n\n` +
-        `For EACH finding, output exactly one line in this format:\n` +
-        `SCORE: <exact title> | <score 1-10> | <brief rationale>`
+        `Call score_finding for EACH finding above. Use the exact finding ID shown.`
     );
 }
 
@@ -88,13 +91,13 @@ export function getDiffSnippetForFinding(
     finding: RecordedFinding,
     parsedDiff: DiffHunk[]
 ): string | undefined {
-    const normalizedFile = finding.file.replace(/\\/g, '/');
+    const normalizedFile = finding.file.replace(/\\/g, '/').toLowerCase();
     const hunk = parsedDiff.find((d) => {
-        const normalizedDiff = d.filePath.replace(/\\/g, '/');
+        const normalizedDiff = d.filePath.replace(/\\/g, '/').toLowerCase();
         return (
             normalizedDiff === normalizedFile ||
-            normalizedDiff.endsWith(normalizedFile) ||
-            normalizedFile.endsWith(normalizedDiff)
+            normalizedDiff.endsWith('/' + normalizedFile) ||
+            normalizedFile.endsWith('/' + normalizedDiff)
         );
     });
 
@@ -132,79 +135,64 @@ export function getDiffSnippetForFinding(
     return lines.slice(0, 30).join('\n');
 }
 
-const SCORE_LINE_PATTERN =
-    /^SCORE:\s*"?(.+?)"?\s*\|\s*(\d+)(?:\/10)?\s*\|\s*(.+)$/i;
-
-export function parseSelfReflectionResponse(
-    response: string,
-    findings: RecordedFinding[]
-): SelfReflectionScore[] {
+function collectScoresFromHandler(
+    findingStore: FindingStore,
+    handler: ToolCallHandler | undefined
+): { scoringHandler: ToolCallHandler; getScores: () => SelfReflectionScore[] } {
     const scores: SelfReflectionScore[] = [];
-    if (!response) {
-        return scores;
-    }
+    const scoredIds = new Set<string>();
 
-    const lines = response.split('\n');
-    for (const line of lines) {
-        const trimmed = line.trim();
-        const match = trimmed.match(SCORE_LINE_PATTERN);
-        if (!match) {
-            continue;
-        }
+    const scoringHandler: ToolCallHandler = {
+        onToolCallStart: handler?.onToolCallStart?.bind(handler),
+        onToolCallComplete: (
+            callId,
+            toolName,
+            args,
+            result,
+            success,
+            error,
+            duration,
+            metadata
+        ) => {
+            handler?.onToolCallComplete?.(
+                callId,
+                toolName,
+                args,
+                result,
+                success,
+                error,
+                duration,
+                metadata
+            );
 
-        const title = match[1]!.trim();
-        const scoreNum = parseInt(match[2]!, 10);
-        const rationale = match[3]!.trim();
+            if (toolName === SCORE_FINDING_TOOL_NAME && success) {
+                const findingId = String(args.findingId ?? '');
+                const score = Number(args.score);
+                const rationale = String(args.rationale ?? '');
 
-        if (isNaN(scoreNum) || scoreNum < 1 || scoreNum > 10) {
-            continue;
-        }
+                if (!findingId || isNaN(score) || scoredIds.has(findingId)) {
+                    return;
+                }
 
-        const finding = findByFuzzyTitle(title, findings);
-        if (!finding) {
-            continue;
-        }
+                const finding = findingStore.getById(findingId);
+                if (!finding) {
+                    return;
+                }
 
-        if (scores.some((s) => s.findingId === finding.id)) {
-            continue;
-        }
+                scoredIds.add(findingId);
+                scores.push({
+                    findingId,
+                    title: finding.title,
+                    score,
+                    rationale,
+                });
+            }
+        },
+        getContextStatusSuffix: handler?.getContextStatusSuffix?.bind(handler),
+        onIterationStart: handler?.onIterationStart?.bind(handler),
+    };
 
-        scores.push({
-            findingId: finding.id,
-            title: finding.title,
-            score: scoreNum,
-            rationale,
-        });
-    }
-
-    return scores;
-}
-
-function findByFuzzyTitle(
-    title: string,
-    findings: RecordedFinding[]
-): RecordedFinding | undefined {
-    const normalizedTitle = title.toLowerCase().trim();
-
-    const exact = findings.find(
-        (f) => f.title.toLowerCase().trim() === normalizedTitle
-    );
-    if (exact) {
-        return exact;
-    }
-
-    const matches = findings.filter(
-        (f) =>
-            f.title.toLowerCase().trim().includes(normalizedTitle) ||
-            normalizedTitle.includes(f.title.toLowerCase().trim())
-    );
-
-    if (matches.length === 0) {
-        return undefined;
-    }
-    return matches.reduce((shortest, f) =>
-        f.title.length < shortest.title.length ? f : shortest
-    );
+    return { scoringHandler, getScores: () => scores };
 }
 
 export async function runSelfReflection(
@@ -215,6 +203,16 @@ export async function runSelfReflection(
         return { scores: [], dropped: [], kept: [] };
     }
 
+    const scoreFindingTool = options.toolRegistry.getTool(
+        SCORE_FINDING_TOOL_NAME
+    );
+    if (!scoreFindingTool) {
+        Log.warn(
+            'score_finding tool not found in registry — skipping self-reflection'
+        );
+        return { scores: [], dropped: [], kept: [] };
+    }
+
     const threshold = options.calibrationProfile.selfReflectionThreshold;
     const prompt = buildSelfReflectionPrompt(
         findings,
@@ -222,21 +220,26 @@ export async function runSelfReflection(
         threshold
     );
 
+    const { scoringHandler, getScores } = collectScoresFromHandler(
+        options.findingStore,
+        options.handler
+    );
+
     options.conversationManager.addUserMessage(prompt);
 
-    const response = await options.conversationRunner.run(
+    await options.conversationRunner.run(
         {
             systemPrompt: options.systemPrompt,
             maxIterations: SELF_REFLECTION_BUDGET,
-            tools: [],
+            tools: [scoreFindingTool],
             label: 'Self-Reflection Scoring',
         },
         options.conversationManager,
         options.token,
-        options.handler
+        scoringHandler
     );
 
-    const scores = parseSelfReflectionResponse(response, findings);
+    const scores = getScores();
     const dropped: string[] = [];
     const kept: string[] = [];
 
