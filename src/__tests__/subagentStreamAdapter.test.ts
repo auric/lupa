@@ -72,14 +72,14 @@ describe('SubagentStreamAdapter', () => {
             );
 
             adapter3.onToolCallStart(
-                'list_directory',
-                { relative_path: 'src' },
+                'find_files_by_pattern',
+                { pattern: '*.ts' },
                 0,
                 1
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `🔹 #3: ${ACTIVITY.reading} Listed \`src\``
+                `🔹 #3: ${ACTIVITY.searching} Searched files matching \`*.ts\``
             );
         });
 
