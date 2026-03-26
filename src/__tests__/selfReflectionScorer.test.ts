@@ -482,7 +482,7 @@ describe('runSelfReflection', () => {
     let profile: ModelCalibrationProfile;
     let mockConversationManager: { addUserMessage: ReturnType<typeof vi.fn> };
     let mockConversationRunner: { run: ReturnType<typeof vi.fn> };
-    let mockHandler: ReturnType<typeof vi.fn>;
+    let mockHandler: Record<string, unknown>;
 
     beforeEach(() => {
         store = new FindingStore();
@@ -490,7 +490,7 @@ describe('runSelfReflection', () => {
         profile = makeProfile({ selfReflectionThreshold: 5 });
         mockConversationManager = { addUserMessage: vi.fn() };
         mockConversationRunner = { run: vi.fn().mockResolvedValue('') };
-        mockHandler = vi.fn();
+        mockHandler = {};
     });
 
     function runWithDefaults(overrides: Record<string, unknown> = {}) {
