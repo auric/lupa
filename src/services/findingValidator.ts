@@ -14,6 +14,7 @@ import type {
 import type { LspValidationService } from './lspValidationService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+import { pathSuffixMatch } from '../utils/pathUtils';
 import { Log } from './loggingService';
 
 export type ValidationVerdict = 'keep' | 'drop' | 'downgrade';
@@ -218,8 +219,8 @@ export class FindingValidator {
         for (const entry of fileSet) {
             const normalizedEntry = entry.replace(/\\/g, '/');
             if (
-                normalizedEntry.endsWith(normalized) ||
-                normalized.endsWith(normalizedEntry)
+                pathSuffixMatch(normalizedEntry, normalized) ||
+                pathSuffixMatch(normalized, normalizedEntry)
             ) {
                 return true;
             }
