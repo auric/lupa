@@ -11,6 +11,7 @@ import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { AsyncSemaphore } from '../utils/asyncSemaphore';
 import type { ToolCallRecord } from '../types/toolCallTypes';
+import { SubmitVerdictTool } from '../tools/submitVerdictTool';
 
 export type AdversarialProgressCallback = (message: string) => void;
 
@@ -182,6 +183,7 @@ export class AdversarialVerifier {
             const adversarialTask =
                 this.adversarialGen.generateSystemPrompt(finding);
             const budget = calibrationProfile.adversarialBudget;
+            const submitVerdictTool = new SubmitVerdictTool();
 
             const result = await subagentExecutor.execute(
                 {
@@ -196,11 +198,19 @@ export class AdversarialVerifier {
                     calibrationProfile,
                     parsedDiff,
                     findingStore,
-                    excludeTools: ['record_finding', 'retract_finding'],
+                    excludeTools: [
+                        'record_finding',
+                        'retract_finding',
+                        'score_finding',
+                    ],
+                    additionalTools: [submitVerdictTool],
                 }
             );
 
-            const verdict = this.parseVerdict(result.response);
+            const verdict = this.extractVerdict(
+                result.toolCalls,
+                result.response
+            );
             Log.info(`Adversarial ${verdict}: ${finding.title}`);
             return { verdict, toolCalls: result.toolCalls };
         } catch (error) {
@@ -224,7 +234,31 @@ export class AdversarialVerifier {
         );
     }
 
-    private parseVerdict(
+    private extractVerdict(
+        toolCalls: ToolCallRecord[],
+        responseText: string
+    ): 'CONFIRMED' | 'REFUTED' | 'UNCERTAIN' {
+        // Primary: extract from submit_verdict tool call
+        const verdictCall = toolCalls.find(
+            (tc) => tc.toolName === 'submit_verdict'
+        );
+        if (verdictCall) {
+            const verdict = (verdictCall.arguments as Record<string, unknown>)
+                .verdict as string;
+            if (
+                verdict === 'CONFIRMED' ||
+                verdict === 'REFUTED' ||
+                verdict === 'UNCERTAIN'
+            ) {
+                return verdict;
+            }
+        }
+
+        // Fallback: parse from response text (in case model didn't call the tool)
+        return this.parseVerdictFromText(responseText);
+    }
+
+    private parseVerdictFromText(
         response: string
     ): 'REFUTED' | 'CONFIRMED' | 'UNCERTAIN' {
         const upper = response.toUpperCase();

@@ -302,7 +302,7 @@ describe('AdversarialVerifier', () => {
             expect(record.nestedCalls).toBe(nestedCalls);
         });
 
-        it('excludes record_finding and retract_finding from subagent tools', async () => {
+        it('excludes record_finding, retract_finding, and score_finding from subagent tools', async () => {
             store.record(makeFinding());
             mockExecutor.execute.mockResolvedValue(
                 makeSubagentResult({ response: 'VERDICT: CONFIRMED' })
@@ -320,7 +320,27 @@ describe('AdversarialVerifier', () => {
             expect(options.excludeTools).toEqual([
                 'record_finding',
                 'retract_finding',
+                'score_finding',
             ]);
+        });
+
+        it('injects submit_verdict as additionalTools', async () => {
+            store.record(makeFinding());
+            mockExecutor.execute.mockResolvedValue(
+                makeSubagentResult({ response: 'VERDICT: CONFIRMED' })
+            );
+
+            await verifier.verify(
+                store,
+                profile,
+                mockExecutor as never,
+                undefined,
+                token
+            );
+
+            const options = mockExecutor.execute.mock.calls[0]![3];
+            expect(options.additionalTools).toHaveLength(1);
+            expect(options.additionalTools[0].name).toBe('submit_verdict');
         });
     });
 
@@ -397,15 +417,20 @@ describe('AdversarialVerifier', () => {
         });
     });
 
-    describe('parseVerdict', () => {
-        async function getVerdict(response: string): Promise<string> {
+    describe('verdict extraction', () => {
+        async function getVerdict(
+            response: string,
+            toolCalls: ToolCallRecord[] = []
+        ): Promise<string> {
             const v = new AdversarialVerifier();
             const s = new FindingStore();
             s.record(makeFinding({ title: 'Test' }));
             const executor = {
                 execute: vi
                     .fn()
-                    .mockResolvedValue(makeSubagentResult({ response })),
+                    .mockResolvedValue(
+                        makeSubagentResult({ response, toolCalls })
+                    ),
             };
 
             const result = await v.verify(
@@ -425,27 +450,76 @@ describe('AdversarialVerifier', () => {
             return 'UNCERTAIN';
         }
 
-        it('parses "VERDICT: CONFIRMED"', async () => {
+        function makeVerdictToolCall(verdict: string): ToolCallRecord {
+            return {
+                id: 'verdict-1',
+                toolName: 'submit_verdict',
+                arguments: {
+                    verdict,
+                    evidence: 'Found counter-evidence',
+                    summary: 'Not a real bug',
+                },
+                result: `Verdict ${verdict} recorded.`,
+                success: true,
+                error: undefined,
+                durationMs: 10,
+                timestamp: Date.now(),
+            };
+        }
+
+        it('extracts CONFIRMED from submit_verdict tool call', async () => {
+            expect(
+                await getVerdict('ignored text', [
+                    makeVerdictToolCall('CONFIRMED'),
+                ])
+            ).toBe('CONFIRMED');
+        });
+
+        it('extracts REFUTED from submit_verdict tool call', async () => {
+            expect(
+                await getVerdict('ignored text', [
+                    makeVerdictToolCall('REFUTED'),
+                ])
+            ).toBe('REFUTED');
+        });
+
+        it('extracts UNCERTAIN from submit_verdict tool call', async () => {
+            expect(
+                await getVerdict('ignored text', [
+                    makeVerdictToolCall('UNCERTAIN'),
+                ])
+            ).toBe('UNCERTAIN');
+        });
+
+        it('prefers tool call over response text', async () => {
+            expect(
+                await getVerdict('VERDICT: CONFIRMED', [
+                    makeVerdictToolCall('REFUTED'),
+                ])
+            ).toBe('REFUTED');
+        });
+
+        it('falls back to text parsing when no tool call', async () => {
             expect(await getVerdict('VERDICT: CONFIRMED')).toBe('CONFIRMED');
         });
 
-        it('parses "VERDICT:CONFIRMED" without space', async () => {
+        it('falls back to text for "VERDICT:CONFIRMED" without space', async () => {
             expect(await getVerdict('VERDICT:CONFIRMED')).toBe('CONFIRMED');
         });
 
-        it('parses "VERDICT: REFUTED"', async () => {
+        it('falls back to text for "VERDICT: REFUTED"', async () => {
             expect(await getVerdict('VERDICT: REFUTED')).toBe('REFUTED');
         });
 
-        it('parses "VERDICT:REFUTED" without space', async () => {
+        it('falls back to text for "VERDICT:REFUTED" without space', async () => {
             expect(await getVerdict('VERDICT:REFUTED')).toBe('REFUTED');
         });
 
-        it('parses "VERDICT: UNCERTAIN"', async () => {
+        it('falls back to text for "VERDICT: UNCERTAIN"', async () => {
             expect(await getVerdict('VERDICT: UNCERTAIN')).toBe('UNCERTAIN');
         });
 
-        it('parses case-insensitive "verdict: confirmed"', async () => {
+        it('falls back to text case-insensitive "verdict: confirmed"', async () => {
             expect(await getVerdict('verdict: confirmed')).toBe('CONFIRMED');
         });
 
@@ -465,7 +539,7 @@ describe('AdversarialVerifier', () => {
             ).toBe('CONFIRMED');
         });
 
-        it('returns UNCERTAIN when both CONFIRMED and REFUTED present', async () => {
+        it('returns UNCERTAIN when both CONFIRMED and REFUTED present in text', async () => {
             expect(
                 await getVerdict(
                     'Some evidence is CONFIRMED but the main claim is REFUTED.'
@@ -479,7 +553,7 @@ describe('AdversarialVerifier', () => {
             ).toBe('UNCERTAIN');
         });
 
-        it('prefers explicit VERDICT: over word boundary', async () => {
+        it('prefers explicit VERDICT: over word boundary in text fallback', async () => {
             expect(
                 await getVerdict(
                     'I initially thought REFUTED but VERDICT: CONFIRMED.'

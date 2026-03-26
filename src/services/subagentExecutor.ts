@@ -56,6 +56,8 @@ export interface SubagentExecuteOptions {
     calibrationProfile: ModelCalibrationProfile;
     /** Additional tools to exclude from this subagent (beyond standard filters). */
     excludeTools?: readonly string[];
+    /** Additional tools to inject into this subagent session. */
+    additionalTools?: readonly ITool[];
     /** Parent's investigated files set — shared so child file tracking propagates back. */
     investigatedFiles?: Set<string>;
 }
@@ -185,6 +187,10 @@ export class SubagentExecutor {
                 filteredTools = filteredTools.filter(
                     (t) => !excludeSet.has(t.name)
                 );
+            }
+
+            if (options?.additionalTools?.length) {
+                filteredTools = [...filteredTools, ...options.additionalTools];
             }
 
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
