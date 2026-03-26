@@ -1,0 +1,471 @@
+import { Log } from './loggingService';
+import type { RecordedFinding, FindingSeverity } from '../types/findingTypes';
+import type { ToolCallRecord } from '../types/toolCallTypes';
+import type { InvestigationDepth } from '../types/investigationTypes';
+import { INVESTIGATION_TOOLS, DIFF_TOOLS } from '../models/toolConstants';
+import {
+    buildInvestigationAudit,
+    flattenToolCalls,
+} from '../utils/investigationAudit';
+
+const DEPTH_THRESHOLD_HIGH = 4;
+const DEPTH_THRESHOLD_MEDIUM = 2;
+
+const DELETION_LANGUAGE_PATTERN =
+    /\b(deleted|removed|no longer|was removed|was deleted|dropped|eliminated|got rid of)\b/i;
+
+const ZERO_REFERENCE_PATTERNS = [
+    /0 results/i,
+    /no results/i,
+    /not found/i,
+    /no references/i,
+    /0 usages/i,
+    /no usages/i,
+    /no callers/i,
+    /0 callers/i,
+    /no matches/i,
+    /0 matches/i,
+    /no occurrences/i,
+    /0 occurrences/i,
+] as const;
+
+const ZERO_REFERENCE_TOOL_NAMES = new Set(['find_usages', 'find_symbol']);
+
+/**
+ * Tools that target specific files and can be matched per-file.
+ * Excludes non-investigation tools (validate_claim, retract_finding, think, etc.)
+ * and global tools (search_for_pattern) that don't target a single file.
+ */
+const FILE_TARGETED_TOOL_NAMES: readonly string[] = [
+    ...INVESTIGATION_TOOLS.filter((t) => t !== 'search_for_pattern'),
+    ...DIFF_TOOLS,
+];
+
+/**
+ * Global search tools that don't target a specific file but may mention
+ * the finding's file in their results.
+ */
+
+export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade';
+
+export interface EvidenceAuditEntry {
+    finding: RecordedFinding;
+    verdict: EvidenceVerdict;
+    reason: string | undefined;
+    supportingToolCallIds: string[];
+    claimedTools: string[];
+    actualToolsOnFile: string[];
+}
+
+export interface EvidenceAuditResult {
+    entries: EvidenceAuditEntry[];
+    dropped: number;
+    downgraded: number;
+    kept: number;
+}
+
+/**
+ * Audits findings against actual tool call records to detect fabricated evidence.
+ *
+ * The model records findings with `verificationEvidence` describing
+ * which tools it claims to have used. This auditor cross-references those
+ * claims against the actual ToolCallRecord history to catch:
+ *
+ * 1. Fabricated evidence: model claims tools it never called
+ * 2. Insufficient investigation: HIGH+ findings with only shallow tool use
+ * 3. Missing file-level investigation: no investigation tools targeted the file
+ *
+ * Also populates `supportingToolCalls` on each finding with IDs of
+ * matching tool call records for downstream validators.
+ */
+export class EvidenceAuditor {
+    audit(
+        findings: RecordedFinding[],
+        toolCallRecords: ToolCallRecord[]
+    ): EvidenceAuditResult {
+        const entries: EvidenceAuditEntry[] = [];
+        const investigationAudit = buildInvestigationAudit(toolCallRecords);
+
+        for (const finding of findings) {
+            const entry = this.auditFinding(
+                finding,
+                toolCallRecords,
+                investigationAudit.depthScores
+            );
+            entries.push(entry);
+        }
+
+        const dropped = entries.filter((e) => e.verdict === 'drop').length;
+        const downgraded = entries.filter(
+            (e) => e.verdict === 'downgrade'
+        ).length;
+        const kept = entries.filter((e) => e.verdict === 'keep').length;
+
+        Log.info(
+            `EvidenceAuditor: ${kept} kept, ${downgraded} downgraded, ${dropped} dropped out of ${findings.length} findings`
+        );
+
+        return { entries, dropped, downgraded, kept };
+    }
+
+    private auditFinding(
+        finding: RecordedFinding,
+        toolCallRecords: ToolCallRecord[],
+        depthScores: Map<string, InvestigationDepth>
+    ): EvidenceAuditEntry {
+        // Step 1: Find all tool calls that reference the finding's file
+        // Flatten nested calls so subagent-produced tool calls are included
+        const flatRecords = flattenToolCalls(toolCallRecords);
+        const matchingCalls = this.findToolCallsForFile(
+            finding.file,
+            flatRecords
+        );
+
+        // Step 1b: Also count global search tools whose results mention this file
+        const globalSearchCalls = this.findGlobalSearchCallsMentioningFile(
+            finding.file,
+            flatRecords
+        );
+        const allSupportingCalls = [...matchingCalls, ...globalSearchCalls];
+        const supportingToolCallIdsAll = [
+            ...new Set(allSupportingCalls.map((tc) => tc.id)),
+        ];
+
+        // Step 2: Extract tool names claimed in evidence text
+        const evidenceText = this.getEvidenceText(finding);
+        const claimedTools = extractClaimedToolNames(evidenceText);
+
+        const actualToolsOnFile = [
+            ...new Set(allSupportingCalls.map((tc) => tc.toolName)),
+        ];
+
+        // Step 3: Populate supportingToolCalls on the finding
+        finding.supportingToolCalls = supportingToolCallIdsAll;
+
+        // Step 4: Check for deletion safety pattern (proved safe but still reported)
+        const deletionVerdict = this.checkDeletionSafety(
+            finding,
+            allSupportingCalls
+        );
+        if (deletionVerdict) {
+            return {
+                ...deletionVerdict,
+                supportingToolCallIds: supportingToolCallIdsAll,
+                claimedTools,
+                actualToolsOnFile,
+            };
+        }
+
+        // Step 5: Check for fabricated evidence (claims tools never called)
+        if (claimedTools.length > 0) {
+            const fabricated = this.findFabricatedClaims(
+                claimedTools,
+                allSupportingCalls,
+                flatRecords
+            );
+            if (fabricated.length > 0) {
+                const reason = `Fabricated evidence: claimed ${fabricated.join(', ')} but ${fabricated.length === 1 ? 'this tool was' : 'these tools were'} never called on "${finding.file}"`;
+                Log.info(
+                    `EvidenceAuditor DROP [${finding.id}] "${finding.title}": ${reason}`
+                );
+                return {
+                    finding,
+                    verdict: 'drop',
+                    reason,
+                    supportingToolCallIds: supportingToolCallIdsAll,
+                    claimedTools,
+                    actualToolsOnFile,
+                };
+            }
+        }
+
+        // Step 6: Check investigation depth using scored depth system
+        const fileScore = this.getFileDepthScore(finding.file, depthScores);
+        const requiredScore = this.getRequiredDepthScore(finding.severity);
+
+        if (requiredScore > 0 && fileScore < requiredScore) {
+            const reason = `${finding.severity} finding has depth score ${fileScore} but requires ≥${requiredScore}`;
+            Log.info(
+                `EvidenceAuditor DOWNGRADE [${finding.id}] "${finding.title}": ${reason}`
+            );
+            return {
+                finding,
+                verdict: 'downgrade',
+                reason,
+                supportingToolCallIds: supportingToolCallIdsAll,
+                claimedTools,
+                actualToolsOnFile,
+            };
+        }
+
+        return {
+            finding,
+            verdict: 'keep',
+            reason: undefined,
+            supportingToolCallIds: supportingToolCallIdsAll,
+            claimedTools,
+            actualToolsOnFile,
+        };
+    }
+
+    /**
+     * Find all tool call records that reference a specific file.
+     * Checks common argument fields: file_path, file, file_paths, relative_path.
+     */
+    private findToolCallsForFile(
+        findingFile: string,
+        toolCallRecords: ToolCallRecord[]
+    ): ToolCallRecord[] {
+        const normalizedTarget = findingFile.replace(/\\/g, '/');
+
+        return toolCallRecords.filter((tc) => {
+            if (!tc.success) {
+                return false;
+            }
+
+            const files = extractFilesFromArgs(tc.arguments);
+            return files.some((f) => {
+                const normalizedFile = f.replace(/\\/g, '/');
+                return (
+                    normalizedFile === normalizedTarget ||
+                    normalizedFile.endsWith(normalizedTarget) ||
+                    normalizedTarget.endsWith(normalizedFile)
+                );
+            });
+        });
+    }
+
+    /**
+     * Find global search tool calls (e.g. search_for_pattern) whose results
+     * mention the finding's file. These tools don't have a file_path argument
+     * so they can't be matched by `findToolCallsForFile`, but their results
+     * may reference the file, making them valid supporting evidence.
+     */
+    private findGlobalSearchCallsMentioningFile(
+        findingFile: string,
+        toolCallRecords: ToolCallRecord[]
+    ): ToolCallRecord[] {
+        const normalizedTarget = findingFile.replace(/\\/g, '/');
+        const fileName = normalizedTarget.split('/').pop() ?? normalizedTarget;
+
+        return toolCallRecords.filter((tc) => {
+            if (!tc.success || typeof tc.result !== 'string') {
+                return false;
+            }
+            if (tc.toolName !== 'search_for_pattern') {
+                return false;
+            }
+            const normalizedResult = tc.result.replace(/\\/g, '/');
+            return (
+                normalizedResult.includes(normalizedTarget) ||
+                normalizedResult.includes(fileName)
+            );
+        });
+    }
+
+    /**
+     * Check which claimed tools were never actually called on the finding's file.
+     * Only checks file-targeted investigation tools — non-file tools
+     * (validate_claim, think, etc.) and global tools (search_for_pattern)
+     * are excluded since they can't be matched to a specific file.
+     *
+     * A finding is only flagged as fabricated if:
+     * - It claims file-targeted tools that were never called on the file
+     * - AND no other investigation tools were called on the file either
+     *   (if the file WAS investigated, misattributing which tool found it is
+     *   an evidence quality issue, not fabrication)
+     */
+    private findFabricatedClaims(
+        claimedTools: string[],
+        fileSupportingCalls: ToolCallRecord[],
+        _allToolCallRecords: ToolCallRecord[]
+    ): string[] {
+        // Only check file-targeted tools, not validate_claim/think/etc.
+        const fileTargetedClaims = claimedTools.filter((t) =>
+            FILE_TARGETED_TOOL_NAMES.includes(t)
+        );
+        if (fileTargetedClaims.length === 0) {
+            return [];
+        }
+
+        const toolsOnFile = new Set(
+            fileSupportingCalls.map((tc) => tc.toolName)
+        );
+
+        // If the file was investigated by ANY tool, don't flag as fabricated.
+        // The model found the issue — it just misattributed which tool it used.
+        if (toolsOnFile.size > 0) {
+            return [];
+        }
+
+        // No tools called on this file at all — all claimed file-targeted tools are fabricated
+        return fileTargetedClaims;
+    }
+
+    /**
+     * Check whether a finding about deleted/removed code was proven safe.
+     *
+     * Only triggers when ALL conditions are met:
+     * 1. Evidence text mentions deletion/removal
+     * 2. A reference-checking tool (find_usages, find_symbol) was called
+     *    specifically for this finding's file and returned zero references
+     * 3. The finding is NOT about test coverage or test removal
+     *    (zero references for a deleted test is expected, not proof of safety)
+     */
+    private checkDeletionSafety(
+        finding: RecordedFinding,
+        fileSupportingCalls: ToolCallRecord[]
+    ): Pick<EvidenceAuditEntry, 'finding' | 'verdict' | 'reason'> | null {
+        const evidenceText = this.getEvidenceText(finding);
+
+        if (!DELETION_LANGUAGE_PATTERN.test(evidenceText)) {
+            return null;
+        }
+
+        // Don't drop test coverage/removal findings — zero refs is expected for deleted tests
+        if (this.isTestCoverageFinding(finding)) {
+            return null;
+        }
+
+        // Only check reference tools called on THIS finding's file, not all records
+        const referenceToolCalls = fileSupportingCalls.filter(
+            (tc) =>
+                tc.success &&
+                ZERO_REFERENCE_TOOL_NAMES.has(tc.toolName) &&
+                typeof tc.result === 'string'
+        );
+
+        const hasZeroReferences = referenceToolCalls.some((tc) =>
+            ZERO_REFERENCE_PATTERNS.some((pattern) =>
+                pattern.test(tc.result as string)
+            )
+        );
+
+        if (!hasZeroReferences) {
+            return null;
+        }
+
+        const reason =
+            'Deletion safety: evidence mentions removal AND tool calls show zero references/callers';
+        Log.info(
+            `EvidenceAuditor DROP [${finding.id}] "${finding.title}": ${reason}`
+        );
+        return { finding, verdict: 'drop', reason };
+    }
+
+    private isTestCoverageFinding(finding: RecordedFinding): boolean {
+        if (/\.(test|spec)\.(ts|js|tsx|jsx)$/.test(finding.file)) {
+            return true;
+        }
+        const text = `${finding.title} ${finding.description}`.toLowerCase();
+        return /\buntested\b|\bcoverage\s*(gap|loss|miss|reduc)|\btests?\s+(remov|delet|drop)|\btest\s+file\s+(remov|delet)/.test(
+            text
+        );
+    }
+
+    private getFileDepthScore(
+        file: string,
+        depthScores: Map<string, InvestigationDepth>
+    ): number {
+        const normalized = file.replace(/\\/g, '/');
+
+        const exact = depthScores.get(normalized);
+        if (exact) {
+            return exact.score;
+        }
+
+        for (const [path, depth] of depthScores) {
+            if (path.endsWith(normalized) || normalized.endsWith(path)) {
+                return depth.score;
+            }
+        }
+
+        return 0;
+    }
+
+    private getRequiredDepthScore(severity: FindingSeverity): number {
+        switch (severity) {
+            case 'CRITICAL':
+            case 'HIGH':
+                return DEPTH_THRESHOLD_HIGH;
+            case 'MEDIUM':
+                return DEPTH_THRESHOLD_MEDIUM;
+            case 'LOW':
+                return 0;
+        }
+    }
+
+    private getEvidenceText(finding: RecordedFinding): string {
+        const parts: string[] = [finding.description];
+        if (finding.verificationEvidence) {
+            parts.push(finding.verificationEvidence);
+        }
+        if (finding.disproof.method) {
+            parts.push(finding.disproof.method);
+        }
+        if (
+            finding.disproof.result &&
+            finding.disproof.result !== finding.disproof.method
+        ) {
+            parts.push(finding.disproof.result);
+        }
+        return parts.join(' ');
+    }
+}
+
+/**
+ * Extract file-targeted investigation tool names mentioned in evidence text.
+ * Only returns tools that target specific files (read_file, find_usages, etc.).
+ * Excludes non-investigation tools (validate_claim, think, record_finding, etc.)
+ * and global search tools (search_for_pattern) since they can't be matched per-file.
+ */
+export function extractClaimedToolNames(text: string): string[] {
+    if (!text) {
+        return [];
+    }
+
+    const found: string[] = [];
+    const lowerText = text.toLowerCase();
+
+    for (const toolName of FILE_TARGETED_TOOL_NAMES) {
+        // Match the tool name as a word boundary or followed by ( or space
+        // This avoids partial matches like "find_files_by_pattern" matching "find"
+        const pattern = new RegExp(
+            `\\b${toolName.replace(/_/g, '[_ ]')}\\b|${toolName.replace(/_/g, '[_ ]')}\\(`,
+            'i'
+        );
+        if (pattern.test(lowerText)) {
+            found.push(toolName);
+        }
+    }
+
+    return found;
+}
+
+/**
+ * Extract file paths from tool call arguments.
+ * Handles various argument naming conventions across tools.
+ */
+export function extractFilesFromArgs(args: Record<string, unknown>): string[] {
+    const files: string[] = [];
+
+    // Direct file arguments
+    for (const key of ['file_path', 'file', 'path', 'relative_path']) {
+        const value = args[key];
+        if (typeof value === 'string' && value !== '.' && value.length > 0) {
+            files.push(value);
+        }
+    }
+
+    // Array file arguments (e.g., get_file_diff's file_paths)
+    const filePaths = args['file_paths'];
+    if (Array.isArray(filePaths)) {
+        for (const fp of filePaths) {
+            if (typeof fp === 'string' && fp.length > 0) {
+                files.push(fp);
+            }
+        }
+    }
+
+    return files;
+}

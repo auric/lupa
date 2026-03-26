@@ -1,7 +1,8 @@
 # Subagent Batching — Lessons Learned & Future Implementation Guide
 
-> **Status**: Removed in March 2026. Experimental feature that was disabled by default.
-> This document captures what we learned for any future re-implementation.
+> **Status**: Implemented as `run_subagent_batch` (March 2026). The batch tool replaces the single `run_subagent` tool entirely — the LLM submits all investigation tasks in one call and they execute in parallel. The original queue-and-flush approach described below was the research that led to this simpler design.
+>
+> Previously: Removed experimental queue-based implementation. This document captures the original research.
 
 ## Problem Statement
 

@@ -151,9 +151,9 @@ describe('ToolCallStreamAdapter', () => {
             );
         });
 
-        it('should format run_subagent message (present continuous - long-running)', () => {
+        it('should format run_subagent_batch message (present continuous - long-running)', () => {
             adapter.onToolCallStart(
-                'run_subagent',
+                'run_subagent_batch',
                 { task: 'investigate security' },
                 0,
                 1
@@ -164,27 +164,16 @@ describe('ToolCallStreamAdapter', () => {
             );
         });
 
-        it('should format think_about_context message (present continuous - long-running)', () => {
-            adapter.onToolCallStart('think_about_context', {}, 0, 1);
-
-            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🧠 Analyzing context...'
+        it('should format think message with topic (present continuous - long-running)', () => {
+            adapter.onToolCallStart(
+                'think',
+                { topic: 'auth changes in login.ts' },
+                0,
+                1
             );
-        });
-
-        it('should format think_about_investigation message (present continuous - long-running)', () => {
-            adapter.onToolCallStart('think_about_investigation', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🧠 Reviewing investigation progress...'
-            );
-        });
-
-        it('should format think_about_task message (present continuous - long-running)', () => {
-            adapter.onToolCallStart('think_about_task', {}, 0, 1);
-
-            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🧠 Verifying task alignment...'
+                '🧠 Thinking about `auth changes in login.ts`...'
             );
         });
 
@@ -193,6 +182,45 @@ describe('ToolCallStreamAdapter', () => {
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
                 '🧠 Verifying analysis completeness...'
+            );
+        });
+
+        it('should format record_finding message with title', () => {
+            adapter.onToolCallStart(
+                'record_finding',
+                { title: 'SQL injection risk' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                '📋 Recorded finding: SQL injection risk'
+            );
+        });
+
+        it('should format retract_finding message with finding_id', () => {
+            adapter.onToolCallStart(
+                'retract_finding',
+                { finding_id: 'finding-001' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                '↩️ Retracted finding `finding-001`'
+            );
+        });
+
+        it('should format validate_claim message with symbol', () => {
+            adapter.onToolCallStart(
+                'validate_claim',
+                { symbol: 'processData' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                '✅ Validating claim about `processData`...'
             );
         });
 

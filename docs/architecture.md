@@ -151,6 +151,8 @@ Token management, conversation state, and tool execution infrastructure.
 
 LLM-callable tools extending `BaseTool` with Zod schemas.
 
+**Context Tools** (8):
+
 | Tool                     | Purpose                                       |
 | ------------------------ | --------------------------------------------- |
 | `FindSymbolTool`         | Find code symbol definitions with full source |
@@ -160,10 +162,25 @@ LLM-callable tools extending `BaseTool` with Zod schemas.
 | `FindFilesByPatternTool` | Glob-based file search                        |
 | `GetSymbolsOverviewTool` | Hierarchical symbol structure                 |
 | `SearchForPatternTool`   | Ripgrep-based text search                     |
-| `UpdatePlanTool`         | Create and track review plan with checklist   |
-| `RunSubagentTool`        | Delegate investigations to subagents          |
-| `SubmitReviewTool`       | Explicit completion signal for PR review      |
-| `ThinkAbout*Tools`       | Structured reasoning tools                    |
+| `GetFileDiffTool`        | Get diff for a specific file                  |
+
+**Quality Tools** (5):
+
+| Tool                       | Purpose                                                        |
+| -------------------------- | -------------------------------------------------------------- |
+| `ThinkTool`                | Unified structured reasoning (replaces 4 separate think tools) |
+| `ThinkAboutCompletionTool` | Completion readiness check                                     |
+| `RecordFindingTool`        | Record a review finding with evidence                          |
+| `RetractFindingTool`       | Retract a previously recorded finding                          |
+| `ValidateClaimTool`        | Validate a claim before recording                              |
+
+**Workflow Tools** (3):
+
+| Tool                   | Purpose                                     |
+| ---------------------- | ------------------------------------------- |
+| `UpdatePlanTool`       | Create and track review plan with checklist |
+| `SubmitReviewTool`     | Explicit completion signal for PR review    |
+| `RunSubagentBatchTool` | Delegate investigations to subagents        |
 
 ### Layer 5: Prompts (`src/prompts/`)
 
@@ -325,11 +342,11 @@ The `context` parameter is **required** for all tool executions. The `cancellati
 
 #### Tool ExecutionContext Field Requirements
 
-| Tool            | Required Fields                              | Notes                    |
-| --------------- | -------------------------------------------- | ------------------------ |
-| `run_subagent`  | `subagentExecutor`, `subagentSessionManager` | Returns error if missing |
-| `update_plan`   | `planManager`                                | Returns error if missing |
-| All other tools | `cancellationToken` only                     | Other fields optional    |
+| Tool                 | Required Fields                              | Notes                    |
+| -------------------- | -------------------------------------------- | ------------------------ |
+| `run_subagent_batch` | `subagentExecutor`, `subagentSessionManager` | Returns error if missing |
+| `update_plan`        | `planManager`                                | Returns error if missing |
+| All other tools      | `cancellationToken` only                     | Other fields optional    |
 
 #### Context Creation by Mode
 
@@ -341,7 +358,7 @@ The `context` parameter is **required** for all tool executions. The `cancellati
 
 **Key design principle:** Tools that require specific context fields are filtered from modes that don't provide them (see `MAIN_ANALYSIS_ONLY_TOOLS` in `toolConstants.ts`).
 
-The `RunSubagentTool` retrieves its executor from this context rather than via constructor injection.
+The `RunSubagentBatchTool` retrieves its executor from this context rather than via constructor injection.
 
 ---
 
@@ -405,7 +422,7 @@ Subagents enable delegated investigations with isolated context. Each analysis c
 │                           │                                  │
 │  ┌─────────────────────────────────────────────────────────┐│
 │  │ LLM: "This security pattern needs deeper investigation" ││
-│  │ → Calls RunSubagentTool                                 ││
+│  │ → Calls RunSubagentBatchTool                            ││
 │  └─────────────────────────────────────────────────────────┘│
 │                           │                                  │
 │                           ▼                                  │
@@ -421,7 +438,7 @@ Subagents enable delegated investigations with isolated context. Each analysis c
 │  │                 Subagent #1: Security                    ││
 │  │  - Own conversation history                              ││
 │  │  - Can use: find_symbol, read_file, search, etc.        ││
-│  │  - Cannot use: run_subagent (prevents recursion)         ││
+│  │  - Cannot use: run_subagent_batch (prevents recursion)   ││
 │  │  - Returns findings to main analysis                     ││
 │  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
@@ -429,17 +446,17 @@ Subagents enable delegated investigations with isolated context. Each analysis c
 
 ### Subagent Cancellation Model
 
-Each subagent gets its own `CancellationTokenSource` (local variable in `RunSubagentTool.execute()`, never an instance field) to prevent cross-cancellation between parallel subagents. The token is linked to the parent analysis token via `SubagentSessionManager.registerSubagentCancellation()`.
+Each subagent gets its own `CancellationTokenSource` (local variable in `RunSubagentBatchTool.execute()`, never an instance field) to prevent cross-cancellation between parallel subagents. The token is linked to the parent analysis token via `SubagentSessionManager.registerSubagentCancellation()`.
 
 **Initialization order**: `SubagentSessionManager.setParentCancellationToken()` must be called early in the analysis flow (before any tool execution) to ensure subagent cancellation propagation works. See `ToolCallingAnalysisProvider.analyze()` for the pattern.
 
 **Cancellation detection**: `SubagentExecutor` checks `ConversationRunner.hitMaxIterations` and `ConversationRunner.wasCancelled` boolean flags rather than raw `token.isCancellationRequested`. This prevents false cancellation signals from unrelated token events. At the top level, `ToolCallingAnalysisResult.wasCancelled` propagates cancellation state from `ConversationRunner` through to coordinators.
 
-**Timeout vs parent cancellation**: `RunSubagentTool` checks `context.cancellationToken.isCancellationRequested` when attributing a cancellation to timeout, giving parent cancellation priority over the timeout timer. This prevents misclassification when both fire during executor unwinding.
+**Timeout vs parent cancellation**: `RunSubagentBatchTool` checks `context.cancellationToken.isCancellationRequested` when attributing a cancellation to timeout, giving parent cancellation priority over the timeout timer. This prevents misclassification when both fire during executor unwinding.
 
 **Exit conditions and their reporting**:
 
-| Condition         | ConversationRunner                       | SubagentExecutor            | RunSubagentTool                       |
+| Condition         | ConversationRunner                       | SubagentExecutor            | RunSubagentBatchTool                  |
 | ----------------- | ---------------------------------------- | --------------------------- | ------------------------------------- |
 | Normal completion | Returns response text                    | `success: true`             | `toolSuccess()`                       |
 | Max iterations    | Returns message, sets `hitMaxIterations` | `error: 'max_iterations'`   | `toolError()` with partial findings   |
@@ -543,13 +560,13 @@ VS Code API mocked via `__mocks__/vscode.js`:
 
 ## Security Considerations
 
-| Area               | Implementation                                |
-| ------------------ | --------------------------------------------- |
-| Path Traversal     | `PathSanitizer` validates all file paths      |
-| Rate Limiting      | `ToolExecutor` limits tool calls per session  |
-| Context Size       | `TokenValidator` manages context window       |
-| Subagent Recursion | `run_subagent` tool excluded from subagents   |
-| Gitignore          | Respected in file discovery and symbol search |
+| Area               | Implementation                                    |
+| ------------------ | ------------------------------------------------- |
+| Path Traversal     | `PathSanitizer` validates all file paths          |
+| Rate Limiting      | `ToolExecutor` limits tool calls per session      |
+| Context Size       | `TokenValidator` manages context window           |
+| Subagent Recursion | `run_subagent_batch` tool excluded from subagents |
+| Gitignore          | Respected in file discovery and symbol search     |
 
 ### Gitignore Handling
 
@@ -610,9 +627,9 @@ Lupa uses a Recursive Language Model (RLM) approach where a root agent decompose
 | ------------------- | ------- | ---------------------------------------------------- |
 | `maxRecursionDepth` | 2       | Maximum agent depth (0 = no recursion, 1+ = enabled) |
 
-Total spawns per analysis are capped by `maxSubagentsPerSession` (hardcoded to 75).
+Total spawns per analysis are capped by `maxSubagentsPerSession` (hardcoded to 200).
 
-**Recursive mode activates** when `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. The root agent reads at most 1 key diff (the most impactful file) for orientation, then MUST delegate all investigation to sub-agents via `run_subagent` when there are 3+ files to review. Sub-agents are spawned in parallel (all in the same turn) and each reads their own diffs via `get_file_diff`. Child agents with `canRecurse=true` MUST spawn sub-agents to further decompose when assigned 4+ files — this is enforced as a MANDATORY rule in the system prompts.
+**Recursive mode activates** when `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. The root agent reads at most 1 key diff (the most impactful file) for orientation, then MUST delegate all investigation to sub-agents via `run_subagent_batch` when there are 3+ files to review. Sub-agents are spawned in parallel (all in the same turn) and each reads their own diffs via `get_file_diff`. Child agents with `canRecurse=true` MUST spawn sub-agents to further decompose when assigned 4+ files — this is enforced as a MANDATORY rule in the system prompts.
 
 **Non-recursive mode** (`maxRecursionDepth === 0`): A single agent reviews all files directly with subagent delegation for larger PRs. Subagents can call `get_file_diff` to read diffs on demand but do not see `<diff_metadata>`; the parent agent must provide explicit file paths when delegating work.
 
@@ -620,13 +637,13 @@ Total spawns per analysis are capped by `maxSubagentsPerSession` (hardcoded to 7
 
 - Registers agents with parent-child relationships and depth tracking
 - Enforces `maxRecursionDepth` via `canSpawnChild()` (total spawn count is guarded by `SubagentSessionManager`)
-- Uses an **independent budget model**: each agent receives `DEFAULT_CHILD_BUDGET` (50 iterations) regardless of other agents' usage. For example, at depth 2 with 3 sub-agents each spawning 2 sub-sub-agents, the system runs up to 9 agents × 50 iterations = 450 total iterations, bounded by `maxSubagentsPerSession` (75)
+- Uses an **independent budget model**: each agent receives `DEFAULT_CHILD_BUDGET` (50 iterations) regardless of other agents' usage. For example, at depth 2 with 3 sub-agents each spawning 2 sub-sub-agents, the system runs up to 9 agents × 50 iterations = 450 total iterations, bounded by `maxSubagentsPerSession` (200)
 - Tracks file coverage across completed agents to avoid redundant analysis (only `get_file_diff` calls count — `read_file` for context does not constitute reviewing a file's diff)
 - Manages agent lifecycle (registered → running → completed/failed/cancelled)
 
 #### Coverage Gap Enforcement
 
-After each `run_subagent` tool call batch completes, the root agent's `afterToolCalls` callback compares files reviewed via `get_file_diff` (aggregated across all agents in the tree) against the full list of changed files. If gaps exist, a programmatic message is injected listing uncovered files and instructing the root to spawn additional subagents. This is system-level enforcement — it does not rely on the LLM's self-assessment.
+After each `run_subagent_batch` tool call batch completes, the root agent's `afterToolCalls` callback compares files reviewed via `get_file_diff` (aggregated across all agents in the tree) against the full list of changed files. If gaps exist, a programmatic message is injected listing uncovered files and instructing the root to spawn additional subagents. This is system-level enforcement — it does not rely on the LLM's self-assessment.
 
 Key design decisions:
 

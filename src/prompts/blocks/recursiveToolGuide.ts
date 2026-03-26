@@ -10,13 +10,18 @@ export function generateRecursiveToolGuide(): string {
 | Tool | When to Use |
 |------|-------------|
 | \`<diff_metadata>\` (in prompt) | **ALREADY PROVIDED** — all changed files and line counts are in your conversation |
-| \`get_file_diff\` | **FIRST TOOL CALL** — read 1 key diff (largest/riskiest) to understand the PR's purpose |
-| \`update_plan\` | **SECOND** — decompose PR into concern groups |
-| \`run_subagent\` | **PRIMARY TOOL** — make multiple calls in one response (parallel execution) |
+| \`get_pr_context\` | **FIRST** — get branch name, commit messages to understand PR intent before reviewing code |
+| \`get_file_diff\` | **SECOND** — read 1 key diff (largest/riskiest) to understand the PR's purpose |
+| \`update_plan\` | **THIRD** — decompose PR into concern groups |
+| \`run_subagent_batch\` | **PRIMARY TOOL** — put ALL investigation tasks into ONE call (parallel execution) |
 | \`list_directory\` | Orient yourself — understand project structure |
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |
+| \`think\` | Think through code changes, context, or progress |
 | \`think_about_completion\` | Before final submission — verify all concerns were covered |
 | \`submit_review\` | **FINAL ACTION** — deliver aggregated, structured review |
+| \`record_finding\` | Commit findings as discovered — survives timeout |
+| \`validate_claim\` | LSP-verify critical claims before including in final review |
+| \`batch_tools\` | Wrap multiple independent tool calls into one parallel invocation |
 
 ⚠️ **Read at most 1 diff for orientation.** Do NOT call \`get_file_diff\` more than once or use \`read_file\`. Sub-agents read all remaining diffs.
 
@@ -37,7 +42,7 @@ export function generateRecursiveToolGuide(): string {
 
 ### Sub-Agent Task Template
 
-Each \`run_subagent\` call should include:
+Each \`run_subagent_batch\` task should include:
 1. **Specific questions** about the change (not vague "review this")
 2. **File paths** to examine (sub-agents call \`get_file_diff\` themselves)
 3. **Key functions** to examine

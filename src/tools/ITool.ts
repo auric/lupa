@@ -34,8 +34,18 @@ export interface ITool {
     /** Zod schema for validating tool arguments */
     schema: z.ZodType;
 
+    /** Maximum response size in chars. Defaults to TokenConstants.MAX_TOOL_RESPONSE_CHARS. */
+    maxResponseChars?: number;
+
     /** Returns VS Code LanguageModelChatTool for API registration */
     getVSCodeTool(): vscode.LanguageModelChatTool;
+
+    /**
+     * Normalize raw LLM arguments before schema validation.
+     * Override in tools where LLMs commonly misplace fields.
+     * Default: identity (returns args unchanged).
+     */
+    normalizeArgs?(args: Record<string, unknown>): Record<string, unknown>;
 
     /**
      * Execute the tool with validated arguments.

@@ -15,6 +15,9 @@ import { LanguageModelToolProvider } from './languageModelToolProvider';
 // Utility services
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { PromptGenerator } from '../models/promptGenerator';
+import { LspValidationService } from './lspValidationService';
+import { DiffEnricher } from './diffEnricher';
+import { FindingValidator } from './findingValidator';
 
 // Tool-calling services
 import { ToolRegistry } from '../models/toolRegistry';
@@ -22,6 +25,7 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { ConversationManager } from '../models/conversationManager';
 import { ToolCallingAnalysisProvider } from './toolCallingAnalysisProvider';
 import type { ExecutionContext } from '../types/executionContext';
+import { DEFAULT_PROFILE } from '../models/modelCalibration';
 import { getErrorMessage } from '../utils/errorUtils';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { FindUsagesTool } from '../tools/findUsagesTool';
@@ -30,14 +34,18 @@ import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { ReadFileTool } from '../tools/readFileTool';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
-import { ThinkAboutContextTool } from '../tools/thinkAboutContextTool';
-import { ThinkAboutTaskTool } from '../tools/thinkAboutTaskTool';
+import { ThinkTool } from '../tools/thinkTool';
 import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
-import { ThinkAboutInvestigationTool } from '../tools/thinkAboutInvestigationTool';
-import { RunSubagentTool } from '../tools/runSubagentTool';
+import { RunSubagentBatchTool } from '../tools/runSubagentBatchTool';
+import { BatchToolsTool } from '../tools/batchToolsTool';
 import { UpdatePlanTool } from '../tools/updatePlanTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { GetFileDiffTool } from '../tools/getFileDiffTool';
+import { GetPRContextTool } from '../tools/getPRContextTool';
+import { RecordFindingTool } from '../tools/recordFindingTool';
+import { RetractFindingTool } from '../tools/retractFindingTool';
+
+import { ValidateClaimTool } from '../tools/validateClaimTool';
 
 import { Log } from './loggingService';
 
@@ -62,6 +70,9 @@ export interface IServiceRegistry {
 
     // Utility services
     symbolExtractor: SymbolExtractor;
+    lspValidation: LspValidationService;
+    diffEnricher: DiffEnricher;
+    findingValidator: FindingValidator;
 
     // Tool-calling services
     toolRegistry: ToolRegistry;
@@ -169,6 +180,16 @@ export class ServiceManager implements vscode.Disposable {
         this.services.symbolExtractor = new SymbolExtractor(
             this.services.gitOperations!
         );
+        this.services.lspValidation = new LspValidationService(
+            this.services.gitOperations!
+        );
+        this.services.diffEnricher = new DiffEnricher(
+            this.services.symbolExtractor!,
+            this.services.gitOperations!
+        );
+        this.services.findingValidator = new FindingValidator(
+            this.services.lspValidation!
+        );
     }
 
     /**
@@ -190,11 +211,14 @@ export class ServiceManager implements vscode.Disposable {
         this.utilityTokenSource = new vscode.CancellationTokenSource();
         const utilityContext: ExecutionContext = {
             cancellationToken: this.utilityTokenSource.token,
+            calibrationProfile: DEFAULT_PROFILE,
+            toolCallCounts: new Map(),
         };
         this.services.toolExecutor = new ToolExecutor(
             this.services.toolRegistry,
             utilityContext
         );
+        utilityContext.toolExecutor = this.services.toolExecutor;
         this.services.conversationManager = new ConversationManager();
         // Note: SubagentSessionManager and SubagentExecutor are created per-analysis
         // in ToolCallingAnalysisProvider for concurrent-safety.
@@ -205,7 +229,9 @@ export class ServiceManager implements vscode.Disposable {
                 this.services.toolRegistry,
                 this.services.copilotModelManager!,
                 this.services.promptGenerator!,
-                this.services.workspaceSettings!
+                this.services.workspaceSettings!,
+                this.services.diffEnricher!,
+                this.services.findingValidator!
             );
 
         // Register available tools
@@ -232,6 +258,8 @@ export class ServiceManager implements vscode.Disposable {
             promptGenerator: this.services.promptGenerator!,
             gitOperations: this.services.gitOperations!,
             copilotModelManager: this.services.copilotModelManager!,
+            diffEnricher: this.services.diffEnricher!,
+            findingValidator: this.services.findingValidator!,
         });
 
         // Register language model tools for Agent Mode
@@ -251,6 +279,10 @@ export class ServiceManager implements vscode.Disposable {
      */
     private initializeTools(): void {
         try {
+            // Register quality/reasoning tools first — GPT-4.1 is more likely to use tools
+            // that appear early in the tool list
+            this.services.toolRegistry!.registerTool(new ThinkTool());
+
             // Register the FindSymbolTool (Get Definition functionality)
             const findSymbolTool = new FindSymbolTool(
                 this.services.gitOperations!,
@@ -292,27 +324,33 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry!.registerTool(searchForPatternTool);
 
             this.services.toolRegistry!.registerTool(
-                new ThinkAboutContextTool()
-            );
-            this.services.toolRegistry!.registerTool(new ThinkAboutTaskTool());
-            this.services.toolRegistry!.registerTool(
                 new ThinkAboutCompletionTool()
-            );
-            this.services.toolRegistry!.registerTool(
-                new ThinkAboutInvestigationTool()
             );
 
             // Register the UpdatePlanTool for tracking review progress
             // Note: UpdatePlanTool gets PlanSessionManager from ExecutionContext per-analysis
             this.services.toolRegistry!.registerTool(new UpdatePlanTool());
 
-            // Register the RunSubagentTool for delegating complex investigations
-            // Note: RunSubagentTool gets SubagentExecutor and SubagentSessionManager
+            // Register the RunSubagentBatchTool for delegating complex investigations
+            // Note: RunSubagentBatchTool gets SubagentExecutor and SubagentSessionManager
             // from ExecutionContext per-analysis for concurrent-safety
-            const runSubagentTool = new RunSubagentTool(
+            const runSubagentBatchTool = new RunSubagentBatchTool(
                 this.services.workspaceSettings!
             );
-            this.services.toolRegistry!.registerTool(runSubagentTool);
+            this.services.toolRegistry!.registerTool(runSubagentBatchTool);
+
+            // Register batch_tools meta-tool for parallel tool execution
+            this.services.toolRegistry!.registerTool(new BatchToolsTool());
+
+            // Register finding management tools
+            this.services.toolRegistry!.registerTool(new RecordFindingTool());
+            this.services.toolRegistry!.registerTool(new RetractFindingTool());
+
+            // Register LSP-based claim validation tool
+            const validateClaimTool = new ValidateClaimTool(
+                this.services.lspValidation!
+            );
+            this.services.toolRegistry!.registerTool(validateClaimTool);
 
             // Register the SubmitReviewTool for explicit completion signaling
             this.services.toolRegistry!.registerTool(new SubmitReviewTool());
@@ -321,6 +359,11 @@ export class ServiceManager implements vscode.Disposable {
             // These tools access parsedDiff from ExecutionContext instead of
             // embedding the full diff in the prompt, enabling on-demand context loading.
             this.services.toolRegistry!.registerTool(new GetFileDiffTool());
+
+            const getPRContextTool = new GetPRContextTool(
+                this.services.gitOperations!
+            );
+            this.services.toolRegistry!.registerTool(getPRContextTool);
 
             Log.info(
                 `Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`
@@ -355,7 +398,10 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry,
             this.services.copilotModelManager,
             this.services.chatParticipantService,
+            this.services.lspValidation,
+            this.services.diffEnricher,
             this.services.gitOperations,
+            this.services.workspaceSettings,
             this.services.statusBar,
             this.services.logging,
         ];

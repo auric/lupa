@@ -4,9 +4,7 @@ import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { flexibleStringArrayNonEmpty } from './schemaHelpers';
-import { SEVERITY } from '../config/chatEmoji';
-
-const CompletionDecision = z.enum(['needs_work', 'ready_to_submit']);
+import { pathSuffixMatch } from '../utils/pathUtils';
 
 const Recommendation = z.enum([
     'approve',
@@ -16,18 +14,17 @@ const Recommendation = z.enum([
 ]);
 
 /**
- * Self-reflection tool for main agent: verifies analysis completeness.
+ * Pre-submit checkpoint tool. Forces the LLM to draft a summary, verify
+ * file coverage, and declare a recommendation before calling submit_review.
  *
- * Forces explicit articulation of the review state rather than passive checklists.
- * Per prompt engineering best practices: "articulation > checklists" -
- * writing explicit statements is more rigorous than checking boxes.
+ * Simplified to 5 flat fields for maximum adoption by all models.
  */
 export class ThinkAboutCompletionTool extends BaseTool {
     name = 'think_about_completion';
     description =
-        'Articulate your review completeness before submitting. ' +
-        'Forces you to draft a summary, count issues, and confirm all files were analyzed. ' +
-        'For each finding, ask: would I bet my reputation that this is a real bug? If not, drop it.';
+        'Pre-submit checkpoint. Draft your summary, verify file coverage, and declare your recommendation. ' +
+        'For each finding, ask: would I bet my reputation this is a real bug? If not, drop it. ' +
+        'CALL THIS before submit_review.';
 
     schema = z
         .object({
@@ -37,18 +34,13 @@ export class ThinkAboutCompletionTool extends BaseTool {
                 .describe(
                     'Draft 2-3 sentence summary of what this PR does and your overall assessment'
                 ),
-            critical_issues_count: z
+            issues_count: z
                 .number()
                 .int()
                 .min(0)
-                .describe('Number of critical/blocking issues found'),
-            high_issues_count: z
-                .number()
-                .int()
-                .min(0)
-                .describe('Number of high-severity issues found'),
+                .describe('Total number of issues found across all severities'),
             files_analyzed: flexibleStringArrayNonEmpty.describe(
-                'List of files reviewed (directly via get_file_diff or via sub-agent delegation)'
+                'List of files reviewed (directly or via sub-agent delegation)'
             ),
             files_in_diff: z
                 .number()
@@ -56,10 +48,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
                 .min(1)
                 .describe('Total number of files in the diff'),
             recommendation: Recommendation.describe(
-                'Your recommendation: approve, approve_with_suggestions, request_changes, or block_merge'
-            ),
-            decision: CompletionDecision.describe(
-                'Your decision: needs_work (address gaps first) or ready_to_submit'
+                'approve, approve_with_suggestions, request_changes, or block_merge'
             ),
         })
         .strict();
@@ -72,78 +61,76 @@ export class ThinkAboutCompletionTool extends BaseTool {
             throw new vscode.CancellationError();
         }
 
-        const {
-            summary_draft,
-            critical_issues_count,
-            high_issues_count,
-            files_analyzed,
-            files_in_diff,
-            recommendation,
-            decision,
-        } = args;
+        const { issues_count, files_analyzed, files_in_diff, recommendation } =
+            args;
 
         const coveragePercent = Math.round(
             (files_analyzed.length / files_in_diff) * 100
         );
-        const hasCritical = critical_issues_count > 0;
-        const hasHigh = high_issues_count > 0;
 
-        let guidance = '## Completion Reflection\n\n';
+        const coverageNote =
+            coveragePercent < 100
+                ? ` ⚠️ ${files_in_diff - files_analyzed.length} file(s) uncovered — investigate before submitting.`
+                : '';
 
-        guidance += `### Summary Draft\n> ${summary_draft}\n\n`;
-
-        guidance += `### Issue Count\n`;
-        guidance += `- ${SEVERITY.critical} Critical: ${critical_issues_count}\n`;
-        guidance += `- ${SEVERITY.high} High: ${high_issues_count}\n\n`;
-
-        guidance += `### Coverage\n`;
-        guidance += `- Files analyzed: ${files_analyzed.length}/${files_in_diff} (${coveragePercent}%)\n`;
-        if (coveragePercent < 100) {
-            guidance += `- ⚠️ Not all files analyzed\n`;
-        }
-        guidance += '\n';
-
-        guidance += `### Recommendation: ${recommendation.replace(/_/g, ' ').toUpperCase()}\n`;
-        if (hasCritical) {
-            guidance += `⚠️ Critical issues found - recommend \`block_merge\` or \`request_changes\`\n`;
-        } else if (hasHigh) {
-            guidance += `⚠️ High-severity issues found - consider \`request_changes\`\n`;
-        }
-        guidance += '\n';
-
-        guidance += `### Decision: ${decision.replace(/_/g, ' ').toUpperCase()}\n\n`;
-
-        // Provide guidance based on decision
-        if (decision === 'needs_work') {
-            guidance += '**Action**: Address gaps before submitting.\n';
-            if (coveragePercent < 100) {
-                guidance += `- Spawn additional sub-agents or use \`get_file_diff\` to cover remaining ${files_in_diff - files_analyzed.length} file(s)\n`;
+        // Cross-reference claimed files_analyzed against actual tool call records.
+        // The model may claim to have analyzed files it never investigated with tools.
+        let investigationNote = '';
+        let uninvestigated: string[] = [];
+        if (context.investigatedFiles && context.investigatedFiles.size > 0) {
+            uninvestigated = files_analyzed.filter((claimed) => {
+                const normalizedClaimed = claimed.replace(/\\/g, '/');
+                return ![...context.investigatedFiles!].some(
+                    (actual) =>
+                        pathSuffixMatch(normalizedClaimed, actual) ||
+                        pathSuffixMatch(actual, normalizedClaimed)
+                );
+            });
+            if (uninvestigated.length > 0) {
+                investigationNote =
+                    `\n\n⚠️ INVESTIGATION GAP: You claimed to analyze ${uninvestigated.length} file(s) that have NO tool call records: ` +
+                    `${uninvestigated.join(', ')}. ` +
+                    `You must use read_file, find_symbol, find_usages, or validate_claim on a file before claiming you analyzed it. ` +
+                    `Go investigate these files before calling submit_review.`;
             }
-            guidance += '- Ensure all plan items are complete\n';
-            guidance += '- Verify all findings have evidence\n';
-        } else {
-            guidance +=
-                '**Pre-submit self-challenge** (do this mentally for each finding):\n';
-            guidance +=
-                '1. Is this MECHANICAL (duplication, API misuse, type error) or INTENT-BASED (design disagreement)?\n';
-            guidance +=
-                '2. For intent-based findings: did you search for comments/docs explaining the design? What did you find?\n';
-            guidance +=
-                '3. Can you name the SPECIFIC tool call that confirmed this finding?\n';
-            guidance +=
-                '4. Did you attempt to disprove it? What was the result?\n';
-            guidance +=
-                '5. Would a developer familiar with this codebase agree, or would they say "that\'s by design"?\n';
-            guidance +=
-                '\nDrop any finding where the answer to #5 is likely "by design."\n\n';
-            guidance +=
-                '**Action**: Call the `submit_review` tool now with your complete review.\n';
-            guidance += '- Use the summary draft as your opening\n';
-            guidance += '- Organize findings by severity\n';
-            guidance += '- Include positive observations\n';
-            guidance += '- Ensure proper Markdown formatting with file links\n';
         }
 
-        return toolSuccess(guidance);
+        context.completionReadiness = {
+            coveragePercent,
+            uninvestigatedFiles: uninvestigated,
+            ready: uninvestigated.length === 0,
+        };
+
+        // Inject FindingStore summary with CoVe-style verification prompts
+        const store = context.findingStore;
+        let findingStoreNote = '';
+        if (store && store.size > 0) {
+            const findings = store.getAll();
+            const summary = findings
+                .map(
+                    (f, i) =>
+                        `  ${i + 1}. [${f.id}] ${f.severity}: ${f.title} (${f.file})\n` +
+                        `     Affected: ${f.affectedComponent || 'NOT SPECIFIED'} | Mechanism: ${f.failureMechanism || 'NOT SPECIFIED'}\n` +
+                        `     Evidence: ${f.description.slice(0, 150)}...\n` +
+                        `     Disproof: ${f.disproof.method || 'NONE PROVIDED'}`
+                )
+                .join('\n');
+            findingStoreNote =
+                `\n\n📋 CHAIN-OF-VERIFICATION: Your team recorded ${store.size} finding(s). For EACH finding below, answer these 3 questions:\n` +
+                `   (a) What SPECIFIC tool call confirmed it? (name the tool and what it returned)\n` +
+                `   (b) What is ONE plausible way this could be intentional or a false positive?\n` +
+                `   (c) KEEP or RETRACT? If you cannot answer (a) with a concrete tool output, RETRACT it now.\n\n` +
+                `${summary}\n\n` +
+                `⚠️ Retract any finding where you cannot cite specific tool output. ` +
+                `"I reasoned about it" or "it looks like" is NOT tool evidence. ` +
+                `Call retract_finding for each finding that fails this check before calling submit_review.`;
+        }
+
+        return toolSuccess(
+            `✅ Reflection recorded. ${files_analyzed.length}/${files_in_diff} files (${coveragePercent}%), ` +
+                `${issues_count} issue(s), recommendation: ${recommendation}.${coverageNote}${investigationNote} ` +
+                `Pre-submit: for each finding, verify it's MECHANICAL (not intent-based), name the confirming tool call, ` +
+                `confirm disproof was attempted. Drop anything "by design." Now call submit_review.${findingStoreNote}`
+        );
     }
 }

@@ -1,20 +1,33 @@
 /**
  * Analysis methodology for PR review mode.
  * Step-by-step process with plan tool integration.
+ * Includes explicit reasoning mandate for non-reasoning models (GPT-4.1).
+ * Calibration-aware: adjusts skepticism and verification emphasis per model.
  */
+
+import type { ModelCalibrationProfile } from '../../models/modelCalibration';
 
 /**
  * Generate the analysis methodology block for PR review.
- * Emphasizes creating a plan early and tracking progress.
+ * Adjusts verification emphasis based on model calibration:
+ * - Dismissive models: removes kill ratio, strengthens persistence
+ * - Aggressive models: emphasizes kill ratio and evidence bar
  */
-export function generateAnalysisMethodology(): string {
+export function generateAnalysisMethodology(
+    calibration: ModelCalibrationProfile
+): string {
     return `<analysis_methodology>
 ## Analysis Process
 
-### Step 1: Create Your Plan (MANDATORY - FIRST ACTION)
-⚠️ **Your first tool call MUST be \`update_plan\`.** Do not investigate before planning.
+### Reasoning Between Tool Calls
 
-After scanning the diff, immediately call \`update_plan\` with this structure:
+Before each tool call, briefly explain what you learned from the previous result and what you plan to do next. This keeps your analysis grounded in evidence.
+
+### Step 1: Orient, Then Plan (MANDATORY - FIRST ACTIONS)
+⚠️ **Turn 1**: Call \`get_pr_context\` and \`get_file_diff\` (for the largest/riskiest file) to understand the PR.
+⚠️ **Turn 2**: Call \`update_plan\` based on what you learned. Do NOT call \`update_plan\` until you have read at least one diff.
+
+Read the PR commit messages from \`get_pr_context\` and examine a key diff to understand the developer's intent, then call \`update_plan\` with this structure:
 \`\`\`markdown
 ## PR Review Plan
 
@@ -31,7 +44,6 @@ After scanning the diff, immediately call \`update_plan\` with this structure:
 \`\`\`
 
 ### Step 2: Gather Context
-For each checklist item:
 - Use \`find_symbol\` for unfamiliar functions
 - Use \`find_usages\` for changed signatures
 - Spawn subagents for complex areas (4+ files or security-sensitive)
@@ -40,31 +52,64 @@ For each checklist item:
 
 **After each file or area reviewed**: Call \`update_plan\` to mark progress with notes.
 
-### Step 3: Self-Reflection Checkpoints (Articulation Required)
+### Step 3: Think Through Each Change
+After reading a diff, call \`think\` to organize your analysis before investigating further.
 
-At each checkpoint, **explicitly articulate** your current state—don't just acknowledge.
+**Hypothesis generation is encouraged.** When you call \`think\` after reading a diff, include 2-3 items in \`identified_risks\`. These are hypotheses to investigate — they may turn out to be fine, but generating them prevents premature conclusions. On the FIRST checkpoint after reading a diff, always generate at least 2 hypotheses. Consider: error handling edge cases, type safety gaps, missing validation on inputs, inconsistency with callers, off-by-one errors, concurrency issues.
 
-**After gathering context** → \`think_about_context\`:
-- files_examined: List what you investigated
-- key_findings: State what you learned
-- remaining_gaps: Identify specific unknowns
-- decision: Declare next action
+### Productive Skepticism
 
-**Before conclusions** → \`think_about_task\`:
-- analysis_focus: What are you analyzing?
-- issues_found: List with file, description, severity — these are HYPOTHESES at this stage
-- finding_audit: For each issue — (1) what tool call CONFIRMED it? (2) what tool call tried to DISPROVE it? (3) can I provide a concrete failing scenario with actual values? If any answer is missing for a MEDIUM+ finding, drop or downgrade it
-- areas_needing_investigation: What's not covered?
-- decision: Are you ready or need more work?
+${
+    calibration.findingBias === 'dismissive'
+        ? `You are a senior reviewer. Your job is to investigate thoroughly and report what you find with evidence.
+- HYPOTHESIS QUALITY MATTERS: Do NOT generate trivial hypotheses like "is this symbol used?" or "does this import exist?" — these are always verified and waste investigation time
+- Generate hypotheses about BEHAVIOR: "What happens if this function receives null?", "What if this async operation fails?", "Are all error paths handled?"
+- A review that says "everything looks good" without any \\\`validate_claim\\\` calls is incomplete — submit_review will reject it
+- When a hypothesis COULD be an issue, investigate further. Do NOT dismiss it based on reasoning alone — use tools to verify
+- NEVER use validate_claim with claim_type "symbol_unused" or "symbol_missing" for standard library identifiers or string literals — these are NOT real hypotheses`
+        : `You are a senior reviewer, not a rubber stamp. Your job is to find issues the developer missed.
+- If you review multiple files and identify zero risks at checkpoint #1, you are likely being too agreeable — go back and hypothesize harder
+- Real code changes almost always have edge cases, error handling gaps, or subtle type issues worth at least investigating
+- Generating hypotheses costs nothing — disprove them with tools if they're wrong
+- A review that says "everything looks good" without any \\\`validate_claim\\\` calls is incomplete, not thorough`
+}
+
+### Example: Reviewing a File Change
+
+1. Call \`get_file_diff({file_paths: ["src/auth.ts"]})\`
+2. Call \`think\`:
+   - topic: "changes in src/auth.ts"
+   - analysis: "The login function now accepts a plain string password instead of a hashed one. The comparison uses === which is not constant-time."
+   - identified_risks: ["Timing attack on password comparison", "Plain text password in memory"]
+   - next_action: "Call find_usages for login() to check all callers"
+3. Investigate based on next_action: \`find_usages({symbol: "login", file: "src/auth.ts"})\`
+4. If concern confirmed → \`record_finding\` immediately
+5. If concern disproved → move to next file
+
+### Tool Call Workflow
+The standard analysis flow follows this pattern:
+
+\`get_file_diff\` → \`think\` → investigate → \`record_finding\` (if issue confirmed)
+After all files → \`think_about_completion\` → \`submit_review\`
+
+### Step 4: Self-Reflection Checkpoints
+
+Call \`think\` at these checkpoints to maintain analysis quality:
+
+**After gathering context** → \`think\` with topic "context review":
+- What you examined, what you found, what gaps remain, what to do next
+
+**Before conclusions** → \`think\` with topic "task alignment":
+- What you're analyzing, issues found (these are HYPOTHESES), areas needing investigation
+- For each issue — (1) what tool call CONFIRMED it? (2) what tool call tried to DISPROVE it? (3) can you provide a concrete failing scenario? If any answer is missing for MEDIUM+, drop or downgrade it
 
 **Before final response** → \`think_about_completion\`:
 - summary_draft: Write your 2-3 sentence summary
-- critical_issues_count: How many blockers?
+- issues_count: Total issues found
 - files_analyzed vs files_in_diff: Coverage check
-- hypothesis_kill_ratio: "Started with N hypotheses, M survived verification" — if >80% survived, re-examine your disproof rigor
 - recommendation: approve/request_changes/block
 
-### Step 3b: Verify Your Hypotheses (MANDATORY for MEDIUM+ Findings)
+### Step 5: Verify Your Hypotheses (MANDATORY for MEDIUM+ Findings)
 
 The issues you identified are **HYPOTHESES**, not confirmed findings.
 Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using the verification gates from \`<finding_quality>\` above.
@@ -74,11 +119,21 @@ Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using 
 2. Call the tool that checks — \`find_usages\`, \`find_symbol\`, or \`search_for_pattern\`
 3. If disproved → **DROP** the finding silently. Do not mention it in your review
 4. If not disproved → It survives. Now assign severity based on evidence
-
+5. For factual claims (symbol unused, type mismatch, missing callers): call \`validate_claim\` for definitive LSP verification
+${
+    calibration.findingBias === 'dismissive'
+        ? `
+**Evidence ambiguity**: When tool output is ambiguous or inconclusive, this means you need MORE investigation. Try a different tool or approach. If after 3 attempts no tool can definitively confirm the issue, DROP it — ambiguity is not evidence.`
+        : calibration.findingBias === 'aggressive'
+          ? `
+**Target kill ratio**: Drop 50-70% of your initial hypotheses through verification.
+If you're keeping >70% of hypotheses, you are not trying hard enough to disprove them. Every finding must survive rigorous challenge.`
+          : `
 **Target kill ratio**: Drop 40-60% of your initial hypotheses through verification.
-If you're keeping >80% of hypotheses, you are not trying hard enough to disprove them.
+If you're keeping >80% of hypotheses, you are not trying hard enough to disprove them.`
+}
 
-### Step 4: Track Progress (REQUIRED)
+### Step 6: Track Progress (REQUIRED)
 Call \`update_plan\` after completing each checklist item:
 \`\`\`markdown
 - [x] Reviewed auth changes - found timing attack risk
@@ -86,14 +141,17 @@ Call \`update_plan\` after completing each checklist item:
 - [ ] Check test coverage
 \`\`\`
 
-### Step 5: Synthesize
+### Step 7: Record and Synthesize
+⚠️ For EVERY confirmed finding, you MUST call \`record_finding\` IMMEDIATELY after verification — do NOT wait until synthesis. Unrecorded findings are LOST on timeout.
+
 Combine findings into structured review. Ensure:
 - All checklist items marked complete
 - All files analyzed
 - Findings have evidence with file links
+- Every MEDIUM+ finding has been recorded via \`record_finding\`
 - Critical issues clearly highlighted
 
-### Step 6: Submit Review (REQUIRED - FINAL ACTION)
+### Step 8: Submit Review (REQUIRED - FINAL ACTION)
 ⚠️ **You MUST call \`submit_review\` to deliver your findings.** Do not respond without tool calls.
 
 Call \`submit_review\` with your complete review following the output format.
@@ -106,5 +164,18 @@ For each change, ask:
 - What could go wrong?
 - How might this affect other parts?
 - What testing is needed?
+${
+    calibration.findingBias === 'dismissive'
+        ? `
+If you have investigated every file and found zero issues, revisit your strongest hypothesis. If it has any plausible basis in tool output, record it as LOW severity — the post-analysis pipeline will filter it if it’s not real.`
+        : ''
+}
+${
+    calibration.investigationProtocol?.investigationPreamble
+        ? `
+### Investigation Persistence
+${calibration.investigationProtocol.investigationPreamble}`
+        : ''
+}
 </analysis_methodology>`;
 }

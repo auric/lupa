@@ -316,11 +316,63 @@ describe('RipgrepSearchService', () => {
                     pattern: 'test',
                     cwd: '/workspace',
                     token: tokenSource.token,
+                    multiline: true,
                 })
             ).rejects.toThrow(vscode.CancellationError);
 
             // spawn should NOT have been called since token was already cancelled
             expect(mockSpawn).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('formatResults', () => {
+        it('should truncate lines exceeding MAX_LINE_CHARS', async () => {
+            const { RipgrepSearchService } =
+                await import('../services/ripgrepSearchService');
+            const service = new RipgrepSearchService();
+
+            const longContent = 'x'.repeat(1000);
+            const result = service.formatResults([
+                {
+                    filePath: 'dist/extension.js',
+                    matches: [
+                        {
+                            filePath: 'dist/extension.js',
+                            lineNumber: 1,
+                            content: longContent,
+                            isContext: false,
+                        },
+                    ],
+                },
+            ]);
+
+            expect(result).toContain('[truncated: 1000 chars]');
+            // The truncated line should be much shorter than the original
+            expect(result.length).toBeLessThan(longContent.length);
+        });
+
+        it('should not truncate lines within MAX_LINE_CHARS', async () => {
+            const { RipgrepSearchService } =
+                await import('../services/ripgrepSearchService');
+            const service = new RipgrepSearchService();
+
+            const shortContent = 'const x = 42;';
+            const result = service.formatResults([
+                {
+                    filePath: 'src/test.ts',
+                    matches: [
+                        {
+                            filePath: 'src/test.ts',
+                            lineNumber: 10,
+                            content: shortContent,
+                            isContext: false,
+                        },
+                    ],
+                },
+            ]);
+
+            expect(result).toContain(`10: ${shortContent}`);
+            expect(result).not.toContain('[truncated');
         });
     });
 });

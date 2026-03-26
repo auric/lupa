@@ -35,20 +35,14 @@ export class ToolConstants {
 }
 
 /**
- * Root-only tools: plan tracking, review submission, and reflection tools
- * that require PR-level context and should never be given to subagents.
- * Shared base for all disallowed-tool lists to prevent drift.
- *
- * NOTE: think_about_investigation and think_about_context are intentionally
- * EXCLUDED from this list. They are designed for focused investigations
- * without needing diff context or PR-level review state that subagents
- * don't have.
+ * Root-only tools: plan tracking, review submission, and the completion
+ * reflection tool that requires PR-level context.
+ * Subagents get the unified `think` tool instead.
  */
 const ROOT_ONLY_TOOLS = [
     'update_plan',
     'submit_review',
     'think_about_completion',
-    'think_about_task',
 ] as const;
 
 /**
@@ -60,7 +54,7 @@ export const DIFF_TOOLS = ['get_file_diff'] as const;
  * Investigation tools that should be removed from the recursive root agent
  * after the orientation phase (first subagent round).
  * The root is a controller — after it delegates, it should only retain
- * controller tools (run_subagent, update_plan, think_about_*, submit_review).
+ * controller tools (run_subagent_batch, update_plan, think_about_completion, submit_review).
  */
 export const INVESTIGATION_TOOLS = [
     'get_file_diff',
@@ -71,6 +65,7 @@ export const INVESTIGATION_TOOLS = [
     'find_files_by_pattern',
     'list_directory',
     'get_symbols_overview',
+    'batch_tools',
 ] as const;
 
 /**
@@ -83,15 +78,12 @@ export const SubagentLimits = {
     /** Maximum task length to prevent token exhaustion in subagent prompts */
     MAX_TASK_LENGTH: 20_000,
     /** Tools that subagents cannot access (flat mode — no recursion) */
-    DISALLOWED_TOOLS: [
-        'run_subagent', // Prevent sub-subagent recursion
-        ...ROOT_ONLY_TOOLS,
-    ] as const,
+    DISALLOWED_TOOLS: ['run_subagent_batch', ...ROOT_ONLY_TOOLS] as const,
 } as const;
 
 /**
  * Tools disallowed for recursive child agents.
- * They CAN call run_subagent (enabling recursion) but cannot access
+ * They CAN call run_subagent_batch (enabling recursion) but cannot access
  * plan-tracking and final-review tools that belong to the root agent.
  */
 export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [...ROOT_ONLY_TOOLS] as const;
@@ -101,9 +93,18 @@ export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [...ROOT_ONLY_TOOLS] as const;
  * Exploration mode (no slash command) doesn't have PR context or a review plan,
  * so these tools would either fail or return nonsensical guidance.
  */
+export const QUALITY_TOOLS = ['record_finding', 'retract_finding'] as const;
+
+/**
+ * PR context tools that require branch/diff context to be meaningful.
+ */
+export const PR_CONTEXT_TOOLS = ['get_pr_context'] as const;
+
 export const MAIN_ANALYSIS_ONLY_TOOLS = [
     ...ROOT_ONLY_TOOLS,
     ...DIFF_TOOLS,
+    ...QUALITY_TOOLS,
+    ...PR_CONTEXT_TOOLS,
 ] as const;
 
 /**

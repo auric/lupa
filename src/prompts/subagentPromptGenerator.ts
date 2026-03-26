@@ -1,5 +1,6 @@
 import type { SubagentTask } from '../types/modelTypes';
 import type { ITool } from '../tools/ITool';
+import type { ModelCalibrationProfile } from '../models/modelCalibration';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
 
 import { generateFindingQualityGuidance } from './blocks/findingQualityGuidance';
@@ -18,7 +19,7 @@ export class SubagentPromptGenerator {
     /**
      * Generate a system prompt for a subagent investigation.
      * @param task The investigation task definition
-     * @param tools Available tools (run_subagent will be filtered out by executor unless recursive)
+     * @param tools Available tools (run_subagent_batch will be filtered out by executor unless recursive)
      * @param maxIterations Maximum conversation iterations for this subagent
      * @param canRecurse Whether this agent can spawn its own sub-agents
      * @returns Complete system prompt for the subagent
@@ -27,7 +28,8 @@ export class SubagentPromptGenerator {
         task: SubagentTask,
         tools: ITool[],
         maxIterations: number,
-        canRecurse: boolean = false
+        canRecurse: boolean = false,
+        calibration: ModelCalibrationProfile
     ): string {
         const hasDiffTools = tools.some((t) => t.name === 'get_file_diff');
         const contextSection = task.context
@@ -51,11 +53,12 @@ Your parent agent already identified which files belong to your investigation �
             : '';
 
         // When canRecurse, the investigation approach defers to decomposition for large scopes
+        // All variants use "Describe Then Judge" — in a single think call, first describe what the code does, then identify risks
         const investigationSteps =
             canRecurse && hasDiffTools
                 ? `
 1. **Check your scope**: Count the files in your task.
-   - **1-3 files**: Call \`get_file_diff\` ONCE with all file paths in the \`file_paths\` array, e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts", "c.ts"]})\`. Then investigate using steps 2-4 below.
+   - **1-3 files**: Call \`get_file_diff\` ONCE with all file paths in the \`file_paths\` array, e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts", "c.ts"]})\`. Then investigate using steps 2-5 below.
    - **4+ files**: You **MUST** spawn sub-agents. Read 1 key diff to orient, then follow the **Decomposition Strategy** below.
 
 2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both to identify real issues.
@@ -64,7 +67,36 @@ Your parent agent already identified which files belong to your investigation �
 
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
+5. ⚠️ **Reasoning Checkpoint #1 — Describe Then Judge**: Call \`think\` to FIRST describe what the code does, THEN identify potential issues:
+   - topic: "[filename] analysis"
+   - analysis: **Describe first**: What does this code do? What are the data flows and contracts between caller/callee? **Then judge**: Given that understanding, what could actually go wrong? Look for: contract violations between caller/callee, edge cases the change doesn't handle, type mismatches in data flow, inconsistencies with codebase conventions.
+   - identified_risks: Specific hypotheses grounded in the description above. If you have none, that's fine.
+   - next_action: which tool to call next and why
+   Most code changes are correct. Finding zero issues after thorough investigation is the most common valid outcome.
+
+6. **Verify Factual Claims**: For claims like "symbol is unused", "type is wrong", or "no callers handle this" — call \`validate_claim\` for compiler-grade LSP verification. Its result overrides your reasoning.
+
+7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 2-6. Does the evidence confirm or disprove your initial risks? Update your next_action.
+
 Diff reading is orientation, not investigation. You must call tools from steps 2-4 before writing findings.
+
+8. **REQUIRED Verification Loop** — for EACH potential finding:
+   a. Call \`validate_claim\` to check the factual basis with LSP ground truth
+   b. If disproved → STOP. Do NOT record this finding
+   c. Call \`think\` (devil's advocate checkpoint): argue AGAINST your own finding — what's the strongest reason this is NOT a bug? Is there a centralized handler, design intent, or framework convention that explains it?
+   d. Only if the finding survives both validate_claim AND devil's advocate → call \`record_finding\`
+   ⚠️ Unrecorded findings are LOST on timeout — record each finding immediately after verification.
+
+### Example Investigation Flow
+\`\`\`
+get_file_diff({file_paths: ["src/auth.ts"]})
+→ find_symbol({name_path: "login", include_body: true})
+→ find_usages({symbol: "login", file: "src/auth.ts"})
+→ think({topic: "auth.ts analysis", analysis: "Describe: login() takes email+password, queries DB, compares with bcrypt.compare(). 3 callers: /api/login, /api/oauth, /api/admin. Contract: returns JWT or throws 401. Judge: Early return on user-not-found before bcrypt creates timing side-channel that leaks whether email exists.", identified_risks: ["Timing attack on password comparison"], next_action: "validate_claim for constant-time comparison"})
+→ validate_claim({claim_type: "symbol_missing", symbol: "timingSafeEqual", file: "src/auth.ts", line: 12})
+→ think({topic: "devil's advocate", analysis: "Could a middleware handle this? No — auth.ts is the direct entry point. Is timing-safe comparison needed here? Yes — password comparison.", next_action: "record finding"})
+→ record_finding({severity: "HIGH", title: "Timing attack on password comparison", file: "src/auth.ts", line: 42, description: "...", disproof_note: "validate_claim: timingSafeEqual not found. Devil's advocate: no middleware handles this."})
+\`\`\`
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                 : hasDiffTools
@@ -77,9 +109,36 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
-5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
+5. ⚠️ **Reasoning Checkpoint #1 — Describe Then Judge**: Call \`think\` to FIRST describe what the code does, THEN identify potential issues:
+   - topic: "[filename] analysis"
+   - analysis: **Describe first**: What does this code do? What are the data flows and contracts between caller/callee? **Then judge**: Given that understanding, what could actually go wrong? Look for: contract violations between caller/callee, edge cases the change doesn't handle, type mismatches in data flow, inconsistencies with codebase conventions.
+   - identified_risks: Specific hypotheses grounded in the description above. If you have none, that's fine.
+   - next_action: which tool to call next and why
+   Most code changes are correct. Finding zero issues after thorough investigation is the most common valid outcome.
+
+6. **Verify Factual Claims**: For claims like "symbol is unused", "type is wrong", or "no callers handle this" — call \`validate_claim\` for compiler-grade LSP verification. Its result overrides your reasoning.
+
+7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 2-6. Does the evidence confirm or disprove your initial risks?
+
+8. **REQUIRED Verification Loop** — for EACH potential finding:
+   a. Call \`validate_claim\` to check the factual basis with LSP ground truth
+   b. If disproved → STOP. Do NOT record this finding
+   c. Call \`think\` (devil's advocate checkpoint): argue AGAINST your own finding — what's the strongest reason this is NOT a bug? Is there a centralized handler, design intent, or framework convention that explains it?
+   d. Only if the finding survives both validate_claim AND devil's advocate → call \`record_finding\`
+   ⚠️ Unrecorded findings are LOST on timeout — record each finding immediately after verification.
 
 Diff reading is orientation, not investigation. You must call tools from steps 2-4 before writing findings.
+
+### Example Investigation Flow
+\`\`\`
+get_file_diff({file_paths: ["src/auth.ts"]})
+→ find_symbol({name_path: "login", include_body: true})
+→ find_usages({symbol: "login", file: "src/auth.ts"})
+→ think({topic: "auth.ts analysis", analysis: "Describe: login() takes email+password, queries DB, compares with bcrypt. 3 callers. Contract: returns JWT or throws 401. Judge: Timing side-channel — early return on user-not-found leaks email existence.", identified_risks: ["Timing attack"], next_action: "validate_claim"})
+→ validate_claim({claim_type: "symbol_missing", symbol: "timingSafeEqual", file: "src/auth.ts", line: 12})
+→ think({topic: "devil's advocate", analysis: "No middleware or wrapper for this. Real issue.", next_action: "record finding"})
+→ record_finding({severity: "HIGH", ..., disproof_note: "validate_claim confirmed. Devil's advocate: no centralized handler."})
+\`\`\`
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                   : `
@@ -91,13 +150,29 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
-5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.`;
+5. ⚠️ **Reasoning Checkpoint #1 — Describe Then Judge**: Call \`think\` to FIRST describe what the code does, THEN identify potential issues:
+   - topic: "[area] analysis"
+   - analysis: **Describe first**: What does this code do? What are the data flows and contracts between components? **Then judge**: Given that understanding, what could actually go wrong? Look for: contract violations, unhandled edge cases, type mismatches, inconsistencies with codebase conventions.
+   - identified_risks: Specific hypotheses grounded in the description above. If you have none, that's fine.
+   - next_action: which tool to call next and why
+   Most code changes are correct. Finding zero issues after thorough investigation is the most common valid outcome.
+
+6. **Verify Factual Claims**: For claims like "symbol is unused", "type is wrong", or "no callers handle this" — call \`validate_claim\` for compiler-grade LSP verification. Its result overrides your reasoning.
+
+7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 2-6. Does the evidence confirm or disprove your initial risks?
+
+8. **REQUIRED Verification Loop** — for EACH potential finding:
+   a. Call \`validate_claim\` to check the factual basis with LSP ground truth
+   b. If disproved → STOP. Do NOT record this finding
+   c. Call \`think\` (devil's advocate checkpoint): argue AGAINST your own finding — what's the strongest reason this is NOT a bug? Is there a centralized handler, design intent, or framework convention that explains it?
+   d. Only if the finding survives both validate_claim AND devil's advocate → call \`record_finding\`
+   ⚠️ Unrecorded findings are LOST on timeout — record each finding immediately after verification.`;
 
         const recursionSection = canRecurse
             ? `
 ### Decomposition Strategy (You MUST Spawn Sub-Agents for 4+ Files)
 
-You have \`run_subagent\` available and **${maxIterations} iterations** for your own work.
+You have \`run_subagent_batch\` available and **${maxIterations} iterations** for your own work.
 
 ⚠️ **MANDATORY: If your task spans 4+ files, you MUST spawn sub-agents.**
 Do NOT try to review 4+ files directly — you'll exhaust your iterations and produce incomplete findings. This is not optional.
@@ -105,7 +180,7 @@ Do NOT try to review 4+ files directly — you'll exhaust your iterations and pr
 **Decomposition approach:**
 1. ${hasDiffTools ? 'Call `get_file_diff` for 1 key file to orient yourself (~1 iteration)' : 'Review the parent context to understand the scope of changes'}
 2. Based on ${hasDiffTools ? 'the diff' : 'what you know'}, split your remaining files into focused sub-tasks
-3. **Make multiple \`run_subagent\` tool calls in the same response** — they execute in parallel. Each sub-agent gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours)
+3. **Make multiple \`run_subagent_batch\` tool calls in the same response** — they execute in parallel. Each sub-agent gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours)
 4. After sub-agents return, aggregate their findings into your response
 ${
     hasDiffTools
@@ -142,7 +217,51 @@ Focus on the highest-risk items first. If you can't fully investigate all areas,
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
 
-        return `You are a focused investigation subagent. A senior engineer reviewing a pull request has delegated a specific investigation to you.
+        // Calibration-specific behavioral override for subagents
+        const prosecutionSection =
+            calibration.findingBias === 'dismissive'
+                ? `
+## Investigation Stance: Prosecution Mode
+
+Your challenge checkpoint (step 8c) operates in **prosecution mode**: instead of arguing AGAINST your finding, construct the **strongest argument that this IS a real bug**. Gather supporting evidence.
+
+- When evidence is ambiguous, investigate further with tools — do NOT dismiss based on reasoning alone
+- When validate_claim returns inconclusive, try additional tools (find_usages, search_for_pattern) before dropping
+- Retain hypotheses that are plausible until you have concrete proof they are safe
+- Missing a real bug is costlier than investigating a false lead
+`
+                : '';
+
+        const investigationPreamble = calibration.investigationProtocol
+            .investigationPreamble
+            ? `
+## Investigation Protocol
+
+${calibration.investigationProtocol.investigationPreamble}
+`
+            : '';
+
+        const calibrationSection =
+            prosecutionSection || investigationPreamble
+                ? `
+<calibration_override>
+${prosecutionSection}${investigationPreamble}
+</calibration_override>
+`
+                : '';
+
+        const agenticPreamble = calibration.includeAgenticPreamble
+            ? `# AGENTIC BEHAVIOR — CRITICAL
+You are a thorough code review agent. You MUST:
+1. Keep investigating until you have thoroughly analyzed ALL assigned files. Do NOT stop after the first few files or yield control prematurely.
+2. Use your tools to read actual code. NEVER guess about code content, behavior, or structure you haven't directly examined with tool calls.
+3. Plan your investigation before each tool call. After each tool result, reflect on what you learned and what you still need to check.
+
+`
+            : '';
+
+        return `${agenticPreamble}You are a focused investigation subagent. A senior engineer reviewing a pull request has delegated a specific investigation to you.
+${calibrationSection}
 
 <your_task>
 ## Your Assigned Task
@@ -153,7 +272,7 @@ ${sanitizedTask}
 ${contextSection}
 
 <quality_standards>
-${generateFindingQualityGuidance()}
+${generateFindingQualityGuidance(calibration)}
 
 ### Language Awareness
 
@@ -199,6 +318,9 @@ ${
         : ''
 }
 If you find NO issues after investigation, state what you checked and why it passed. Finding zero issues is a valid and expected outcome for well-written code.
+
+### Length Budget
+Keep your total response under 8000 characters. Be concise: cite evidence precisely (tool name + key output) without quoting large code blocks. Use file path + line numbers instead of pasting code.
 </response_requirements>
 
 <constraints>
@@ -211,14 +333,25 @@ If you find NO issues after investigation, state what you checked and why it pas
 
 **Technical Limits:**
 - You have **${maxIterations} tool iterations** - use them wisely
-- **Parallelize tool calls**: Make ALL independent tool calls in the same response (e.g. multiple \`find_symbol\`${hasDiffTools ? ', `get_file_diff`' : ''}${canRecurse ? ', or `run_subagent`' : ''} calls at once). Do NOT call tools one at a time when they are independent
+- **Parallelize tool calls**: Make ALL independent tool calls in the same response (e.g. multiple \`find_symbol\`${hasDiffTools ? ', `get_file_diff`' : ''}${canRecurse ? ', or `run_subagent_batch`' : ''} calls at once). Do NOT call tools one at a time when they are independent. Use \`batch_tools\` if you cannot call multiple tools per turn natively
 ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in your task' : '- You CANNOT see the PR diff - only what the parent provided in context'}
 - You CANNOT execute code or run tests
 
 **Self-Reflection:**
-- Use \`think_about_investigation\` to check if you're staying focused
-- Return partial findings if running low on iterations - partial evidence is valuable
+${hasDiffTools ? '- ⚠️ You MUST call \\`think\\` at least 3 times: after reading diffs and gathering evidence (describe what the code does FIRST, then identify risks), after synthesizing all evidence, and as ' + (calibration.challengeMode === 'prosecution' ? 'prosecution checkpoint' : "devil's advocate") + ' before recording' : '- ⚠️ You MUST call \\`think\\` at least 3 times: after reviewing context and gathering evidence (describe what the code does FIRST, then identify risks), after synthesizing all evidence, and as ' + (calibration.challengeMode === 'prosecution' ? 'prosecution checkpoint' : "devil's advocate") + ' before recording'}
+- ⚠️ You MUST call \`validate_claim\` before EVERY \`record_finding\` — findings without LSP verification are untrustworthy
+- ⚠️ You MUST call \`record_finding\` for each confirmed finding — unrecorded findings are LOST
+- For factual claims ("unused symbol", "wrong type", "no callers"): \`validate_claim\` LSP result overrides your reasoning
+${calibration.challengeMode === 'prosecution' ? '- **Prosecution**: Before recording, use `think` to argue FOR your finding — construct the strongest case that this IS a bug. If the prosecution case is strong, record it. Only drop if you have concrete tool output proving it safe' : "- **Devil's advocate**: Before recording, use `think` to argue AGAINST your finding. If you can't defeat the counter-argument, record it. If the counter-argument wins, drop it"}
+- Return partial findings if running low on iterations — partial evidence is valuable
 - Apply the quality standards from \`<quality_standards>\` above — they are your primary filter
-</constraints>`;
+</constraints>
+${
+    calibration.includeAgenticPreamble
+        ? `
+# REMINDER (End of Instructions)
+You MUST use tools to examine every assigned file. Do NOT report "no issues" without having read and investigated the actual code. Do NOT stop investigating before you have checked all assigned files. Use tools, don't guess.`
+        : ''
+}`;
     }
 }

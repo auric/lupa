@@ -4,6 +4,7 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
 import type { WorkspaceSettingsService } from './workspaceSettingsService';
 import type { ExecutionContext } from '../types/executionContext';
+import { DEFAULT_PROFILE } from '../models/modelCalibration';
 import type {
     OpenFilePayload,
     ThemeUpdatePayload,
@@ -296,11 +297,14 @@ export class ToolTestingWebviewService {
             // Create per-request executor for isolation from concurrent analyses
             const executionContext: ExecutionContext = {
                 cancellationToken: tokenSource.token,
+                calibrationProfile: DEFAULT_PROFILE,
+                toolCallCounts: new Map(),
             };
             const executor = new ToolExecutor(
                 this.toolRegistry,
                 executionContext
             );
+            executionContext.toolExecutor = executor;
 
             const results = await executor.executeTools([
                 {

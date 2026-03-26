@@ -6,14 +6,19 @@ import {
     RECURSIVE_CHILD_DISALLOWED_TOOLS,
     DIFF_TOOLS,
     INVESTIGATION_TOOLS,
+    QUALITY_TOOLS,
 } from '../models/toolConstants';
 import { TokenConstants } from '../models/tokenConstants';
 
 describe('toolConstants', () => {
     describe('SubagentLimits.DISALLOWED_TOOLS', () => {
-        // get_file_diff is analysis-only but intentionally
-        // ALLOWED for subagents so they can access diff on demand (RLM approach).
-        const SUBAGENT_ALLOWED_ANALYSIS_TOOLS = ['get_file_diff'];
+        // get_file_diff and get_pr_context are analysis-only but intentionally
+        // ALLOWED for subagents so they can access diff and PR context on demand (RLM approach).
+        const SUBAGENT_ALLOWED_ANALYSIS_TOOLS = [
+            'get_file_diff',
+            'get_pr_context',
+            ...QUALITY_TOOLS,
+        ];
 
         it('should include non-diff MAIN_ANALYSIS_ONLY_TOOLS to prevent subagent access', () => {
             for (const tool of MAIN_ANALYSIS_ONLY_TOOLS) {
@@ -36,17 +41,15 @@ describe('toolConstants', () => {
             }
         });
 
-        it('should include run_subagent to prevent recursion', () => {
+        it('should include run_subagent_batch to prevent recursion', () => {
             expect(
-                SubagentLimits.DISALLOWED_TOOLS.includes('run_subagent')
+                SubagentLimits.DISALLOWED_TOOLS.includes('run_subagent_batch')
             ).toBe(true);
         });
 
-        it('should allow think_about_investigation for subagents', () => {
+        it('should allow think tool for subagents', () => {
             expect(
-                SubagentLimits.DISALLOWED_TOOLS.includes(
-                    'think_about_investigation' as any
-                )
+                SubagentLimits.DISALLOWED_TOOLS.includes('think' as any)
             ).toBe(false);
         });
     });
@@ -98,12 +101,14 @@ describe('toolConstants', () => {
             }
         });
 
-        it('should allow run_subagent for recursive children but not flat subagents', () => {
+        it('should allow run_subagent_batch for recursive children but not flat subagents', () => {
             expect(
-                SubagentLimits.DISALLOWED_TOOLS.includes('run_subagent')
+                SubagentLimits.DISALLOWED_TOOLS.includes('run_subagent_batch')
             ).toBe(true);
             expect(
-                RECURSIVE_CHILD_DISALLOWED_TOOLS.includes('run_subagent' as any)
+                RECURSIVE_CHILD_DISALLOWED_TOOLS.includes(
+                    'run_subagent_batch' as any
+                )
             ).toBe(false);
         });
 
@@ -152,10 +157,9 @@ describe('toolConstants', () => {
 
         it('should NOT include controller tools', () => {
             const controllerTools = [
-                'run_subagent',
+                'run_subagent_batch',
                 'update_plan',
                 'submit_review',
-                'think_about_task',
                 'think_about_completion',
             ];
             for (const tool of controllerTools) {

@@ -164,7 +164,7 @@ describe('ChatParticipantService', () => {
                 getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(120),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
@@ -209,6 +209,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -246,6 +261,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -281,6 +311,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -327,6 +372,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -360,6 +420,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -413,6 +488,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: recursivePromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(
@@ -461,6 +551,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(
@@ -509,7 +614,7 @@ describe('ChatParticipantService', () => {
                 getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(120),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
@@ -554,6 +659,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -591,6 +711,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -624,6 +759,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -657,6 +807,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -697,6 +862,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(
@@ -730,6 +910,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(
@@ -743,7 +938,8 @@ describe('ChatParticipantService', () => {
                 expect.any(Array),
                 undefined, // User prompt is undefined when empty
                 false, // recursiveMode
-                expect.any(Number) // maxSubagents
+                expect.any(Number), // maxSubagents
+                expect.objectContaining({ enrichedSymbols: [] }) // codeIntelBrief
             );
         });
 
@@ -767,6 +963,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(
@@ -784,7 +995,8 @@ describe('ChatParticipantService', () => {
                 expect.any(Array),
                 'focus on security',
                 false,
-                expect.any(Number) // maxSubagents
+                expect.any(Number), // maxSubagents
+                expect.objectContaining({ enrichedSymbols: [] }) // codeIntelBrief
             );
         });
 
@@ -808,6 +1020,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(
@@ -853,6 +1080,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -900,6 +1142,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(
@@ -970,7 +1227,7 @@ describe('ChatParticipantService', () => {
                 getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(120),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
@@ -1021,6 +1278,21 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     copilotModelManager: createMockCopilotModelManager() as any,
+                    diffEnricher: {
+                        enrich: vi.fn().mockResolvedValue({
+                            enrichedSymbols: [],
+                            generatedAt: Date.now(),
+                            timeoutCount: 0,
+                        }),
+                    } as any,
+                    findingValidator: {
+                        validate: vi.fn().mockResolvedValue({
+                            validated: [],
+                            dropped: 0,
+                            downgraded: 0,
+                            kept: 0,
+                        }),
+                    } as any,
                 });
 
                 const result = await capturedHandler(
@@ -1064,6 +1336,21 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     copilotModelManager: createMockCopilotModelManager() as any,
+                    diffEnricher: {
+                        enrich: vi.fn().mockResolvedValue({
+                            enrichedSymbols: [],
+                            generatedAt: Date.now(),
+                            timeoutCount: 0,
+                        }),
+                    } as any,
+                    findingValidator: {
+                        validate: vi.fn().mockResolvedValue({
+                            validated: [],
+                            dropped: 0,
+                            downgraded: 0,
+                            kept: 0,
+                        }),
+                    } as any,
                 });
 
                 const result = await capturedHandler(
@@ -1117,6 +1404,21 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     copilotModelManager: createMockCopilotModelManager() as any,
+                    diffEnricher: {
+                        enrich: vi.fn().mockResolvedValue({
+                            enrichedSymbols: [],
+                            generatedAt: Date.now(),
+                            timeoutCount: 0,
+                        }),
+                    } as any,
+                    findingValidator: {
+                        validate: vi.fn().mockResolvedValue({
+                            validated: [],
+                            dropped: 0,
+                            downgraded: 0,
+                            kept: 0,
+                        }),
+                    } as any,
                 });
 
                 const result = await capturedHandler(
@@ -1168,6 +1470,21 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     copilotModelManager: createMockCopilotModelManager() as any,
+                    diffEnricher: {
+                        enrich: vi.fn().mockResolvedValue({
+                            enrichedSymbols: [],
+                            generatedAt: Date.now(),
+                            timeoutCount: 0,
+                        }),
+                    } as any,
+                    findingValidator: {
+                        validate: vi.fn().mockResolvedValue({
+                            validated: [],
+                            dropped: 0,
+                            downgraded: 0,
+                            kept: 0,
+                        }),
+                    } as any,
                 });
 
                 await capturedHandler(
@@ -1210,6 +1527,21 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     copilotModelManager: createMockCopilotModelManager() as any,
+                    diffEnricher: {
+                        enrich: vi.fn().mockResolvedValue({
+                            enrichedSymbols: [],
+                            generatedAt: Date.now(),
+                            timeoutCount: 0,
+                        }),
+                    } as any,
+                    findingValidator: {
+                        validate: vi.fn().mockResolvedValue({
+                            validated: [],
+                            dropped: 0,
+                            downgraded: 0,
+                            kept: 0,
+                        }),
+                    } as any,
                 });
 
                 const result = await capturedHandler(
@@ -1254,6 +1586,21 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     copilotModelManager: createMockCopilotModelManager() as any,
+                    diffEnricher: {
+                        enrich: vi.fn().mockResolvedValue({
+                            enrichedSymbols: [],
+                            generatedAt: Date.now(),
+                            timeoutCount: 0,
+                        }),
+                    } as any,
+                    findingValidator: {
+                        validate: vi.fn().mockResolvedValue({
+                            validated: [],
+                            dropped: 0,
+                            downgraded: 0,
+                            kept: 0,
+                        }),
+                    } as any,
                 });
 
                 const result = await capturedHandler(
@@ -1299,6 +1646,21 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     copilotModelManager: createMockCopilotModelManager() as any,
+                    diffEnricher: {
+                        enrich: vi.fn().mockResolvedValue({
+                            enrichedSymbols: [],
+                            generatedAt: Date.now(),
+                            timeoutCount: 0,
+                        }),
+                    } as any,
+                    findingValidator: {
+                        validate: vi.fn().mockResolvedValue({
+                            validated: [],
+                            dropped: 0,
+                            downgraded: 0,
+                            kept: 0,
+                        }),
+                    } as any,
                 });
 
                 const result = await capturedHandler(
@@ -1345,6 +1707,21 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     copilotModelManager: createMockCopilotModelManager() as any,
+                    diffEnricher: {
+                        enrich: vi.fn().mockResolvedValue({
+                            enrichedSymbols: [],
+                            generatedAt: Date.now(),
+                            timeoutCount: 0,
+                        }),
+                    } as any,
+                    findingValidator: {
+                        validate: vi.fn().mockResolvedValue({
+                            validated: [],
+                            dropped: 0,
+                            downgraded: 0,
+                            kept: 0,
+                        }),
+                    } as any,
                 });
 
                 const branchMockStream = {
@@ -1403,7 +1780,7 @@ describe('ChatParticipantService', () => {
                 getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(120),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
@@ -1448,6 +1825,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -1488,6 +1880,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -1522,6 +1929,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(
@@ -1576,6 +1998,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -1613,6 +2050,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -1651,6 +2103,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -1691,6 +2158,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -1728,6 +2210,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const result = await capturedHandler(
@@ -1760,6 +2257,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(
@@ -1793,6 +2305,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             // Create mock history with proper structure
@@ -1854,6 +2381,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const mockHistory = [
@@ -1903,6 +2445,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             const mockHistory = [
@@ -1942,6 +2499,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             // Create a model that throws on countTokens
@@ -2020,6 +2592,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(
@@ -2065,6 +2652,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: createMockCopilotModelManager() as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(
@@ -2112,7 +2714,7 @@ describe('ChatParticipantService', () => {
                 getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(120),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(5),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
@@ -2176,6 +2778,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: mockCopilotModelManager,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(
@@ -2227,6 +2844,21 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 copilotModelManager: mockCopilotModelManager,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
             });
 
             await capturedHandler(

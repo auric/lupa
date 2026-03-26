@@ -79,18 +79,6 @@ Call this tool multiple times: first to create the plan, then to update with fin
                 '\n⚠️ Plan is missing checklist items. Use - [ ] to create trackable items.';
         }
 
-        return toolSuccess(`${statusMessage}${feedback}
-
-## Current Plan
-
-${plan}
-
----
-
-**Next Steps:**
-- For pending concern groups: spawn \`run_subagent\` to investigate each group
-- For unchecked items: investigate directly or delegate via \`run_subagent\`
-- After sub-agents complete, call \`update_plan\` with findings and coverage status
-- When all areas are covered, call \`think_about_completion\` before \`submit_review\``);
+        return toolSuccess(`${statusMessage}${feedback}`);
     }
 }

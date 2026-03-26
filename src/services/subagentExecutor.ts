@@ -21,9 +21,14 @@ import type { ChatToolCallHandler } from '../types/chatTypes';
 import type { ITool } from '../tools/ITool';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
+import type { FindingStore } from '../sessions/findingStore';
 import type { ExecutionContext } from '../types/executionContext';
 import type { DiffHunk } from '../types/contextTypes';
 import type { SubagentSessionManager } from './subagentSessionManager';
+import {
+    type ModelCalibrationProfile,
+    DEFAULT_PROFILE,
+} from '../models/modelCalibration';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -45,6 +50,14 @@ export interface SubagentExecuteOptions {
     subagentSessionManager?: SubagentSessionManager;
     /** Allocated iteration budget for this child (used as maxIterations). */
     childBudget?: number;
+    /** Shared finding store for the analysis — enables subagents to record findings. */
+    findingStore?: FindingStore;
+    /** Model calibration profile inherited from parent — adjusts prompt behavior. */
+    calibrationProfile: ModelCalibrationProfile;
+    /** Additional tools to exclude from this subagent (beyond standard filters). */
+    excludeTools?: readonly string[];
+    /** Parent's investigated files set — shared so child file tracking propagates back. */
+    investigatedFiles?: Set<string>;
 }
 
 /**
@@ -89,10 +102,12 @@ export class SubagentExecutor {
         }
 
         // When recursive state is available, show aggregate agent progress
+        // Skip when all agents are done (e.g., during post-analysis adversarial phase)
+        // to avoid overwriting adversarial progress with stale "Agents: N/N done"
         if (this.recursiveState) {
             const { running, completed, total } =
                 this.recursiveState.getAgentProgress();
-            if (total > 0) {
+            if (total > 0 && (running > 0 || completed < total)) {
                 const mainIter = this.progressContext?.getCurrentIteration();
                 const mainMax = this.progressContext?.getMaxIterations();
                 const turnPrefix =
@@ -137,7 +152,7 @@ export class SubagentExecutor {
         const maxDepth = this.workspaceSettings.getMaxRecursionDepth();
         // Only allow recursion when depth permits, a session manager is available,
         // AND recursive state is tracking the agent tree (legacy mode has no
-        // recursiveState, so subagents should not get run_subagent).
+        // recursiveState, so subagents should not get run_subagent_batch).
         const canRecurse =
             depth < maxDepth &&
             !!options?.subagentSessionManager &&
@@ -159,7 +174,18 @@ export class SubagentExecutor {
             this.reportProgress(`Sub-analysis: ${taskLabel}`, 0.5);
 
             const conversation = new ConversationManager();
-            let filteredTools = this.filterTools(canRecurse);
+            let filteredTools = this.filterTools(
+                canRecurse,
+                options?.calibrationProfile
+            );
+
+            // Apply additional tool exclusions (e.g., adversarial agents shouldn't have record_finding)
+            if (options?.excludeTools?.length) {
+                const excludeSet = new Set(options.excludeTools);
+                filteredTools = filteredTools.filter(
+                    (t) => !excludeSet.has(t.name)
+                );
+            }
 
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
 
@@ -184,6 +210,11 @@ export class SubagentExecutor {
                 currentDepth: depth,
                 currentAgentId: options?.agentId,
                 parsedDiff: options?.parsedDiff,
+                findingStore: options?.findingStore,
+                calibrationProfile:
+                    options?.calibrationProfile ?? DEFAULT_PROFILE,
+                toolCallCounts: new Map(),
+                investigatedFiles: options?.investigatedFiles,
             };
 
             const toolExecutor = new ToolExecutor(
@@ -191,6 +222,7 @@ export class SubagentExecutor {
                 childContext,
                 maxIterations * ANALYSIS_LIMITS.toolCallMultiplier
             );
+            childContext.toolExecutor = toolExecutor;
             const conversationRunner = new ConversationRunner(
                 this.llmClient,
                 toolExecutor
@@ -200,7 +232,8 @@ export class SubagentExecutor {
                 task,
                 filteredTools,
                 maxIterations,
-                canRecurse
+                canRecurse,
+                childContext.calibrationProfile
             );
 
             conversation.addUserMessage(`Please investigate: ${task.task}`);
@@ -225,14 +258,16 @@ export class SubagentExecutor {
                   )
                 : undefined;
 
-            // Track whether we've already nudged the subagent for shallow investigation.
-            // Fire at most once to avoid infinite loops if the model repeatedly ignores the nudge.
+            // Track nudge state. Each nudge type fires at most once to avoid infinite loops.
             let shallowInvestigationNudged = false;
+            let evidenceDepthNudged = false;
             const ORIENTATION_ONLY_TOOLS = new Set([
                 'get_file_diff',
                 'list_directory',
-                'think_about_investigation',
+                'think',
             ]);
+            const protocol =
+                childContext.calibrationProfile.investigationProtocol;
 
             // Run the conversation loop with labeled logging and progress reporting
             const response = await conversationRunner.run(
@@ -246,30 +281,49 @@ export class SubagentExecutor {
                         iteration,
                         maxIter
                     ) => {
-                        // Only nudge once, and only if there's budget remaining
-                        if (
-                            shallowInvestigationNudged ||
-                            iteration >= maxIter - 1
-                        ) {
+                        // No nudges on the last iteration — let the model finish
+                        if (iteration >= maxIter - 1) {
                             return undefined;
                         }
-                        // If the subagent only called orientation tools (or no tools),
-                        // nudge it to investigate deeper
-                        const hasInvestigationTools = [...toolNamesCalled].some(
-                            (name) => !ORIENTATION_ONLY_TOOLS.has(name)
-                        );
-                        if (
-                            toolNamesCalled.size > 0 &&
-                            !hasInvestigationTools
-                        ) {
-                            shallowInvestigationNudged = true;
-                            return (
-                                'You only read the diff without investigating the actual codebase. ' +
-                                'Reading diffs is orientation, not investigation. You MUST use tools like ' +
-                                '`find_symbol` (with include_body: true), `find_usages`, or `search_for_pattern` ' +
-                                'to gather evidence before writing findings. Continue investigating.'
-                            );
+
+                        // Nudge 1: Shallow investigation (orientation-only tools)
+                        if (!shallowInvestigationNudged) {
+                            const hasInvestigationTools = [
+                                ...toolNamesCalled,
+                            ].some((name) => !ORIENTATION_ONLY_TOOLS.has(name));
+                            if (
+                                toolNamesCalled.size > 0 &&
+                                !hasInvestigationTools
+                            ) {
+                                shallowInvestigationNudged = true;
+                                return (
+                                    'You only read the diff without investigating the actual codebase. ' +
+                                    'Reading diffs is orientation, not investigation. You MUST use tools like ' +
+                                    '`find_symbol` (with include_body: true), `find_usages`, or `search_for_pattern` ' +
+                                    'to gather evidence before writing findings. Continue investigating.'
+                                );
+                            }
                         }
+
+                        // Nudge 2: Evidence depth — required tools from investigation protocol
+                        if (
+                            !evidenceDepthNudged &&
+                            protocol.requiredToolsBeforeDone.length > 0
+                        ) {
+                            const missingTools =
+                                protocol.requiredToolsBeforeDone.filter(
+                                    (tool) => !toolNamesCalled.has(tool)
+                                );
+                            if (missingTools.length > 0) {
+                                evidenceDepthNudged = true;
+                                return (
+                                    `You have not yet used these required investigation tools: ${missingTools.map((t) => '`' + t + '`').join(', ')}. ` +
+                                    'Your investigation protocol requires using these tools before concluding. ' +
+                                    'Continue investigating — use the missing tools to gather evidence.'
+                                );
+                            }
+                        }
+
                         return undefined;
                     },
                 },
@@ -319,6 +373,19 @@ export class SubagentExecutor {
                         }
 
                         if (currentIteration >= 3) {
+                            // Periodic prosecution reminder for dismissive models
+                            // GPT-4.1 suffers instruction amnesia after long tool sequences
+                            const calibration = childContext.calibrationProfile;
+                            if (
+                                calibration.findingBias === 'dismissive' &&
+                                currentIteration % 3 === 0
+                            ) {
+                                return (
+                                    `\n\n[Iteration ${currentIteration}/${maxIterations}] ` +
+                                    'REMINDER: You are a bug hunter. If all your hypotheses were dismissed without recording any findings, ' +
+                                    'you may be too agreeable. Re-examine your evidence — when tool output is ambiguous, investigate further rather than clearing the hypothesis.'
+                                );
+                            }
                             return `\n\n[Iteration ${currentIteration}/${maxIterations}]`;
                         }
 
@@ -482,16 +549,25 @@ export class SubagentExecutor {
     /**
      * Filter tools based on recursion capability.
      * When canRecurse is true, only exclude root-only tools (plan, review, reflection).
-     * When canRecurse is false, exclude everything including run_subagent (current flat behavior).
+     * When canRecurse is false, exclude everything including run_subagent_batch (current flat behavior).
      */
-    private filterTools(canRecurse: boolean): ITool[] {
+    private filterTools(
+        canRecurse: boolean,
+        calibrationProfile?: ModelCalibrationProfile
+    ): ITool[] {
         const disallowed: readonly string[] = canRecurse
             ? RECURSIVE_CHILD_DISALLOWED_TOOLS
             : SubagentLimits.DISALLOWED_TOOLS;
 
+        const modelDisabled = new Set(calibrationProfile?.disabledTools ?? []);
+
         return this.toolRegistry
             .getAllTools()
-            .filter((tool) => !disallowed.includes(tool.name));
+            .filter(
+                (tool) =>
+                    !disallowed.includes(tool.name) &&
+                    !modelDisabled.has(tool.name)
+            );
     }
 
     /**

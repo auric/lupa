@@ -3,12 +3,13 @@ import { LOG_LEVELS } from './loggingTypes';
 
 /**
  * Hardcoded analysis limits — not user-configurable.
- * These are set to generous values that work well for all cases.
+ * Tuned for parallel subagent architecture: fewer root iterations
+ * (orchestration only) with higher subagent parallelism.
  */
 export const ANALYSIS_LIMITS = {
-    maxIterations: 600,
-    requestTimeoutSeconds: 300,
-    maxSubagentsPerSession: 75,
+    maxIterations: 100,
+    requestTimeoutSeconds: 240,
+    maxSubagentsPerSession: 200,
     /**
      * Maximum concurrent LLM requests across all agents.
      * Prevents API rate limiting when many subagents run in parallel.

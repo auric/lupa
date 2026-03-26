@@ -9,11 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Parallel Batch Subagent Execution
+
+- **`run_subagent_batch` replaces `run_subagent`**: New tool accepts an array of investigation tasks and runs all subagents simultaneously. This eliminates sequential tool-calling overhead for models like Raptor Mini and GPT-5 mini that previously called `run_subagent` one at a time.
+- Removed per-model `usesBatchSubagent` toggle — all models now use the unified batch executor.
+
 #### Recursive Language Model (RLM) Analysis
 
 - **New diff-on-demand architecture**: The LLM receives `<diff_metadata>` (file list with change stats) and fetches specific file diffs via the `get_file_diff` tool instead of receiving the full diff in the prompt. This prevents context window overflow on large PRs and lets the LLM prioritize which files to examine.
 - **Recursive review mode**: Large PRs are automatically decomposed into concern groups, with sub-agents analyzing each group independently. The root agent aggregates all findings into a unified review. Controlled by `maxRecursionDepth` setting (default: 2).
 - **Sub-agents can read PR diffs**: Sub-agents request diffs via the `get_file_diff` tool for files assigned by the root agent, enabling deep investigation of specific files without context limitations.
+
+#### Quality Architecture
+
+- **Quality tool framework**: 6 specialized quality tools that enforce structured reasoning during analysis:
+    - `think` — Unified thinking tool for structured analysis after every context read (4 fields: topic, analysis, identified_risks, next_action). Replaces 4 separate thinking tools.
+    - `record_finding` — Immediately records confirmed findings with severity, location, description, and attempted disproof.
+    - `retract_finding` — Removes previously recorded findings when disproved during investigation.
+    - `validate_claim` — LSP-based ground truth verification (checks type assertions, function signatures, inheritance hierarchies via language server).
+    - `think_about_completion` — Pre-submission checkpoint that validates coverage before allowing `submit_review`.
+    - `submit_review` — Explicit completion signal that terminates the analysis loop (replaces implicit stop-on-no-tool-calls).
+- **Review plan tracking**: `update_plan` tool lets the LLM create and maintain a review plan as a structured markdown document throughout analysis.
+- **Finding store**: Per-analysis `FindingStore` tracks all recorded/retracted findings, enabling the LLM to self-correct during investigation.
 
 ### Fixed
 
@@ -43,13 +60,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bounded definition provider calls**: `findSymbolPosition` now caps definition provider invocations at 10 per symbol, preventing accumulated latency on common identifiers. Falls back to first textual occurrence when the cap is reached.
 - **`get_file_diff` path hardening**: Added `path.posix.normalize` for LLM-provided paths and rejection of `..` path traversal segments.
 
+#### Quality Architecture
+
+- **Deleted files no longer cause warnings**: Diff parser now detects `deleted file mode` metadata, preventing symbol extraction attempts on files that don't exist.
+- **Flaky max-iterations test fixed**: Test reduced from 600 async iterations to 5 with explicit mock override and safety timeout.
+- **Dead code removed**: Removed unused `EvidenceLedger` class and `evidenceTypes.ts` (superseded by `FindingStore` approach).
+
 ### Changed
 
+- **Model recommendations updated**: Raptor Mini and GPT-5 mini now provide excellent analysis quality with parallel batch execution.
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2. Set to 0 in `.vscode/lupa.json` to use flat single-agent analysis.
 - **Tool response limit tripled** (20K → 60K chars) and **file read limit doubled** (200 → 400 lines) for better context gathering.
-- **Removed `maxTotalAgents` setting**: `maxSubagentsPerSession` (hardcoded to 75) is the single spawn cap for both flat and recursive modes.
+- **Removed `maxTotalAgents` setting**: `maxSubagentsPerSession` (hardcoded to 200) is the single spawn cap for both flat and recursive modes.
 - **`generateToolCallingUserPrompt` renamed to `generateUserPrompt`**: The method now accepts `recursiveMode` and `maxSubagents` parameters for recursive prompt generation.
 - **Updated documentation**: Architecture docs, component inventory, and project overview updated for RLM architecture.
+
+#### Quality Architecture
+
+- **Tool simplification (10→5 quality tools, 57→22 fields)**: Consolidated 4 separate think tools (`think_about_context`, `think_about_task`, `think_about_investigation`, `think_about_code_change`) into a single unified `think` tool. Consolidated finding-related tools. Reduced total schema fields from 57 to 22, significantly improving GPT-4.1 tool adoption.
+- **Mandatory tool adoption prompts**: Quality tools now use "⚠️ MANDATORY" language with explicit tool call sequences (state machine: `get_file_diff → MUST call think → then investigate`), improving GPT-4.1 compliance from near-zero to consistent usage.
 
 ## [0.1.12] - 2026-02-21
 

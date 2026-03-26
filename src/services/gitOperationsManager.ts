@@ -98,6 +98,23 @@ export class GitOperationsManager implements vscode.Disposable {
     }
 
     /**
+     * Get the default (base) branch name
+     */
+    public async getDefaultBranch(): Promise<string | undefined> {
+        return this.gitService.getDefaultBranch();
+    }
+
+    /**
+     * Get commit log between the default branch and the current branch
+     */
+    public async getCommitLog(
+        baseBranch: string | undefined,
+        maxCount?: number
+    ): Promise<string> {
+        return this.gitService.getCommitLog(baseBranch, maxCount);
+    }
+
+    /**
      * Dispose resources
      */
     public dispose(): void {

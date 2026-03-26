@@ -116,6 +116,9 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             case 'submit_review':
                 return '🚀 Submitted code review';
 
+            case 'get_pr_context':
+                return `${ACTIVITY.reading} Fetching PR context...`;
+
             case 'get_file_diff': {
                 const raw = args.file_paths;
                 let paths: unknown[];
@@ -136,20 +139,31 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             }
 
             // Long-running actions - present continuous
-            case 'run_subagent':
+            case 'run_subagent_batch':
                 return '🤖 Running subagent investigation...';
 
-            case 'think_about_context':
-                return '🧠 Analyzing context...';
+            case 'batch_tools': {
+                const callCount = Array.isArray(args.calls)
+                    ? args.calls.length
+                    : '?';
+                return `⚡ Running ${callCount} tools in parallel...`;
+            }
 
-            case 'think_about_investigation':
-                return '🧠 Reviewing investigation progress...';
-
-            case 'think_about_task':
-                return '🧠 Verifying task alignment...';
+            case 'think':
+                return `🧠 Thinking about \`${sanitizeForMarkdown(args.topic, 'analysis')}\`...`;
 
             case 'think_about_completion':
                 return '🧠 Verifying analysis completeness...';
+
+            // Quality architecture tools
+            case 'record_finding':
+                return `📋 Recorded finding: ${sanitizeForMarkdown(args.title, 'issue')}`;
+
+            case 'retract_finding':
+                return `↩️ Retracted finding \`${sanitizeForMarkdown(args.finding_id, 'finding')}\``;
+
+            case 'validate_claim':
+                return `✅ Validating claim about \`${sanitizeForMarkdown(args.symbol, 'symbol')}\`...`;
 
             default:
                 return `🔧 Ran \`${sanitizeForMarkdown(toolName, 'tool')}\``;

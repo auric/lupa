@@ -10,6 +10,13 @@ import { Log } from '../services/loggingService';
 import { isCancellationError, isTimeoutError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 
+const FILE_TRACKING_TOOLS = new Set([
+    'read_file',
+    'find_symbol',
+    'find_usages',
+    'validate_claim',
+]);
+
 /**
  * Interface for tool execution requests
  */
@@ -42,6 +49,7 @@ export interface ToolExecutionResult {
  */
 export class ToolExecutor {
     private toolCallCount = 0;
+    private toolCallCountsByName = new Map<string, number>();
 
     /**
      * @param toolRegistry Registry containing available tools
@@ -63,6 +71,7 @@ export class ToolExecutor {
                 'ToolExecutor requires ExecutionContext with a valid cancellationToken'
             );
         }
+        this.executionContext.toolCallCounts = this.toolCallCountsByName;
     }
 
     /**
@@ -106,6 +115,10 @@ export class ToolExecutor {
         // not just successful executions. A model making many invalid calls is broken
         // and should be stopped. Like password lockout, we count all attempts.
         this.toolCallCount++;
+        this.toolCallCountsByName.set(
+            name,
+            (this.toolCallCountsByName.get(name) ?? 0) + 1
+        );
 
         Log.debug(`Tool '${name}' starting (call #${this.toolCallCount})`);
 
@@ -137,9 +150,15 @@ export class ToolExecutor {
                 };
             }
 
+            // Normalize args before validation (handles model-specific quirks like GPT-4.1
+            // putting run_subagent_batch task content in the context field)
+            const normalizedArgs = tool.normalizeArgs
+                ? tool.normalizeArgs(args)
+                : args;
+
             // Validate args with Zod schema before execution
             // VS Code's LM API should validate via JSON Schema, but some models bypass it
-            const parseResult = tool.schema.safeParse(args);
+            const parseResult = tool.schema.safeParse(normalizedArgs);
             if (!parseResult.success) {
                 const zodError = parseResult.error;
                 const errorDetails = zodError.issues
@@ -148,8 +167,9 @@ export class ToolExecutor {
                             `${issue.path.map(String).join('.')}: ${issue.message}`
                     )
                     .join(', ');
+                const argsChanged = normalizedArgs !== args;
                 Log.warn(
-                    `Tool '${name}' ✗ schema validation failed: ${errorDetails} | args: ${this.formatArgsForLog(args)}`
+                    `Tool '${name}' ✗ schema validation failed: ${errorDetails} | args: ${this.formatArgsForLog(args)}${argsChanged ? ` | normalized: ${this.formatArgsForLog(normalizedArgs)}` : ''}`
                 );
                 return {
                     name,
@@ -167,9 +187,13 @@ export class ToolExecutor {
 
             // Validate response size only for successful results with data
             if (toolResult.success && toolResult.data) {
+                const maxChars =
+                    tool.maxResponseChars ??
+                    TokenConstants.MAX_TOOL_RESPONSE_CHARS;
                 const validationResult = this.validateResponseSize(
                     toolResult.data,
-                    name
+                    name,
+                    maxChars
                 );
                 if (!validationResult.isValid) {
                     Log.warn(
@@ -192,6 +216,28 @@ export class ToolExecutor {
                 Log.info(
                     `Tool '${name}' ✗ ${toolResult.error ?? 'unknown error'} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
                 );
+            }
+
+            // Track files investigated via deep investigation tools.
+            // This excludes get_file_diff (which only shows changed hunks) to ensure
+            // the model has read the actual file content before recording findings.
+            if (
+                toolResult.success &&
+                this.executionContext.investigatedFiles &&
+                FILE_TRACKING_TOOLS.has(name)
+            ) {
+                const parsed = validatedArgs as Record<string, unknown>;
+                const filePath =
+                    parsed.file_path ?? parsed.file ?? parsed.relative_path;
+                if (
+                    filePath &&
+                    typeof filePath === 'string' &&
+                    filePath !== '.'
+                ) {
+                    this.executionContext.investigatedFiles.add(
+                        filePath.replace(/\\/g, '/')
+                    );
+                }
             }
 
             return {
@@ -302,6 +348,10 @@ export class ToolExecutor {
         return this.toolRegistry.getAllTools();
     }
 
+    getToolCallCountByName(name: string): number {
+        return this.toolCallCountsByName.get(name) ?? 0;
+    }
+
     /**
      * Check if a tool is available for execution.
      * @param name The name of the tool to check
@@ -335,14 +385,15 @@ export class ToolExecutor {
      */
     private validateResponseSize(
         result: string,
-        toolName: string
+        toolName: string,
+        maxChars: number
     ): { isValid: boolean; errorMessage?: string } {
         try {
             // Check if result exceeds maximum allowed size
-            if (result.length > TokenConstants.MAX_TOOL_RESPONSE_CHARS) {
+            if (result.length > maxChars) {
                 return {
                     isValid: false,
-                    errorMessage: `${TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE} Tool '${toolName}' returned ${result.length} characters, maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS}.`,
+                    errorMessage: `${TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE} Tool '${toolName}' returned ${result.length} characters, maximum allowed: ${maxChars}.`,
                 };
             }
 

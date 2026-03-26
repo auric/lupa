@@ -46,6 +46,14 @@ export class DiffUtils {
                 continue;
             }
 
+            // Detect file mode metadata before skipping
+            if (currentFile && line.startsWith('deleted file mode')) {
+                currentFile.isDeletedFile = true;
+            }
+            if (currentFile && line.startsWith('new file mode')) {
+                currentFile.isNewFile = true;
+            }
+
             // Skip file metadata lines (---, +++, index, etc.)
             if (
                 line.startsWith('---') ||
@@ -205,8 +213,11 @@ export class DiffUtils {
      * @returns True if the diff only contains additions
      */
     static isNewFile(fileDiff: DiffHunk): boolean {
-        return fileDiff.hunks.every(
-            (hunk) => hunk.oldStart === 0 && hunk.oldLines === 0
+        return (
+            fileDiff.hunks.length > 0 &&
+            fileDiff.hunks.every(
+                (hunk) => hunk.oldStart === 0 && hunk.oldLines === 0
+            )
         );
     }
 
@@ -216,8 +227,11 @@ export class DiffUtils {
      * @returns True if the diff only contains deletions
      */
     static isDeletedFile(fileDiff: DiffHunk): boolean {
-        return fileDiff.hunks.every(
-            (hunk) => hunk.newStart === 0 && hunk.newLines === 0
+        return (
+            fileDiff.hunks.length > 0 &&
+            fileDiff.hunks.every(
+                (hunk) => hunk.newStart === 0 && hunk.newLines === 0
+            )
         );
     }
 

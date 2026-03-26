@@ -6,7 +6,10 @@ import { GitOperationsManager } from './gitOperationsManager';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
-import { ConversationRunner } from '../models/conversationRunner';
+import {
+    ConversationRunner,
+    type ToolCallHandler,
+} from '../models/conversationRunner';
 import { ConversationManager } from '../models/conversationManager';
 import { ChatLLMClient } from '../models/chatLLMClient';
 import type { ILLMClient } from '../models/ILLMClient';
@@ -24,7 +27,11 @@ import {
     INVESTIGATION_TOOLS,
 } from '../models/toolConstants';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
-
+import { FindingStore } from '../sessions/findingStore';
+import type { DiffEnricher } from './diffEnricher';
+import type { FindingValidator } from './findingValidator';
+import { PostAnalysisPipeline } from './postAnalysisPipeline';
+import { TokenValidator } from '../models/tokenValidator';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
@@ -37,7 +44,10 @@ import type {
     ChatAnalysisMetadata,
 } from '../types/chatTypes';
 import type { DiffHunk } from '../types/contextTypes';
+import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { ExecutionContext } from '../types/executionContext';
+import { getCalibrationProfile } from '../models/modelCalibration';
+
 import { createFollowupProvider } from './chatFollowupProvider';
 
 /**
@@ -50,6 +60,8 @@ export interface ChatParticipantDependencies {
     promptGenerator: PromptGenerator;
     gitOperations: GitOperationsManager;
     copilotModelManager: CopilotModelManager;
+    diffEnricher: DiffEnricher;
+    findingValidator: FindingValidator;
 }
 
 /**
@@ -272,11 +284,22 @@ export class ChatParticipantService implements vscode.Disposable {
                 this.createSubagentContext(token, client, debouncedHandler);
 
             // Create per-request ToolExecutor with subagent context
-            const toolExecutor = new ToolExecutor(this.deps.toolRegistry, {
+            const explorationProfile = getCalibrationProfile(
+                request.model.family,
+                request.model.id
+            );
+            const explorationContext: ExecutionContext = {
                 subagentSessionManager,
                 subagentExecutor,
                 cancellationToken: token,
-            });
+                calibrationProfile: explorationProfile,
+                toolCallCounts: new Map(),
+            };
+            const toolExecutor = new ToolExecutor(
+                this.deps.toolRegistry,
+                explorationContext
+            );
+            explorationContext.toolExecutor = toolExecutor;
 
             const runner = new ConversationRunner(client, toolExecutor);
             const conversation = new ConversationManager();
@@ -517,6 +540,16 @@ export class ChatParticipantService implements vscode.Disposable {
         const timeoutMs =
             this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
         const client = new ChatLLMClient(request.model, timeoutMs);
+
+        // Resolve model-specific calibration profile from model family/id
+        const calibrationProfile = getCalibrationProfile(
+            request.model.family,
+            request.model.id
+        );
+        Log.info(
+            `[ChatParticipantService]: Model calibration: '${calibrationProfile.name}' profile (bias: ${calibrationProfile.findingBias})`
+        );
+
         const { subagentSessionManager, subagentExecutor } =
             this.createSubagentContext(token, client, debouncedHandler);
 
@@ -540,9 +573,12 @@ export class ChatParticipantService implements vscode.Disposable {
             subagentExecutor.setRecursiveState(recursiveState);
         }
 
+        const findingStore = new FindingStore();
+        const toolCallRecords: ToolCallRecord[] = [];
+
         // Create execution context as a mutable reference so parsedDiff can be
         // set after diff processing (RLM approach needs it on the context for tools)
-        const executionContext: ExecutionContext = {
+        const executionContext = {
             planManager,
             subagentSessionManager,
             subagentExecutor,
@@ -550,12 +586,17 @@ export class ChatParticipantService implements vscode.Disposable {
             recursiveState,
             currentDepth: 0,
             currentAgentId: 'root',
-        };
+            findingStore,
+            calibrationProfile,
+            toolCallCounts: new Map<string, number>(),
+            investigatedFiles: new Set<string>(),
+        } as ExecutionContext;
 
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
             executionContext
         );
+        executionContext.toolExecutor = toolExecutor;
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
         stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);
@@ -563,21 +604,143 @@ export class ChatParticipantService implements vscode.Disposable {
         const runner = new ConversationRunner(client, toolExecutor);
         const conversation = new ConversationManager();
         const availableTools = toolExecutor.getAvailableTools();
+
+        // Composite handler: stream to chat UI AND record tool calls for evidence audit
+        let currentIteration = 0;
+        const tokenValidator = new TokenValidator(request.model);
+        const recordingHandler: ToolCallHandler = {
+            onToolCallStart: adapter.onToolCallStart?.bind(adapter),
+            onToolCallComplete: (
+                toolCallId,
+                toolName,
+                args,
+                result,
+                success,
+                error,
+                durationMs,
+                metadata
+            ) => {
+                adapter.onToolCallComplete?.(
+                    toolCallId,
+                    toolName,
+                    args,
+                    result,
+                    success,
+                    error,
+                    durationMs,
+                    metadata
+                );
+                toolCallRecords.push({
+                    id: toolCallId,
+                    toolName,
+                    arguments: args,
+                    result,
+                    success,
+                    error,
+                    durationMs: durationMs ?? 0,
+                    timestamp: Date.now(),
+                    nestedCalls: metadata?.nestedToolCalls,
+                    executionTimeMs: metadata?.executionTimeMs,
+                    iterationsUsed: metadata?.iterationsUsed,
+                });
+            },
+            onIterationStart: (current, max) => {
+                currentIteration = current;
+                adapter.onIterationStart?.(current, max);
+            },
+            getContextStatusSuffix: async () => {
+                try {
+                    const messages = conversation.getHistory().map((msg) => ({
+                        role: msg.role,
+                        content: msg.content,
+                        toolCalls: msg.toolCalls,
+                        toolCallId: msg.toolCallId,
+                    }));
+
+                    const validation = await tokenValidator.validateTokens(
+                        messages,
+                        systemPrompt
+                    );
+                    const usagePercent = Math.min(
+                        100,
+                        Math.round(
+                            (validation.totalTokens / validation.maxTokens) *
+                                100
+                        )
+                    );
+                    const remainingK = Math.max(
+                        0,
+                        Math.round(
+                            (validation.maxTokens - validation.totalTokens) /
+                                1000
+                        )
+                    );
+
+                    let suffix = '';
+                    if (usagePercent >= 90) {
+                        suffix = `\n\n⚠️ [ctx: ${usagePercent}% | ${remainingK}k remaining — wrap up NOW]`;
+                    } else if (usagePercent >= 70) {
+                        suffix = `\n\n[ctx: ${usagePercent}% | ${remainingK}k remaining]`;
+                    }
+
+                    // Periodic FindingStore reminder for dismissive models at parent level.
+                    if (
+                        calibrationProfile.findingBias === 'dismissive' &&
+                        currentIteration > 0 &&
+                        currentIteration % 5 === 0 &&
+                        findingStore.size > 0
+                    ) {
+                        const findings = findingStore.getAll();
+                        const findingSummary = findings
+                            .map(
+                                (f) =>
+                                    `[${f.id}] ${f.severity}: ${f.title} (${f.file})`
+                            )
+                            .join('; ');
+                        suffix +=
+                            `\n\n📋 REMINDER: ${findingStore.size} finding(s) recorded so far: ${findingSummary}. ` +
+                            'These MUST appear in your final review or be explicitly retracted.';
+                    }
+
+                    return suffix;
+                } catch (error) {
+                    Log.error('Error calculating context status:', error);
+                    return '';
+                }
+            },
+        };
         const systemPrompt = isRecursiveMode
-            ? this.deps!.promptGenerator.generateRecursiveSystemPrompt()
-            : this.deps!.promptGenerator.generateToolAwareSystemPrompt();
+            ? this.deps!.promptGenerator.generateRecursiveSystemPrompt(
+                  calibrationProfile
+              )
+            : this.deps!.promptGenerator.generateToolAwareSystemPrompt(
+                  calibrationProfile
+              );
 
         if (gitRootUri && parsedDiff.length > 0) {
             const fileTree = buildFileTree(parsedDiff);
             stream.filetree(fileTree, gitRootUri);
         }
 
+        // Enrich changed symbols with LSP metadata for the Code Intelligence Brief
+        stream.progress(
+            `${ACTIVITY.analyzing} Building code intelligence brief...`
+        );
+        const codeIntelBrief = await this.deps!.diffEnricher.enrich(
+            parsedDiff,
+            token
+        );
+        Log.info(
+            `[ChatParticipantService]: Code intelligence brief: ${codeIntelBrief.enrichedSymbols.length} symbols, ${codeIntelBrief.timeoutCount} timeouts`
+        );
+
         executionContext.parsedDiff = parsedDiff;
         const userPrompt = this.deps!.promptGenerator.generateUserPrompt(
             parsedDiff,
             request.prompt || undefined,
             isRecursiveMode,
-            this.deps!.workspaceSettings.getMaxSubagentsPerSession()
+            this.deps!.workspaceSettings.getMaxSubagentsPerSession(),
+            codeIntelBrief
         );
         conversation.addUserMessage(userPrompt);
 
@@ -589,8 +752,13 @@ export class ChatParticipantService implements vscode.Disposable {
         // each iteration to filter the tool list.
         const disabledToolNames = new Set<string>();
 
+        // Apply model-specific tool filtering from calibration profile.
+        for (const tool of calibrationProfile.disabledTools) {
+            disabledToolNames.add(tool);
+        }
+
         try {
-            const analysisResult = await runner.run(
+            let analysisResult = await runner.run(
                 {
                     systemPrompt,
                     maxIterations:
@@ -608,7 +776,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 },
                 conversation,
                 token,
-                adapter
+                recordingHandler
             );
 
             debouncedHandler.flush();
@@ -618,6 +786,34 @@ export class ChatParticipantService implements vscode.Disposable {
             }
 
             analysisCompleted = true;
+
+            // Run full post-analysis pipeline (same as webview path)
+            const pipeline = new PostAnalysisPipeline(
+                this.deps!.findingValidator
+            );
+            const pipelineResult = await pipeline.run({
+                findingStore,
+                toolCallRecords,
+                executionContext,
+                parsedDiff,
+                calibrationProfile,
+                subagentExecutor,
+                conversationManager: conversation,
+                conversationRunner: runner,
+                systemPrompt,
+                availableTools,
+                disabledToolNames,
+                token,
+                handler: recordingHandler,
+                progressCallback: (msg) =>
+                    stream.progress(`${ACTIVITY.analyzing} ${msg}`),
+            });
+
+            if (pipelineResult.rewrittenAnalysis) {
+                analysisResult = pipelineResult.rewrittenAnalysis;
+            }
+
+            debouncedHandler.flush();
             streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
 
             const contentAnalysis = this.analyzeResultContent(analysisResult);
@@ -668,7 +864,7 @@ export class ChatParticipantService implements vscode.Disposable {
         const allFiles = parsedDiff.map((d) => d.filePath);
 
         return (toolNames: string[]) => {
-            if (!toolNames.includes('run_subagent')) {
+            if (!toolNames.includes('run_subagent_batch')) {
                 return undefined;
             }
 

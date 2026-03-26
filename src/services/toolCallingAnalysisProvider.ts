@@ -26,9 +26,13 @@ import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
-
+import { FindingStore } from '../sessions/findingStore';
+import type { DiffEnricher } from './diffEnricher';
+import type { FindingValidator } from './findingValidator';
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
+import { getCalibrationProfile } from '../models/modelCalibration';
+import { PostAnalysisPipeline } from './postAnalysisPipeline';
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -42,7 +46,9 @@ export class ToolCallingAnalysisProvider {
         private toolRegistry: ToolRegistry,
         private copilotModelManager: CopilotModelManager,
         private promptGenerator: PromptGenerator,
-        private workspaceSettings: WorkspaceSettingsService
+        private workspaceSettings: WorkspaceSettingsService,
+        private diffEnricher: DiffEnricher,
+        private findingValidator: FindingValidator
     ) {}
 
     private get maxIterations(): number {
@@ -101,6 +107,8 @@ export class ToolCallingAnalysisProvider {
             ? new RecursiveStateManager(maxRecursionDepth)
             : undefined;
 
+        const findingStore = new FindingStore();
+
         // Wire recursive state to SubagentExecutor for aggregate progress reporting
         if (recursiveState) {
             subagentExecutor.setRecursiveState(recursiveState);
@@ -116,9 +124,12 @@ export class ToolCallingAnalysisProvider {
             recursiveState.startAgent('root');
         }
 
-        // Create execution context as a mutable reference so parsedDiff can be
-        // set after diff processing
-        const executionContext: ExecutionContext = {
+        // Create execution context as a mutable reference so parsedDiff and
+        // calibrationProfile can be set after model resolution.
+        // Type assertion needed because calibrationProfile/toolCallCounts are
+        // populated later (calibrationProfile after model resolution,
+        // toolCallCounts by ToolExecutor constructor).
+        const executionContext = {
             planManager,
             subagentSessionManager,
             subagentExecutor,
@@ -126,12 +137,16 @@ export class ToolCallingAnalysisProvider {
             recursiveState,
             currentDepth: 0,
             currentAgentId: 'root',
-        };
+            findingStore,
+            toolCallCounts: new Map<string, number>(),
+            investigatedFiles: new Set<string>(),
+        } as ExecutionContext;
 
         const toolExecutor = new ToolExecutor(
             this.toolRegistry,
             executionContext
         );
+        executionContext.toolExecutor = toolExecutor;
         const conversationRunner = new ConversationRunner(
             this.copilotModelManager,
             toolExecutor
@@ -155,11 +170,40 @@ export class ToolCallingAnalysisProvider {
                 `Tools always enabled, ${parsedDiff.length} files via diff tools`
             );
 
+            // Enrich changed symbols with LSP metadata for the Code Intelligence Brief
+            progressCallback?.('Building code intelligence brief...', 0.5);
+            const codeIntelBrief = await this.diffEnricher.enrich(
+                parsedDiff,
+                token
+            );
+            Log.info(
+                `Code intelligence brief: ${codeIntelBrief.enrichedSymbols.length} symbols, ${codeIntelBrief.timeoutCount} timeouts`
+            );
+
+            // Resolve model and calibration profile before prompt generation
+            const model = await this.copilotModelManager.getCurrentModel();
+            Log.info(
+                `Using model: ${model.name} (${model.vendor}/${model.id}, ${model.maxInputTokens} tokens)`
+            );
+
+            const calibrationProfile = getCalibrationProfile(
+                model.family,
+                model.id
+            );
+            executionContext.calibrationProfile = calibrationProfile;
+            Log.info(
+                `Model calibration: using '${calibrationProfile.name}' profile (bias: ${calibrationProfile.findingBias})`
+            );
+
             // Get available tools and generate system prompt
             const availableTools = toolExecutor.getAvailableTools();
             const systemPrompt = isRecursiveMode
-                ? this.promptGenerator.generateRecursiveSystemPrompt()
-                : this.promptGenerator.generateToolAwareSystemPrompt();
+                ? this.promptGenerator.generateRecursiveSystemPrompt(
+                      calibrationProfile
+                  )
+                : this.promptGenerator.generateToolAwareSystemPrompt(
+                      calibrationProfile
+                  );
 
             // Generate user prompt
             executionContext.parsedDiff = parsedDiff;
@@ -167,17 +211,13 @@ export class ToolCallingAnalysisProvider {
                 parsedDiff,
                 undefined,
                 isRecursiveMode,
-                this.workspaceSettings.getMaxSubagentsPerSession()
+                this.workspaceSettings.getMaxSubagentsPerSession(),
+                codeIntelBrief
             );
 
             conversationManager.addUserMessage(userMessage);
             progressCallback?.('Starting conversation with AI model...', 0.5);
 
-            // Create token validator for this analysis
-            const model = await this.copilotModelManager.getCurrentModel();
-            Log.info(
-                `Using model: ${model.name} (${model.vendor}/${model.id}, ${model.maxInputTokens} tokens)`
-            );
             const tokenValidator = new TokenValidator(model);
 
             // Create context status function that captures local state
@@ -203,12 +243,35 @@ export class ToolCallingAnalysisProvider {
                         (validation.maxTokens - validation.totalTokens) / 1000
                     );
 
+                    let suffix = '';
                     if (usagePercent >= 90) {
-                        return `\n\n⚠️ [ctx: ${usagePercent}% | ${remainingK}k remaining — wrap up NOW]`;
+                        suffix = `\n\n⚠️ [ctx: ${usagePercent}% | ${remainingK}k remaining — wrap up NOW]`;
                     } else if (usagePercent >= 70) {
-                        return `\n\n[ctx: ${usagePercent}% | ${remainingK}k remaining]`;
+                        suffix = `\n\n[ctx: ${usagePercent}% | ${remainingK}k remaining]`;
                     }
-                    return '';
+
+                    // Periodic FindingStore reminder for dismissive models at parent level.
+                    // GPT-4.1 loses prosecution instructions after many subagent results;
+                    // re-inject a reminder of recorded findings every 5 iterations.
+                    if (
+                        calibrationProfile.findingBias === 'dismissive' &&
+                        currentIteration > 0 &&
+                        currentIteration % 5 === 0 &&
+                        findingStore.size > 0
+                    ) {
+                        const findings = findingStore.getAll();
+                        const findingSummary = findings
+                            .map(
+                                (f) =>
+                                    `[${f.id}] ${f.severity}: ${f.title} (${f.file})`
+                            )
+                            .join('; ');
+                        suffix +=
+                            `\n\n📋 REMINDER: ${findingStore.size} finding(s) recorded so far: ${findingSummary}. ` +
+                            'These MUST appear in your final review or be explicitly retracted.';
+                    }
+
+                    return suffix;
                 } catch (error) {
                     Log.error('Error calculating context status:', error);
                     return '';
@@ -258,6 +321,12 @@ export class ToolCallingAnalysisProvider {
             // each iteration to filter the tool list.
             const disabledToolNames = new Set<string>();
 
+            // Apply model-specific tool filtering from calibration profile.
+            // Research shows fewer tools = better selection accuracy for GPT-4.1.
+            for (const tool of calibrationProfile.disabledTools) {
+                disabledToolNames.add(tool);
+            }
+
             // Run conversation loop using extracted ConversationRunner
             analysisText = await conversationRunner.run(
                 {
@@ -281,6 +350,35 @@ export class ToolCallingAnalysisProvider {
             analysisCompleted = !conversationRunner.wasCancelled;
 
             if (analysisCompleted) {
+                const pipeline = new PostAnalysisPipeline(
+                    this.findingValidator
+                );
+                const pipelineResult = await pipeline.run({
+                    findingStore,
+                    toolCallRecords,
+                    executionContext,
+                    parsedDiff,
+                    calibrationProfile,
+                    subagentExecutor,
+                    conversationManager,
+                    conversationRunner,
+                    systemPrompt,
+                    availableTools: availableTools,
+                    disabledToolNames,
+                    token,
+                    handler,
+                    progressCallback: progressCallback
+                        ? (msg, inc) => progressCallback(msg, inc)
+                        : undefined,
+                });
+
+                toolCallRecords.push(
+                    ...pipelineResult.additionalToolCallRecords
+                );
+                if (pipelineResult.rewrittenAnalysis) {
+                    analysisText = pipelineResult.rewrittenAnalysis;
+                }
+
                 progressCallback?.(
                     `Analysis complete (${toolCallCount} tool calls)`,
                     2
@@ -335,7 +433,7 @@ export class ToolCallingAnalysisProvider {
         const allFiles = parsedDiff.map((d) => d.filePath);
 
         return (toolNames: string[]) => {
-            if (!toolNames.includes('run_subagent')) {
+            if (!toolNames.includes('run_subagent_batch')) {
                 return undefined;
             }
 

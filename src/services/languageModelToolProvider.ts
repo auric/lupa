@@ -4,6 +4,7 @@ import { Log } from './loggingService';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import type { ToolResult } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
+import { DEFAULT_PROFILE } from '../models/modelCalibration';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 
@@ -64,6 +65,8 @@ export class LanguageModelToolProvider implements vscode.Disposable {
         try {
             const executionContext: ExecutionContext = {
                 cancellationToken: token,
+                calibrationProfile: DEFAULT_PROFILE,
+                toolCallCounts: new Map(),
             };
             const result: ToolResult = await this.symbolsOverviewTool.execute(
                 input,

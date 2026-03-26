@@ -87,15 +87,15 @@ These components are created fresh for each analysis session, not managed by Ser
 
 ### Investigation Tools
 
-| Tool                     | File                        | Name                   | Description                         |
-| ------------------------ | --------------------------- | ---------------------- | ----------------------------------- |
-| `FindSymbolTool`         | `findSymbolTool.ts`         | `find_symbol`          | Find symbol definitions with source |
-| `FindUsagesTool`         | `findUsagesTool.ts`         | `find_usages`          | Find all usages of a symbol         |
-| `ReadFileTool`           | `readFileTool.ts`           | `read_file`            | Read file content with pagination   |
-| `ListDirTool`            | `listDirTool.ts`            | `list_directory`       | List directory contents             |
-| `FindFilesByPatternTool` | `findFilesByPatternTool.ts` | `find_files`           | Glob-based file search              |
-| `GetSymbolsOverviewTool` | `getSymbolsOverviewTool.ts` | `get_symbols_overview` | Hierarchical symbol structure       |
-| `SearchForPatternTool`   | `searchForPatternTool.ts`   | `search_for_pattern`   | Text/regex search via ripgrep       |
+| Tool                     | File                        | Name                    | Description                         |
+| ------------------------ | --------------------------- | ----------------------- | ----------------------------------- |
+| `FindSymbolTool`         | `findSymbolTool.ts`         | `find_symbol`           | Find symbol definitions with source |
+| `FindUsagesTool`         | `findUsagesTool.ts`         | `find_usages`           | Find all usages of a symbol         |
+| `ReadFileTool`           | `readFileTool.ts`           | `read_file`             | Read file content with pagination   |
+| `ListDirTool`            | `listDirTool.ts`            | `list_directory`        | List directory contents             |
+| `FindFilesByPatternTool` | `findFilesByPatternTool.ts` | `find_files_by_pattern` | Glob-based file search              |
+| `GetSymbolsOverviewTool` | `getSymbolsOverviewTool.ts` | `get_symbols_overview`  | Hierarchical symbol structure       |
+| `SearchForPatternTool`   | `searchForPatternTool.ts`   | `search_for_pattern`    | Text/regex search via ripgrep       |
 
 ### Diff Tools (RLM - Recursive Language Model approach)
 
@@ -103,32 +103,23 @@ These components are created fresh for each analysis session, not managed by Ser
 | ----------------- | -------------------- | --------------- | ---------------------------------- |
 | `GetFileDiffTool` | `getFileDiffTool.ts` | `get_file_diff` | Retrieve diff for specific file(s) |
 
-### Reasoning Tools
+### Quality & Reasoning Tools
 
-| Tool                          | File                             | Name                        | Description            |
-| ----------------------------- | -------------------------------- | --------------------------- | ---------------------- |
-| `ThinkAboutContextTool`       | `thinkAboutContextTool.ts`       | `think_about_context`       | Context reasoning      |
-| `ThinkAboutTaskTool`          | `thinkAboutTaskTool.ts`          | `think_about_task`          | Task decomposition     |
-| `ThinkAboutCompletionTool`    | `thinkAboutCompletionTool.ts`    | `think_about_completion`    | Completion check       |
-| `ThinkAboutInvestigationTool` | `thinkAboutInvestigationTool.ts` | `think_about_investigation` | Investigation planning |
+| Component                  | Tool Name                | Purpose                                                             |
+| -------------------------- | ------------------------ | ------------------------------------------------------------------- |
+| `ThinkTool`                | `think`                  | Unified structured thinking after every context read (4 fields)     |
+| `ThinkAboutCompletionTool` | `think_about_completion` | Pre-submission checkpoint validating analysis coverage              |
+| `RecordFindingTool`        | `record_finding`         | Record confirmed findings with severity, location, disproof attempt |
+| `RetractFindingTool`       | `retract_finding`        | Remove previously recorded incorrect findings                       |
+| `ValidateClaimTool`        | `validate_claim`         | LSP-based ground truth verification of factual claims               |
+| `UpdatePlanTool`           | `update_plan`            | Create and maintain review plan document                            |
+| `SubmitReviewTool`         | `submit_review`          | Explicit completion signal terminating analysis                     |
 
 ### Delegation Tools
 
-| Tool              | File                 | Name           | Description                     |
-| ----------------- | -------------------- | -------------- | ------------------------------- |
-| `RunSubagentTool` | `runSubagentTool.ts` | `run_subagent` | Delegate complex investigations |
-
-### Planning Tools
-
-| Tool             | File                | Name          | Description                                 |
-| ---------------- | ------------------- | ------------- | ------------------------------------------- |
-| `UpdatePlanTool` | `updatePlanTool.ts` | `update_plan` | Create and track review plan with checklist |
-
-### Completion Tools
-
-| Tool               | File                  | Name            | Description                                           |
-| ------------------ | --------------------- | --------------- | ----------------------------------------------------- |
-| `SubmitReviewTool` | `submitReviewTool.ts` | `submit_review` | Explicit completion signal - terminates analysis loop |
+| Tool                   | File                      | Name                 | Description                                      |
+| ---------------------- | ------------------------- | -------------------- | ------------------------------------------------ |
+| `RunSubagentBatchTool` | `runSubagentBatchTool.ts` | `run_subagent_batch` | Delegate complex investigations (parallel batch) |
 
 ### Tool Utilities
 

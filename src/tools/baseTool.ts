@@ -3,12 +3,14 @@ import * as vscode from 'vscode';
 import { ITool } from './ITool';
 import { ToolResult } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { TokenConstants } from '../models/tokenConstants';
 
 // Abstract base class for tools
 export abstract class BaseTool implements ITool {
     abstract name: string;
     abstract description: string;
     abstract schema: z.ZodType;
+    maxResponseChars: number = TokenConstants.MAX_TOOL_RESPONSE_CHARS;
 
     getVSCodeTool(): vscode.LanguageModelChatTool {
         return {
@@ -18,6 +20,10 @@ export abstract class BaseTool implements ITool {
                 unrepresentable: 'any',
             }),
         };
+    }
+
+    normalizeArgs(args: Record<string, unknown>): Record<string, unknown> {
+        return args;
     }
 
     abstract execute(

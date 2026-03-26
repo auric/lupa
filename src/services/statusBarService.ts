@@ -1,16 +1,6 @@
 import * as vscode from 'vscode';
 
 /**
- * Types of messages that can be displayed on the status bar
- */
-export enum StatusBarMessageType {
-    Info = 'info',
-    Warning = 'warning',
-    Error = 'error',
-    Working = 'working',
-}
-
-/**
  * Service to manage multiple, independent status bar items.
  * Supports contextual, on-demand progress indicators and temporary messages.
  */

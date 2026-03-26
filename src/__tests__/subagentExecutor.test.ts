@@ -354,19 +354,17 @@ describe('SubagentExecutor', () => {
             }
         });
 
-        it('should keep think_about_investigation tool', async () => {
+        it('should keep think tool for subagents', async () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
 
-            const thinkTool = createMockTool('think_about_investigation');
+            const thinkTool = createMockTool('think');
             const executor = createExecutor(modelManager, [thinkTool]);
             await executor.execute(defaultTask, tokenSource.token, 1);
 
             const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
                 .mock.calls[0]!;
             const toolsPassedToPrompt = promptCall[1] as ITool[];
-            expect(toolsPassedToPrompt.map((t) => t.name)).toContain(
-                'think_about_investigation'
-            );
+            expect(toolsPassedToPrompt.map((t) => t.name)).toContain('think');
         });
     });
 
@@ -402,11 +400,11 @@ describe('SubagentExecutor', () => {
     });
 
     describe('Recursive Tool Filtering', () => {
-        it('should keep run_subagent when canRecurse is true (depth < maxDepth)', async () => {
+        it('should keep run_subagent_batch when canRecurse is true (depth < maxDepth)', async () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
 
             const readTool = createMockTool('read_file');
-            const subagentTool = createMockTool('run_subagent');
+            const subagentTool = createMockTool('run_subagent_batch');
             const planTool = createMockTool('update_plan');
             const allTools = [readTool, subagentTool, planTool];
 
@@ -424,16 +422,16 @@ describe('SubagentExecutor', () => {
             const filteredNames = toolsPassedToPrompt.map((t) => t.name);
 
             expect(filteredNames).toContain('read_file');
-            expect(filteredNames).toContain('run_subagent');
+            expect(filteredNames).toContain('run_subagent_batch');
             // update_plan should be filtered (in RECURSIVE_CHILD_DISALLOWED_TOOLS)
             expect(filteredNames).not.toContain('update_plan');
         });
 
-        it('should filter run_subagent when canRecurse is false (depth >= maxDepth)', async () => {
+        it('should filter run_subagent_batch when canRecurse is false (depth >= maxDepth)', async () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
 
             const readTool = createMockTool('read_file');
-            const subagentTool = createMockTool('run_subagent');
+            const subagentTool = createMockTool('run_subagent_batch');
             const allTools = [readTool, subagentTool];
 
             // maxRecursionDepth=1 so depth=1 means canRecurse=false
@@ -461,7 +459,7 @@ describe('SubagentExecutor', () => {
             const filteredNames = toolsPassedToPrompt.map((t) => t.name);
 
             expect(filteredNames).toContain('read_file');
-            expect(filteredNames).not.toContain('run_subagent');
+            expect(filteredNames).not.toContain('run_subagent_batch');
         });
 
         it('should use RECURSIVE_CHILD_DISALLOWED_TOOLS when canRecurse is true', async () => {
@@ -472,7 +470,7 @@ describe('SubagentExecutor', () => {
                     createMockTool(name)
                 ),
                 createMockTool('read_file'),
-                createMockTool('run_subagent'),
+                createMockTool('run_subagent_batch'),
             ];
 
             const executor = createExecutor(modelManager, tools);
@@ -491,9 +489,9 @@ describe('SubagentExecutor', () => {
             for (const disallowed of RECURSIVE_CHILD_DISALLOWED_TOOLS) {
                 expect(filteredNames).not.toContain(disallowed);
             }
-            // But read_file and run_subagent should pass through
+            // But read_file and run_subagent_batch should pass through
             expect(filteredNames).toContain('read_file');
-            expect(filteredNames).toContain('run_subagent');
+            expect(filteredNames).toContain('run_subagent_batch');
         });
 
         it('should pass canRecurse to prompt generator', async () => {
@@ -511,7 +509,8 @@ describe('SubagentExecutor', () => {
                 expect.anything(),
                 expect.anything(),
                 expect.any(Number),
-                true // canRecurse
+                true, // canRecurse
+                expect.objectContaining({ name: expect.any(String) }) // calibrationProfile
             );
         });
 
@@ -537,7 +536,8 @@ describe('SubagentExecutor', () => {
                 expect.anything(),
                 expect.anything(),
                 expect.any(Number),
-                false // canRecurse
+                false, // canRecurse
+                expect.objectContaining({ name: expect.any(String) }) // calibrationProfile
             );
         });
 
@@ -545,7 +545,7 @@ describe('SubagentExecutor', () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
 
             const readTool = createMockTool('read_file');
-            const subagentTool = createMockTool('run_subagent');
+            const subagentTool = createMockTool('run_subagent_batch');
             const allTools = [readTool, subagentTool];
 
             const executor = createExecutor(modelManager, allTools);
@@ -559,8 +559,8 @@ describe('SubagentExecutor', () => {
             const toolsPassedToPrompt = promptCall[1] as ITool[];
             const filteredNames = toolsPassedToPrompt.map((t) => t.name);
 
-            // run_subagent should be filtered since canRecurse=false
-            expect(filteredNames).not.toContain('run_subagent');
+            // run_subagent_batch should be filtered since canRecurse=false
+            expect(filteredNames).not.toContain('run_subagent_batch');
             expect(filteredNames).toContain('read_file');
         });
     });

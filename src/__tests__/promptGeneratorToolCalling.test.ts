@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { PromptGenerator } from '../models/promptGenerator';
 import { DiffHunk } from '../types/contextTypes';
+import { DEFAULT_PROFILE } from '../models/modelCalibration';
 
 describe('PromptGenerator - Tool Calling Features', () => {
     let promptGenerator: PromptGenerator;
@@ -60,7 +61,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
     describe('generateToolAwareSystemPrompt', () => {
         it('should generate a comprehensive tool-aware system prompt', () => {
             const systemPrompt =
-                promptGenerator.generateToolAwareSystemPrompt();
+                promptGenerator.generateToolAwareSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).toContain('Staff Engineer');
             expect(systemPrompt).toContain('Tool Selection');
@@ -70,14 +71,14 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should handle empty tools array', () => {
             const systemPrompt =
-                promptGenerator.generateToolAwareSystemPrompt();
+                promptGenerator.generateToolAwareSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).toContain('Staff Engineer');
         });
 
         it('should include parameter information from tool schemas', () => {
             const systemPrompt =
-                promptGenerator.generateToolAwareSystemPrompt();
+                promptGenerator.generateToolAwareSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).toContain('Revert Test');
             expect(systemPrompt).toContain('finding_quality');
@@ -87,18 +88,18 @@ describe('PromptGenerator - Tool Calling Features', () => {
     describe('generateRecursiveSystemPrompt', () => {
         it('should generate a recursive review system prompt', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).toContain('Lead Architect');
             expect(systemPrompt).toContain('recursive');
             expect(systemPrompt).toContain('Decompose');
             expect(systemPrompt).toContain('Delegate');
-            expect(systemPrompt).toContain('run_subagent');
+            expect(systemPrompt).toContain('run_subagent_batch');
         });
 
         it('should include recursive methodology section', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).toContain('recursive_methodology');
             expect(systemPrompt).toContain('Concern Groups');
@@ -108,7 +109,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should include quality filter reference in aggregation step', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).toContain('Quality filter');
             expect(systemPrompt).toContain('<finding_quality>');
@@ -117,44 +118,44 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should include architecture-aware and test filters in finding quality guidance', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             // Filters are now in the <finding_quality> block, not duplicated in Step 4
             expect(systemPrompt).toContain(
-                'surrounding layer already provides it'
+                'framework layer, or decorator already catches'
             );
-            expect(systemPrompt).toContain('Missing test');
+            expect(systemPrompt).toContain('Test gaps for removed code');
         });
 
-        it('should include production caller and performance filters in finding quality guidance', () => {
+        it('should include FP example patterns in finding quality guidance', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             // Filters are in the <finding_quality> block
-            expect(systemPrompt).toContain('zero production callers');
-            expect(systemPrompt).toContain('performance concerns');
+            expect(systemPrompt).toContain('Design Intent Blindness');
+            expect(systemPrompt).toContain('runtime');
         });
 
-        it('should include call-site contract and centralized handler filters in finding quality guidance', () => {
+        it('should include centralized handler filters in finding quality guidance', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             // Filters are in the <finding_quality> block
-            expect(systemPrompt).toContain('call-site contract');
+            expect(systemPrompt).toContain('outer scope');
             expect(systemPrompt).toContain('centralized error handler');
         });
 
-        it('should include call-site contract in self-reflection aggregation checkpoint', () => {
+        it('should include centralized handler in self-reflection aggregation checkpoint', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
-            expect(systemPrompt).toContain('call-site contract');
+            expect(systemPrompt).toContain('outer scope');
             expect(systemPrompt).toContain('centralized error handler');
         });
 
         it('should include recursive tool guide', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).toContain('recursive_tool_guide');
             expect(systemPrompt).toContain('Root Controller');
@@ -163,15 +164,15 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should include available tools section', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
-            expect(systemPrompt).toContain('run_subagent');
+            expect(systemPrompt).toContain('run_subagent_batch');
             expect(systemPrompt).toContain('submit_review');
         });
 
         it('should handle empty tools array', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).toContain('Lead Architect');
         });
@@ -307,7 +308,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
             expect(prompt).toContain('Delegation is mandatory');
             expect(prompt).toContain('update_plan');
-            expect(prompt).toContain('run_subagent');
+            expect(prompt).toContain('run_subagent_batch');
         });
 
         it('should not use recursive reminder when recursiveMode is false', () => {
@@ -436,7 +437,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
     describe('recursive prompt delegation enforcement', () => {
         it('should NOT tell root agent to read 2-3 diffs', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).not.toContain(
                 'Read key diffs before planning'
@@ -447,7 +448,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should allow reading at most 1 key diff for orientation', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).toContain('1 key diff');
             expect(systemPrompt).toContain('1 key file');
@@ -455,7 +456,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should order RecursiveMethodology before RecursiveSelfReflection', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             const methodologyIndex = systemPrompt.indexOf(
                 '<recursive_methodology>'
@@ -470,7 +471,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should use tighter escape hatch threshold (1-2 files, <30 lines)', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).toContain('1-2 files');
             expect(systemPrompt).toContain('<30 lines');
@@ -480,20 +481,19 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should limit root to 1 diff in mandatory workflow', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).toContain('`get_file_diff` (1 key file)');
             expect(systemPrompt).toContain('Read at most 1 diff');
             expect(systemPrompt).not.toContain('2-3 key diffs');
         });
 
-        it('should instruct root to make multiple run_subagent calls in one response (parallel)', () => {
+        it('should instruct root to put all tasks into one run_subagent_batch call (parallel)', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
-            expect(systemPrompt).toContain('multiple');
-            expect(systemPrompt).toContain('run_subagent');
-            expect(systemPrompt).toContain('in one response');
+            expect(systemPrompt).toContain('run_subagent_batch');
+            expect(systemPrompt).toContain('ONE');
             expect(systemPrompt).toContain('parallel');
         });
 
@@ -505,9 +505,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 10
             );
 
-            expect(prompt).toContain('multiple');
-            expect(prompt).toContain('run_subagent');
-            expect(prompt).toContain('in one response');
+            expect(prompt).toContain('run_subagent_batch');
             expect(prompt).toContain('parallel');
         });
 
@@ -540,7 +538,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should use 3+ files threshold for delegation in delegation strategy table', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt();
+                promptGenerator.generateRecursiveSystemPrompt(DEFAULT_PROFILE);
 
             expect(systemPrompt).toContain('3-9 files');
             expect(systemPrompt).not.toContain('4-9 files');

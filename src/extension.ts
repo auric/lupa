@@ -5,9 +5,15 @@
  */
 
 import * as vscode from 'vscode';
+import * as z from 'zod';
 import { PRAnalysisCoordinator } from './services/prAnalysisCoordinator';
 import { StatusBarService } from './services/statusBarService';
 import { getErrorMessage } from './utils/errorUtils';
+
+// Zod 4's English locale is loaded via a side-effect call `config(en())` in the
+// entry module. Vite tree-shakes this, causing all validation errors to fall back
+// to "Invalid input". Explicitly re-initialize to survive bundling.
+z.config(z.locales.en());
 
 // Main extension activation function
 export async function activate(context: vscode.ExtensionContext) {

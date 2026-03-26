@@ -305,7 +305,7 @@ describe('ConversationRunner', () => {
                         {
                             id: 'call_1',
                             function: {
-                                name: 'run_subagent',
+                                name: 'run_subagent_batch',
                                 arguments: '{"task":"review files"}',
                             },
                         },
@@ -319,7 +319,7 @@ describe('ConversationRunner', () => {
 
             const toolExecutor = createMockToolExecutor([
                 {
-                    name: 'run_subagent',
+                    name: 'run_subagent_batch',
                     success: true,
                     result: 'Subagent findings',
                 },
@@ -333,13 +333,13 @@ describe('ConversationRunner', () => {
             const config: ConversationRunnerConfig = {
                 systemPrompt: 'Test prompt',
                 maxIterations: 10,
-                tools: [createMockTool('run_subagent')],
+                tools: [createMockTool('run_subagent_batch')],
                 afterToolCalls,
             };
 
             await runner.run(config, conversation, createCancellationToken());
 
-            expect(afterToolCalls).toHaveBeenCalledWith(['run_subagent']);
+            expect(afterToolCalls).toHaveBeenCalledWith(['run_subagent_batch']);
             const history = conversation.getHistory();
             const injected = history.find(
                 (m) => m.role === 'user' && m.content?.includes('Coverage gap')
@@ -1189,6 +1189,104 @@ describe('ConversationRunner', () => {
 
             expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
         });
+
+        it('should stop on context overflow error', async () => {
+            const contextError = new Error(
+                'Request Failed: 400 {"error":{"message":"This model\'s maximum context length is 128000 tokens. However, you requested 131000 tokens.","code":"invalid_request_body"}}'
+            );
+
+            const modelManager = {
+                sendRequest: vi.fn().mockRejectedValue(contextError),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'gpt-4.1',
+                    maxInputTokens: 128000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 50,
+                tools: [],
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toContain('context limit');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
+        });
+
+        it('should stop on conversation corruption error', async () => {
+            const corruptionError = new Error(
+                'Request Failed: 400 {"error":{"message":"Invalid parameter: messages with role \'tool\' must be a response to a preceeding message with \'tool_calls\'.","code":"invalid_request_body"}}'
+            );
+
+            const modelManager = {
+                sendRequest: vi.fn().mockRejectedValue(corruptionError),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'gpt-4.1',
+                    maxInputTokens: 128000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 50,
+                tools: [],
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toContain('corrupted');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
+        });
+
+        it('should stop after consecutive errors to prevent infinite loops', async () => {
+            const genericError = new Error('Some intermittent API error');
+
+            const modelManager = {
+                sendRequest: vi.fn().mockRejectedValue(genericError),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'gpt-4.1',
+                    maxInputTokens: 128000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 50,
+                tools: [],
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toContain('consecutive errors');
+            // Should stop after MAX_CONSECUTIVE_ERRORS (3), not burn all 50
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
+        });
     });
 
     describe('Reset', () => {
@@ -1911,6 +2009,211 @@ describe('ConversationRunner', () => {
             );
             expect(windDownCalls.length).toBe(1);
         });
+
+        it('should inject urgent wind-down nudge at ~92% of budget', async () => {
+            const addUserMessageSpy = vi.spyOn(conversation, 'addUserMessage');
+
+            // Use maxIterations=20 so urgent nudge (92% = iter 18) fires
+            // before final buffer (iter 19-20).
+            // windDownIteration = floor(20 * 0.85) = 17
+            // urgentWindDownIteration = floor(20 * 0.92) = 18
+            // finalBufferStart = 20 - 2 + 1 = 19
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation((request: any) => {
+                    callCount++;
+                    if (request.tools.length === 0) {
+                        return Promise.resolve({
+                            content: 'My final analysis',
+                            toolCalls: undefined,
+                        });
+                    }
+                    return Promise.resolve({
+                        content: null,
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: '{}',
+                                },
+                            },
+                        ],
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 20,
+                tools: [createMockTool('find_symbol')],
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Should have the 85% budget check nudge
+            const budgetNudges = addUserMessageSpy.mock.calls.filter(
+                (call) =>
+                    typeof call[0] === 'string' &&
+                    call[0].includes('Budget check')
+            );
+            expect(budgetNudges.length).toBe(1);
+
+            // Should have the urgent 92% nudge
+            const urgentNudges = addUserMessageSpy.mock.calls.filter(
+                (call) =>
+                    typeof call[0] === 'string' && call[0].includes('URGENT')
+            );
+            expect(urgentNudges.length).toBe(1);
+
+            // Should have the final iteration wrap-up
+            const finalNudges = addUserMessageSpy.mock.calls.filter(
+                (call) =>
+                    typeof call[0] === 'string' &&
+                    call[0].includes('final iteration')
+            );
+            expect(finalNudges.length).toBe(1);
+        });
+
+        it('should remove tools for last 2 iterations when maxIterations > 10', async () => {
+            // maxIterations=12: finalBufferStart = 12 - 2 + 1 = 11
+            // Tools should be empty at iterations 11 and 12
+            const toolRequestCounts: {
+                iteration: number;
+                toolCount: number;
+            }[] = [];
+            let callCount = 0;
+
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation((request: any) => {
+                    callCount++;
+                    toolRequestCounts.push({
+                        iteration: callCount,
+                        toolCount: request.tools.length,
+                    });
+                    if (request.tools.length === 0) {
+                        return Promise.resolve({
+                            content: 'Final findings',
+                            toolCalls: undefined,
+                        });
+                    }
+                    return Promise.resolve({
+                        content: null,
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: '{}',
+                                },
+                            },
+                        ],
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 12,
+                tools: [createMockTool('find_symbol')],
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Iterations 1-10 should have tools, iteration 11 should have none
+            // (model returns text at iter 11, ending the conversation)
+            const withoutTools = toolRequestCounts.filter(
+                (r) => r.toolCount === 0
+            );
+            expect(withoutTools.length).toBeGreaterThanOrEqual(1);
+            expect(withoutTools[0].iteration).toBe(11); // finalBufferStart
+        });
+
+        it('should NOT expand final buffer when maxIterations <= 10', async () => {
+            // maxIterations=3: finalBufferStart = 3 (last iteration only)
+            const toolRequestCounts: {
+                iteration: number;
+                toolCount: number;
+            }[] = [];
+            let callCount = 0;
+
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation((request: any) => {
+                    callCount++;
+                    toolRequestCounts.push({
+                        iteration: callCount,
+                        toolCount: request.tools.length,
+                    });
+                    if (request.tools.length === 0) {
+                        return Promise.resolve({
+                            content: 'Final findings',
+                            toolCalls: undefined,
+                        });
+                    }
+                    return Promise.resolve({
+                        content: null,
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: '{}',
+                                },
+                            },
+                        ],
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 3,
+                tools: [createMockTool('find_symbol')],
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Tools should only be empty on the LAST iteration (iter 3), not iter 2
+            const withTools = toolRequestCounts.filter((r) => r.toolCount > 0);
+            const withoutTools = toolRequestCounts.filter(
+                (r) => r.toolCount === 0
+            );
+            expect(withTools.length).toBe(2); // iter 1, 2
+            expect(withoutTools.length).toBe(1); // iter 3
+        });
     });
 
     describe('disabledToolNames', () => {
@@ -1945,7 +2248,7 @@ describe('ConversationRunner', () => {
                 tools: [
                     createMockTool('find_symbol'),
                     createMockTool('read_file'),
-                    createMockTool('run_subagent'),
+                    createMockTool('run_subagent_batch'),
                 ],
                 disabledToolNames: disabledTools,
             };
@@ -1963,7 +2266,7 @@ describe('ConversationRunner', () => {
                 (t: { name: string }) => t.name
             );
             expect(toolNames).toContain('find_symbol');
-            expect(toolNames).toContain('run_subagent');
+            expect(toolNames).toContain('run_subagent_batch');
             expect(toolNames).not.toContain('read_file');
         });
 
@@ -2714,6 +3017,124 @@ describe('ConversationRunner', () => {
                 runner.reset();
                 expect(runner.hitQuotaExhausted).toBe(false);
             });
+        });
+    });
+
+    describe('Response Too Long', () => {
+        it('should retry with guidance on first "Response too long" error', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.reject(new Error('Response too long.'));
+                    }
+                    return Promise.resolve({
+                        content: 'Concise response',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 5,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Concise response');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+            // Should not count the failed attempt as an iteration
+            expect(runner.iterationsUsed).toBe(1);
+        });
+
+        it('should give up after exceeding max response-too-long retries', async () => {
+            const modelManager = {
+                sendRequest: vi
+                    .fn()
+                    .mockRejectedValue(new Error('Response too long.')),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 50,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toContain(
+                'consistently generated responses that exceeded'
+            );
+            // 1 initial + MAX_RESPONSE_TOO_LONG_RETRIES (2) = 3 total calls
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
+        });
+
+        it('should not burn iterations on response-too-long errors', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount <= 2) {
+                        return Promise.reject(new Error('Response too long.'));
+                    }
+                    return Promise.resolve({
+                        content: 'Finally concise',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 5,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Finally concise');
+            // Two retries + one success = 3 calls, but only 1 iteration used
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
+            expect(runner.iterationsUsed).toBe(1);
         });
     });
 });

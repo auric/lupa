@@ -393,6 +393,38 @@ describe('ToolExecutor', () => {
             expect(result.error).toContain('Invalid arguments');
             expect(result.error).toContain('message');
         });
+
+        it('should call normalizeArgs before schema validation', async () => {
+            const normalizeTool: ITool = {
+                name: 'normalize_tool',
+                description: 'Tool with normalizeArgs',
+                schema: z.object({ value: z.string().min(5) }),
+                getVSCodeTool: () => ({
+                    name: 'normalize_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                normalizeArgs: (args: Record<string, unknown>) => {
+                    // Swap 'data' into 'value' if value is missing
+                    if (!args.value && args.data) {
+                        return { ...args, value: args.data, data: undefined };
+                    }
+                    return args;
+                },
+                execute: async (args): Promise<ToolResult> =>
+                    toolSuccess(`got: ${args.value}`),
+            };
+
+            toolRegistry.registerTool(normalizeTool);
+
+            // Without normalizeArgs, this would fail validation (no 'value' field)
+            const result = await toolExecutor.executeTool('normalize_tool', {
+                data: 'hello world',
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.result).toBe('got: hello world');
+        });
     });
 
     describe('Response Size Validation', () => {
@@ -445,6 +477,33 @@ describe('ToolExecutor', () => {
             expect(result.result).toHaveLength(
                 TokenConstants.MAX_TOOL_RESPONSE_CHARS
             );
+        });
+
+        it('should use per-tool maxResponseChars when set', async () => {
+            const customLimit = 120_000;
+            const customLimitTool: ITool = {
+                name: 'custom_limit_tool',
+                description: 'Tool with custom response limit',
+                schema: z.object({}),
+                maxResponseChars: customLimit,
+                getVSCodeTool: () => ({
+                    name: 'custom_limit_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> =>
+                    toolSuccess('x'.repeat(80_000)),
+            };
+
+            toolRegistry.registerTool(customLimitTool);
+            const result = await toolExecutor.executeTool(
+                'custom_limit_tool',
+                {}
+            );
+
+            // 80K chars would fail the default 60K limit, but passes with 120K custom limit
+            expect(result.success).toBe(true);
+            expect(result.result).toHaveLength(80_000);
         });
 
         it('should skip size validation for failed tool results', async () => {

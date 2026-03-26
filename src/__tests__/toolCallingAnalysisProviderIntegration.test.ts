@@ -60,6 +60,8 @@ describe('ToolCallingAnalysisProvider Integration', () => {
     let mockPromptGenerator: PromptGenerator;
     let sampleDiff: string;
     let tokenSource: vscode.CancellationTokenSource;
+    let mockDiffEnricher: any;
+    let mockFindingValidator: any;
 
     beforeEach(() => {
         // Sample diff for testing
@@ -130,11 +132,31 @@ index 1234567..abcdefg 100644
             maxRecursionDepth: 0,
         });
 
+        mockDiffEnricher = {
+            enrich: vi.fn().mockResolvedValue({
+                enrichedSymbols: [],
+                generatedAt: Date.now(),
+                timeoutCount: 0,
+            }),
+            dispose: vi.fn(),
+        } as any;
+
+        mockFindingValidator = {
+            validate: vi.fn().mockResolvedValue({
+                validated: [],
+                dropped: 0,
+                downgraded: 0,
+                kept: 0,
+            }),
+        } as any;
+
         provider = new ToolCallingAnalysisProvider(
             mockToolRegistry,
             mockCopilotModelManager,
             mockPromptGenerator,
-            mockWorkspaceSettings
+            mockWorkspaceSettings,
+            mockDiffEnricher,
+            mockFindingValidator
         );
         // Use shared CancellationTokenSource mock from mockFactories
         vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (
@@ -170,7 +192,11 @@ index 1234567..abcdefg 100644
                 expect.any(Array), // parsed diff
                 undefined, // no user instructions
                 false, // non-recursive mode (maxRecursionDepth=0)
-                expect.any(Number) // maxSubagents
+                expect.any(Number), // maxSubagents
+                expect.objectContaining({
+                    enrichedSymbols: [],
+                    timeoutCount: 0,
+                }) // codeIntelBrief
             );
         });
 
@@ -825,7 +851,9 @@ index 3333333..4444444 100644
                 mockToolRegistry,
                 mockCopilotModelManager,
                 mockPromptGenerator,
-                rlmSettings
+                rlmSettings,
+                mockDiffEnricher,
+                mockFindingValidator
             );
 
             const generateRecursiveSpy = vi.spyOn(
@@ -852,7 +880,9 @@ index 3333333..4444444 100644
                 mockToolRegistry,
                 mockCopilotModelManager,
                 mockPromptGenerator,
-                noRecursionSettings
+                noRecursionSettings,
+                mockDiffEnricher,
+                mockFindingValidator
             );
 
             const generateRecursiveSpy = vi.spyOn(

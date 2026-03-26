@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
-import { ToolResult, toolSuccess } from '../types/toolResultTypes';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 
 /**
@@ -14,17 +14,15 @@ import { ExecutionContext } from '../types/executionContext';
  * The ConversationRunner treats this tool specially:
  * - When called, it extracts the review content and terminates the loop
  * - The review content becomes the final output (no additional formatting)
- *
- * The review content should follow the output format specification which
- * already includes summary, risk level, and recommendation.
  */
 export class SubmitReviewTool extends BaseTool {
     name = 'submit_review';
     description =
         'Submit your final PR review. Call this as the FINAL step when all analysis is complete. ' +
-        'BEFORE calling: for EACH finding verify (1) you can name the tool call that confirmed it, ' +
-        '(2) you attempted to disprove it and the disproof failed, (3) the file is in the changed files list. ' +
-        'Remove any finding that fails these checks. A review with zero findings is normal for well-written PRs.';
+        'BEFORE calling: (1) verify you generated hypotheses at checkpoint #1 and investigated each with tools, ' +
+        '(2) for EACH finding verify you can name the tool call that confirmed it and attempted disproof, ' +
+        '(3) verify all files in the changed files list were examined. ' +
+        'Zero findings IS valid — but only after genuine investigation with hypothesis generation.';
 
     /**
      * Minimum 20 chars is intentionally lower than reviewExtractionUtils' 50-char
@@ -52,7 +50,44 @@ export class SubmitReviewTool extends BaseTool {
             throw new vscode.CancellationError();
         }
 
-        // Return review content as-is - the output format prompt already defines structure
+        const store = context.findingStore;
+        const subagentsRecordedFindings = store && store.size > 0;
+
+        // Gate 4: FindingStore gate — if subagents recorded findings, the review must address them
+        if (subagentsRecordedFindings) {
+            const findings = store.getAll();
+            const reviewLower = args.review_content.toLowerCase();
+
+            // Check if any recorded finding is completely absent from review text
+            const missingFindings = findings.filter((f) => {
+                // Check if the finding's title or file is mentioned in the review
+                const titleWords = f.title
+                    .toLowerCase()
+                    .split(/\s+/)
+                    .filter((w) => w.length >= 3);
+                const titleMentioned = titleWords.some((word) =>
+                    reviewLower.includes(word)
+                );
+                const fileMentioned = reviewLower.includes(
+                    f.file.toLowerCase()
+                );
+                return !titleMentioned && !fileMentioned;
+            });
+
+            if (missingFindings.length > 0) {
+                const missing = missingFindings
+                    .map(
+                        (f) => `[${f.id}] ${f.severity}: ${f.title} (${f.file})`
+                    )
+                    .join('\n  ');
+                return toolError(
+                    `Review rejected: your investigation team recorded ${store.size} finding(s), but ${missingFindings.length} are missing from your review:\n  ${missing}\n\n` +
+                        'You MUST either include each finding in your review OR explicitly call retract_finding with a reason. ' +
+                        'Do NOT silently drop findings that were recorded with tool evidence.'
+                );
+            }
+        }
+
         return toolSuccess(args.review_content, { isCompletion: true });
     }
 }

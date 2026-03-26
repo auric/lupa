@@ -16,6 +16,7 @@ import {
     generateRecursiveToolGuide,
     generateFindingQualityGuidance,
 } from './blocks/promptBlocks';
+import type { ModelCalibrationProfile } from '../models/modelCalibration';
 
 /**
  * Builder for composing system prompts from modular blocks.
@@ -25,12 +26,22 @@ import {
  */
 export class PromptBuilder {
     private sections: string[] = [];
+    private _calibration: ModelCalibrationProfile | undefined;
+
+    get calibration(): ModelCalibrationProfile | undefined {
+        return this._calibration;
+    }
+
+    setCalibration(profile: ModelCalibrationProfile | undefined): this {
+        this._calibration = profile;
+        return this;
+    }
 
     /**
      * Add role definition for PR reviewer.
      */
     addPRReviewerRole(): this {
-        this.sections.push(generatePRReviewerRole());
+        this.sections.push(generatePRReviewerRole(this._calibration!));
         return this;
     }
 
@@ -86,7 +97,7 @@ export class PromptBuilder {
      * Add analysis methodology for PR review.
      */
     addAnalysisMethodology(): this {
-        this.sections.push(generateAnalysisMethodology());
+        this.sections.push(generateAnalysisMethodology(this._calibration!));
         return this;
     }
 
@@ -110,7 +121,7 @@ export class PromptBuilder {
      * Add self-reflection guidance for PR review.
      */
     addSelfReflection(): this {
-        this.sections.push(generateSelfReflectionGuidance());
+        this.sections.push(generateSelfReflectionGuidance(this._calibration!));
         return this;
     }
 
@@ -156,7 +167,7 @@ export class PromptBuilder {
     }
 
     addFindingQualityGuidance(): this {
-        this.sections.push(generateFindingQualityGuidance());
+        this.sections.push(generateFindingQualityGuidance(this._calibration!));
         return this;
     }
 
@@ -189,8 +200,11 @@ export class PromptBuilder {
 /**
  * Create a pre-configured builder for PR review prompts.
  */
-export function createPRReviewPromptBuilder(): PromptBuilder {
+export function createPRReviewPromptBuilder(
+    calibration: ModelCalibrationProfile
+): PromptBuilder {
     return new PromptBuilder()
+        .setCalibration(calibration)
         .addPRReviewerRole()
         .addPRToolGuide()
         .addSubagentGuidance()
@@ -217,8 +231,11 @@ export function createExplorationPromptBuilder(): PromptBuilder {
  * Used when maxRecursionDepth >= 1: the root agent decomposes the PR
  * into concern groups and delegates investigation to recursive sub-agents.
  */
-export function createRecursiveRootPromptBuilder(): PromptBuilder {
+export function createRecursiveRootPromptBuilder(
+    calibration: ModelCalibrationProfile
+): PromptBuilder {
     return new PromptBuilder()
+        .setCalibration(calibration)
         .addRecursiveRootRole()
         .addRecursiveToolGuide()
         .addRecursiveMethodology()

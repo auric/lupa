@@ -3,7 +3,10 @@ import { PlanSessionManager } from '../services/planSessionManager';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubagentExecutor } from '../services/subagentExecutor';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
+import type { FindingStore } from '../sessions/findingStore';
 import type { DiffHunk } from './contextTypes';
+import type { ModelCalibrationProfile } from '../models/modelCalibration';
+import type { ToolExecutor } from '../models/toolExecutor';
 
 /**
  * Context passed to tools during execution.
@@ -72,4 +75,49 @@ export interface ExecutionContext {
      * Present only during analysis mode (not exploration mode).
      */
     parsedDiff?: DiffHunk[];
+
+    /**
+     * Per-analysis finding store for incremental finding recording.
+     * Findings survive timeout/cancellation and are structured from the start.
+     */
+    findingStore?: FindingStore;
+
+    /**
+     * Model-specific calibration profile for the current analysis.
+     * Adjusts prompt content, challenge mode, and tool enforcement per model.
+     */
+    calibrationProfile: ModelCalibrationProfile;
+
+    /**
+     * Per-tool-name call counts for the current analysis.
+     * Used by calibration gates (e.g., minimum validate_claim calls before submit).
+     */
+    toolCallCounts: Map<string, number>;
+
+    /**
+     * Set of file paths the model has investigated via read_file, find_symbol,
+     * find_usages, or validate_claim. Used by record_finding to ensure the model
+     * has actually examined a file before making claims about it.
+     * Paths are normalized with forward slashes.
+     */
+    investigatedFiles?: Set<string>;
+
+    /**
+     * Completion readiness signal from think_about_completion.
+     * The orchestrator checks this during workflow enforcement —
+     * if readiness is false, the conversation is re-entered.
+     */
+    completionReadiness?: {
+        coveragePercent: number;
+        uninvestigatedFiles: string[];
+        ready: boolean;
+    };
+
+    /**
+     * Reference to the ToolExecutor for the current analysis.
+     * Used by batch_tools to dispatch inner tool calls through the normal
+     * validation/execution pipeline.
+     * Set after ToolExecutor construction at each creation site.
+     */
+    toolExecutor?: ToolExecutor;
 }

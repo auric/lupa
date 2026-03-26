@@ -1,306 +1,169 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Project Overview
+## Lupa
 
 **Lupa** is a VS Code extension that performs comprehensive pull request analysis using GitHub Copilot models. It uses a tool-calling architecture where the LLM dynamically requests context via LSP-based tools, enabling deep code understanding without pre-loading entire codebases.
 
-## Key Technologies
+**Stack**: TypeScript · VS Code Extension API · Vite · Vitest · React 19 · shadcn/ui · Tailwind CSS v4
 
-- **Language**: TypeScript
-- **Framework**: VS Code Extension API
-- **Build Tool**: Vite (dual build: Node.js extension + browser webview)
-- **Testing**: Vitest with VS Code mocks
-- **UI**: React 19 with React Compiler, shadcn/ui, Tailwind CSS v4
-- **Search**: VS Code's built-in ripgrep (via `vscode.env.appRoot`)
-
-## Development Commands
+> **Technical reference**: See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture, code conventions, timeout patterns, error handling, and testing guidelines. Read it when implementing features or debugging—don't memorize it.
 
 ```bash
 npm run check-types    # Fast type checking (~2s), prefer for validation
 npm run build          # Full build (~30s), use sparingly
-npm run test           # Run all tests (see warning below)
-npm run package        # Production build
-npx vitest run src/__tests__/file.test.ts  # Single test
+npm run test           # Run all tests (output is massive—read last ~50 lines only)
+npx vitest run src/__tests__/file.test.ts  # Single test file
 ```
-
-**Context window warning:** `npm run test` output is massive and will overwhelm context. After running tests, read only the last ~50 lines for the summary. Prefer running specific test files over the full suite.
-
-## Architecture
-
-### Layers
-
-| Layer        | Path                | Purpose                                                |
-| ------------ | ------------------- | ------------------------------------------------------ |
-| Coordinators | `src/coordinators/` | High-level orchestration (analysis, commands)          |
-| Services     | `src/services/`     | Core business logic (analysis, settings, UI)           |
-| Tools        | `src/tools/`        | LLM-callable tools (extend `BaseTool`, use Zod schema) |
-| Models       | `src/models/`       | Token management, conversation, tool execution         |
-| Prompts      | `src/prompts/`      | System prompt generators                               |
-| Webview      | `src/webview/`      | React UI (browser context, **no vscode access**)       |
-
-### Service Initialization (3 Phases)
-
-The `ServiceManager` initializes services in strict order to resolve dependencies:
-
-1. **Foundation**: Settings, Logging, StatusBar, Git, UI
-2. **Core**: CopilotModelManager, PromptGenerator, SymbolExtractor
-3. **High-Level**: ToolRegistry, ToolExecutor, ConversationManager, ToolCallingAnalysisProvider, Tools
-
-**Per-analysis components** (created in `ToolCallingAnalysisProvider.analyze()`, not singletons):
-
-- `SubagentSessionManager` - Tracks subagent spawn count and limits
-- `SubagentExecutor` - Executes subagent investigations
-- `PlanSessionManager` - Review plan state
-- `RecursiveStateManager` - Agent tree, budget tracking, deduplication (when `maxRecursionDepth >= 1`)
-- `TokenValidator` instance - Context window tracking
-
-### Key Entry Points
-
-| File                                          | Purpose                                  |
-| --------------------------------------------- | ---------------------------------------- |
-| `src/services/serviceManager.ts`              | DI container, phase-based initialization |
-| `src/services/toolCallingAnalysisProvider.ts` | Main analysis loop with tool-calling     |
-| `src/tools/baseTool.ts`                       | Tool base class with Zod schema          |
-| `vite.config.mts`                             | Dual build configuration                 |
-
-### Data Flow: Tool-Calling Analysis
-
-1. `AnalysisOrchestrator` → `ToolCallingAnalysisProvider`
-2. Per-analysis state created: `TokenValidator`, `SubagentSessionManager`, `SubagentExecutor`, `PlanSessionManager`
-3. LLM requests context via tools (`FindSymbolTool`, `ReadFileTool`, etc.)
-4. `ToolExecutor` runs tools (rate-limited by session)
-5. Multi-turn conversation via `ConversationManager`
-6. Subagent delegation via `RunSubagentTool` (uses per-analysis `SubagentExecutor` from `ExecutionContext`)
-
-## Code Conventions
-
-### Logging
-
-Use `Log` from `loggingService.ts`, not `console.log`. Exception: webviews may use `console.log`.
-
-### Path Resolution
-
-**Always use Git repository root, not workspace folder**, for file path operations. The Git repo may be in a parent directory or different location than the VS Code workspace.
-
-- Use `gitOperationsManager.getRepository()?.rootUri.fsPath` for the Git root
-- Never use `vscode.workspace.workspaceFolders[0]` for file operations in tools
-- Never use `vscode.workspace.asRelativePath()` — it computes paths relative to workspace folders, not git root. Use `path.relative(gitRoot, absolutePath)` instead
-- `WorkspaceSettingsService` stores `.` as a relative marker when repo path equals workspace root (for portability)
-
-### Tool Results
-
-Use `toolSuccess(data)` and `toolError(message)` helpers from `src/types/toolResultTypes.ts`.
-
-### Type Safety
-
-Prefer `param: string | undefined` over `param?: string` for explicit nullability.
-
-### New Tools
-
-1. Extend `BaseTool`
-2. Define Zod schema
-3. Implement `execute(args, context)` returning `ToolResult` — `context: ExecutionContext` is required
-4. Register in `ServiceManager.initializeTools()`
-5. Access per-analysis dependencies (e.g., `SubagentExecutor`, `cancellationToken`) via `ExecutionContext` parameter
-
-### ExecutionContext
-
-Tools receive an `ExecutionContext` with per-analysis dependencies. The `context` parameter is **required** for all tool executions:
-
-```typescript
-interface ExecutionContext {
-    planManager?: PlanSessionManager;
-    subagentSessionManager?: SubagentSessionManager;
-    subagentExecutor?: SubagentExecutor;
-    cancellationToken: vscode.CancellationToken; // Required
-}
-```
-
-The `cancellationToken` is always available—pass it to long-running operations (symbol extraction, LSP calls) for responsive cancellation.
-
-### Timeout Handling
-
-**ToolExecutor is the centralized error handler** - most tools don't need try-catch blocks at all:
-
-- **CancellationError**: ToolExecutor rethrows to propagate cancellation up the stack
-- **TimeoutError**: ToolExecutor catches and returns a generic helpful message to the LLM
-- **Other errors**: ToolExecutor converts to `toolError(message)` for the LLM
-
-**When tools should NOT have try-catch**:
-
-Most tools should let errors propagate to ToolExecutor. Don't wrap your execute method in try-catch just to call `rethrowIfCancellationOrTimeout` and then `toolError()` — that's exactly what ToolExecutor already does.
-
-**When tools SHOULD have try-catch**:
-
-- **Specific error messages**: Inner catches that provide context (e.g., "File not found" vs generic error)
-- **Partial results on timeout**: Return what you found before timeout occurred
-- **Graceful degradation**: Fall back to alternative behavior (e.g., `symbolRangeExpander` uses heuristic on timeout)
-- **Continue-on-error loops**: Skip failed items and continue processing (e.g., `findUsagesTool` continues if one definition check times out)
-
-**VS Code API behavior**:
-
-- **VS Code APIs don't throw CancellationError** - they return `undefined` or empty results when cancelled
-- **Only `withCancellableTimeout` throws CancellationError** - when the token fires before the operation completes
-- **Tests should NOT mock VS Code APIs to throw CancellationError** - use pre-cancelled tokens instead
-
-**Testing CancellationError propagation**:
-
-1. Pre-cancel the token before calling the function under test (preferred)
-2. When testing ToolExecutor/middleware, you MAY create a mock tool that throws CancellationError
-
-**Error handling helpers**:
-
-- `rethrowIfCancellationOrTimeout(error)` - Use in catch blocks when you need to handle other errors but let cancel/timeout propagate
-- `isTimeoutError(error)` - Check explicitly when you want to return partial results on timeout
-- `isCancellationError(error)` - Use in catch blocks to detect cancellation; **prefer this over checking `token.isCancellationRequested`** since the token state may not be set yet when the error is thrown
-
-**Other patterns**:
-
-- **TimeoutError class**: Use `TimeoutError.create(operation, timeoutMs)` for timeout scenarios
-- **Async file discovery**: Use `fdir.crawl().withPromise()` instead of `.sync()` to keep VS Code responsive
-- **fdir abort behavior**: fdir resolves with partial results on AbortSignal, never throws. Check signal state AFTER fdir resolves and throw appropriate error (see `FileDiscoverer`)
-- **Cancel propagation**: Pass `ExecutionContext.cancellationToken` through to `SymbolExtractor` methods
-- **Linked tokens for child processes**: When spawning processes with timeouts, use `CancellationTokenSource` linked to the parent token (see `SearchForPatternTool`)
-- **Subagent CancellationTokenSource must be local**: `RunSubagentTool.execute()` uses a local `CancellationTokenSource`, never an instance variable—tools are singletons, so parallel executions would share and corrupt the source
-- **Subagent cancellation detection**: `SubagentExecutor` checks `ConversationRunner.hitMaxIterations` and `ConversationRunner.wasCancelled` boolean flags instead of raw `token.isCancellationRequested`—avoids false cancellation signals from unrelated token events
-- **Timeout vs parent cancellation**: `RunSubagentTool` checks `context.cancellationToken.isCancellationRequested` when attributing cancellation to timeout, giving parent cancellation priority over timeout timer
-
-### Timeout Patterns
-
-Three timeout strategies based on operation type:
-
-| Pattern                  | Use When                                        | Default            | Example                                 |
-| ------------------------ | ----------------------------------------------- | ------------------ | --------------------------------------- |
-| **Graceful Degradation** | Exploratory; LLM can work with partial data     | 15s                | `FileDiscoverer.discoverFiles()`        |
-| **Per-Item Tracking**    | Processing many items; some failures acceptable | 5s/file, 60s total | `SymbolExtractor.getDirectorySymbols()` |
-| **Hard Timeout**         | Must complete or fail; no partial results       | Operation-specific | LSP operations, single file reads       |
-
-**Graceful Degradation**:
-
-- Return partial results with `truncated: true` on timeout
-- Use `AbortController`, check signal state after operation completes
-- fdir resolves with partial results on abort—never throws
-
-**Per-Item Tracking**:
-
-- Timeout on single item, increment counter, continue loop
-- Use try-catch with `isTimeoutError()` check to skip failed items
-- Report count of skipped items in result
-
-**Hard Timeout**:
-
-- Throw `TimeoutError` via `withCancellableTimeout()`
-- Let ToolExecutor handle the error (converts to helpful message for LLM)
-
-**Stream Cancellation**:
-
-- `ModelRequestHandler` actively cancels stream consumption on timeout using a linked `CancellationTokenSource`
-- Prevents resource leaks where streams continued running in background after timeout
-
-**Final Watchdog for Child Processes**:
-
-- `RipgrepSearchService` uses a final watchdog (5s after SIGKILL) to force-reject the promise if a spawned process ignores termination signals
-- Pattern: Track settlement state with a `settled` flag, set a final timeout after the kill escalation, clear on normal settlement
-
-### New Services
-
-1. Implement `vscode.Disposable`
-2. Add to appropriate phase in `ServiceManager`
-
-## Testing
-
-- Test files: `*.test.ts`, `*.spec.ts` in `src/__tests__/`
-- VS Code mocked via `__mocks__/vscode.js`
-- Vitest config uses alias: `vscode` → `__mocks__/vscode.js`
-- React tests: `.tsx` with jsdom environment
-- **Shared mock factories**: Use `src/__tests__/testUtils/mockFactories.ts` for common mocks
-    - `createMockExecutionContext()` - ExecutionContext with cancellationToken (required for tool tests)
-    - `createMockCancellationTokenSource()` - CancellationToken with proper listener tracking
-    - `createMockWorkspaceSettings()` - WorkspaceSettingsService
-    - `createMockFdirInstance()` - fdir file discovery
-    - `createMockGitRepository()` - Git repository
-    - `createMockPosition()` / `createMockRange()` - VS Code Position/Range with proper methods
-- **Vitest 4**: Constructor mocks require `function` syntax, not arrow functions
 
 ---
 
-## Agent Behavior
+## Subagent-First Workflow
 
-Be a skeptical collaborator, not a compliant assistant. Question assumptions, verify claims against the codebase, and push back when something seems wrong. I am not always right. Neither are you, but we both strive for accuracy.
+**This is the most important section in this file. Read it carefully.**
 
-### Before Writing Code
+Context window degradation is the #1 cause of quality loss in long coding sessions. Once you fill ~50% of your context window with file contents, search results, and tool outputs, your reasoning quality drops significantly. The solution: **delegate aggressively to subagents**.
 
-1. **Clarify the problem**: What are the actual requirements vs. assumed ones?
-2. **Read existing code**: Understand patterns, conventions, and architectural decisions in this codebase
-3. **Consider alternatives**: Generate 2-3 approaches before committing to one
-4. **Plan the implementation**: Outline the solution with clear steps before coding
+### The Rule
 
-**CRITICAL**: Choose a clear technical direction and execute it with precision. Both minimal implementations and sophisticated architectures work—the key is intentionality, not complexity.
+**Default to subagents for any task that requires reading many files, doing research, or making bulk edits.** Your job as the main agent is to orchestrate—plan, delegate, synthesize, verify. Keep your own context clean for high-level reasoning.
 
-### Code Quality Expectations
+### How It Works
 
-- Write production-ready TypeScript: DRY, SOLID, properly typed
-- No obvious comments—add comments only when logic is non-trivial or intent is unclear
-- Documentation should read as if written by a senior engineer, not generated
-- Verify changes compile (`npm run check-types`) and consider test impact
+Each subagent gets a **fresh context window**. It can read files, search code, make edits, and return results—all without polluting YOUR context. This is not optional optimization; it is the primary workflow for non-trivial tasks.
 
-### Anti-Patterns to Avoid
+### The Pattern
 
-NEVER produce these patterns:
+1. **Receive task** → Understand what's being asked. Ask clarifying questions if ambiguous.
+2. **Plan** → Break the work into logical chunks. Use sequential thinking for complex design decisions.
+3. **Research via subagents** → Delegate codebase exploration, API research, pattern discovery to parallel subagents. Each subagent should have a focused question to answer.
+4. **Synthesize** → Read subagent results. Refine your plan based on what they found.
+5. **Implement via subagents** → Delegate implementation of each chunk to subagents with specific, detailed instructions. Include relevant context they need (file paths, patterns to follow, interfaces to implement).
+6. **Verify** → Run `npm run check-types` and relevant tests. Review subagent output for correctness.
+7. **Commit** → Make a git commit for the meaningful chunk of work (see Commit Discipline below).
+8. **Repeat** → Move to the next chunk.
 
-- **Excessive comments** explaining obvious code (`// increment counter` above `counter++`)
-- **Over-abstraction** when a simple function would suffice
-- **Magic numbers/strings** without named constants
-- **Empty catch blocks** that swallow errors silently
-- **Copy-paste variations** instead of proper parameterization
-- **God objects** that do everything
-- **Premature optimization** without measurement
+### Subagent Rules
 
-### Working Style
+- **Always use general-purpose subagents** — never use `Explore` subagents for implementation work
+- **Always specify Claude Opus 4.6 model** for subagents
+- **Never delegate the entire task** to one subagent — break it up
+- **Provide rich context** in subagent prompts: file paths, function signatures, patterns to follow, what the code should do
+- **Verify subagent output** — they can make mistakes too, especially on complex logic
+- **Parallelize when possible** — launch independent subagents simultaneously
+- **Subagents can edit files** — file editing works well when instructions are specific and include enough surrounding context
+- **Sequential thinking belongs in subagents** — for design decisions, multi-step reasoning, or trade-off analysis, instruct the subagent to use sequential thinking tool in its prompt rather than running it in the main context. This keeps the main agent's context clean (sequential thinking outputs can be large). Only use sequential thinking directly when the decision depends on context already accumulated in the main conversation.
 
-- Research before implementing—read existing patterns in the codebase first
-- When uncertain, investigate rather than guess
-- Propose alternatives if you see a better approach
-- Acknowledge limitations honestly rather than fabricating answers
-- At session end, provide a ready-to-use git commit message summarizing changes
+### When NOT to Use Subagents
 
-#### Subagent Usage Guidelines
+- Tasks completable in 2-3 tool calls — just do them directly
+- Decisions that depend on context you've already built up in conversation
+- When the user is iterating interactively on a small change
 
-Use subagents strategically to preserve context and parallelize work:
+### Why This Matters
 
-**When to use subagents:**
+Without subagents, a typical feature implementation looks like: read 15 files → search for patterns → read 10 more files → your context is now 60% full → your edits start getting sloppy → you miss edge cases → user has to correct you.
 
-- **Parallel research tasks**—break complex exploration into focused subtasks (e.g., "find all usages of X", "understand how Y works")
-- **Bulk similar edits**—repetitive changes across many files (e.g., updating 20+ test files for new API signatures)
-- **Isolated refactoring**—changes that don't require understanding the broader context
-- **Documentation generation**—writing docs from existing code
+With subagents: read the task → delegate research → get clean summaries → delegate implementation → verify → your context stays clean the entire session.
 
-**When NOT to use subagents:**
+---
 
-- **Simple tasks**—if you can do it in 2-3 tool calls, do it yourself
-- **Context-dependent decisions**—when the change depends on understanding you've already built
-- **Small file counts**—editing 3-5 files is faster to do directly
-- **Complex architectural changes**—where you need to see the full picture
+## Agent Philosophy
 
-**Subagent best practices:**
+**Be a skeptical collaborator, not a compliant assistant.**
 
-- Never delegate the entire task to a single subagent
-- Provide clear, specific instructions with examples
-- Include relevant context the subagent needs
-- Verify subagent results before trusting them
-- Always use general purpose subagents, don't use `Explore` subagents
-- Always use Claude Opus 4.6 model in subagents for best results
+I am not always right. Neither are you. But we both strive for accuracy and the best possible output. This means:
 
-**Consult DeepWiki MCP for external library questions**—when unsure about API usage, mocking patterns, or library-specific behavior (e.g., Vitest, VS Code API), use Deepwiki MCP with the appropriate repo (e.g., `vitest-dev/vitest`, `microsoft/vscode`)
+- **Question assumptions** — including mine. If a request seems like it'll produce worse code, say so.
+- **Push back** when something seems wrong or when you see a better approach.
+- **Acknowledge uncertainty** honestly rather than fabricating confident-sounding answers.
+- **Be direct** — no hedging, no filler, no "Great question!" Just say what you think.
 
-### Quality Checklist
+### Research Before Guessing
+
+When you encounter something you don't know — a library API, a framework pattern, a VS Code behavior — **research it before implementing**. Never guess at API signatures or behavior.
+
+- **DeepWiki MCP** for library/framework questions (e.g., `vitest-dev/vitest`, `microsoft/vscode`). If you don't know the repo name, **ask the user**.
+- **Tavily web search** for recent changes, new patterns, or general knowledge
+- **Sequential thinking** for complex design decisions where you need to reason through trade-offs
+- **Codebase search** for existing patterns — delegate to subagents if the search is broad
+
+### Ask Questions
+
+**Asking a question is always better than guessing wrong.** Use the ask question tool when:
+
+- Requirements are ambiguous and could be interpreted multiple ways
+- You need a repo name or specific identifier for a DeepWiki/MCP query
+- A design decision has trade-offs that depend on user preferences
+- You're about to make a destructive or irreversible change
+- The task scope is unclear — better to confirm than to over-build or under-build
+
+Don't ask unnecessary questions. If the answer is obvious from context or the codebase, just proceed. But when genuine ambiguity exists, ask.
+
+---
+
+## Code Quality
+
+Write production-ready TypeScript. These standards are non-negotiable:
+
+- **DRY, SOLID, properly typed** — no shortcuts
+- **Comments only when intent is non-obvious** — never comment obvious code
+- **Named constants** — no magic numbers or strings
+- **No empty catch blocks** — always handle errors meaningfully
+- **Follow existing patterns** — read the codebase before writing new code; see [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Use `Log` from `loggingService.ts`** — not `console.log` (exception: webview code)
+- **Use `toolSuccess()`/`toolError()`** — for tool return values
+- **Prefer `param: string | undefined`** over `param?: string` for explicit nullability
+
+### Anti-Patterns
+
+Never produce: excessive comments on obvious code, over-abstraction for hypothetical futures, god objects, copy-paste variations instead of parameterization, premature optimization without measurement.
+
+---
+
+## Commit Discipline
+
+**You MUST run `git add` and `git commit` yourself after each meaningful chunk of work.** Do not wait until the end of the session. Do not just suggest a commit message. Actually execute the commit.
+
+### The Commit Loop
+
+This is a mandatory part of your workflow for any multi-step task:
+
+1. Implement a logical chunk of work
+2. Run `npm run check-types` — must pass
+3. Run relevant tests if you changed behavior
+4. Run `git add <changed-files> && git commit -m "descriptive message"` — **do this yourself, right now**. **Never use `git add -A` or `git add .`** — only stage files you actually changed to avoid committing unrelated/untracked files.
+5. Move to the next chunk — repeat from step 1
+
+### What Makes a Good Commit Boundary
+
+- A new feature or component is working
+- A refactor is complete and types pass
+- A bug fix with its test
+- A batch of related file changes (e.g., "update all tools to new API")
+
+### Commit Messages
+
+Write clear messages that explain WHAT changed and WHY. Examples:
+
+- `feat: add subagent session limits to prevent runaway spawning`
+- `refactor: extract timeout logic into withCancellableTimeout helper`
+- `fix: prevent CancellationTokenSource leak in RunSubagentTool`
+
+### What NOT to Do
+
+- **Never** accumulate all session changes into one giant commit
+- **Never** just suggest a commit message without executing it
+- **Never** commit broken code (types must check, tests must pass)
+- **Never** use vague messages like "updates" or "changes"
+
+---
+
+## Verification
 
 Before finalizing any implementation:
 
-- [ ] Would a new team member understand this code without explanation?
-- [ ] Does this follow existing codebase patterns and conventions?
-- [ ] Are edge cases handled gracefully?
-- [ ] Is there anything that could be removed without losing functionality?
-- [ ] Have type checks passed (`npm run check-types`)?
+1. Run `npm run check-types` — must pass
+2. Run relevant test files — not the full suite unless necessary (output is massive)
+3. Review that changes follow existing codebase patterns
+4. Ask: would a new team member understand this code without explanation?
+5. Ask: is there anything that could be removed without losing functionality?

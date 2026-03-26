@@ -694,12 +694,14 @@ describe('ModelRequestHandler', () => {
         });
 
         it('should actively stop stream consumption on timeout (no resource leak)', async () => {
-            // This test verifies that when timeout fires, the stream consumer
+            // This test verifies that when inactivity timeout fires, the stream consumer
             // actually stops iterating, preventing resource leaks.
             let yieldCount = 0;
             let streamExited = false;
 
-            // Mock a stream that yields slowly but would continue forever
+            // Mock a stream that yields slowly but would continue forever.
+            // Each chunk takes 80ms, inactivity timeout is 50ms — so the timer
+            // fires between chunks when the stream stalls.
             const mockStream = {
                 async *[Symbol.asyncIterator]() {
                     try {
@@ -708,9 +710,8 @@ describe('ModelRequestHandler', () => {
                             yield new vscode.LanguageModelTextPart(
                                 `Chunk ${yieldCount}`
                             );
-                            // Each chunk takes 30ms, timeout is 50ms
                             await new Promise((resolve) =>
-                                setTimeout(resolve, 30)
+                                setTimeout(resolve, 80)
                             );
                         }
                     } finally {

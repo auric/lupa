@@ -74,11 +74,31 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         const mockWorkspaceSettings = createMockWorkspaceSettings({
             maxRecursionDepth: 0,
         });
+        const mockDiffEnricher = {
+            enrich: vi.fn().mockResolvedValue({
+                enrichedSymbols: [],
+                generatedAt: Date.now(),
+                timeoutCount: 0,
+            }),
+            dispose: vi.fn(),
+        } as any;
+
+        const mockFindingValidator = {
+            validate: vi.fn().mockResolvedValue({
+                validated: [],
+                dropped: 0,
+                downgraded: 0,
+                kept: 0,
+            }),
+        } as any;
+
         analysisProvider = new ToolCallingAnalysisProvider(
             mockToolRegistry as any,
             mockCopilotModelManager as any,
             mockPromptGenerator as any,
-            mockWorkspaceSettings
+            mockWorkspaceSettings,
+            mockDiffEnricher,
+            mockFindingValidator
         );
 
         vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (

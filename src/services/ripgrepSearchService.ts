@@ -68,6 +68,13 @@ const SIGTERM_GRACE_PERIOD_MS = 500;
 const SIGKILL_FINAL_WATCHDOG_MS = 5000;
 
 /**
+ * Maximum characters per line in ripgrep output. Lines exceeding this
+ * (e.g., minified JS bundles) are truncated to avoid wasting context window.
+ * Enforced both via ripgrep's --max-columns flag and in formatResults().
+ */
+const MAX_LINE_CHARS = 500;
+
+/**
  * Validates that the VS Code ripgrep binary exists at the expected path.
  * @returns true if the binary exists, false otherwise
  */
@@ -365,6 +372,9 @@ export class RipgrepSearchService {
             '--no-heading',
             '--line-number',
             '--with-filename',
+            '--max-columns',
+            String(MAX_LINE_CHARS),
+            '--max-columns-preview',
         ];
 
         if (!options.caseSensitive) {
@@ -482,7 +492,12 @@ export class RipgrepSearchService {
             for (let i = 0; i < groups.length; i++) {
                 const group = groups[i]!;
                 for (const match of group) {
-                    lines.push(`${match.lineNumber}: ${match.content}`);
+                    const content =
+                        match.content.length > MAX_LINE_CHARS
+                            ? match.content.slice(0, MAX_LINE_CHARS) +
+                              ` [truncated: ${match.content.length} chars]`
+                            : match.content;
+                    lines.push(`${match.lineNumber}: ${content}`);
                 }
                 if (i < groups.length - 1) {
                     lines.push('');

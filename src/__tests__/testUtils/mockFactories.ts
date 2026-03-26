@@ -11,6 +11,7 @@ import {
 import type { WorkspaceSettingsService } from '../../services/workspaceSettingsService';
 import type { ExecutionContext } from '../../types/executionContext';
 import { RecursiveStateManager } from '../../sessions/recursiveStateManager';
+import { DEFAULT_PROFILE } from '../../models/modelCalibration';
 
 /**
  * Creates a mock Position object with proper comparison methods.
@@ -609,6 +610,9 @@ export function createMockExecutionContext(
         planManager: undefined,
         subagentSessionManager: undefined,
         subagentExecutor: undefined,
+        calibrationProfile: DEFAULT_PROFILE,
+        toolCallCounts: new Map(),
+        investigatedFiles: new Set<string>(),
         ...overrides,
     };
 }
@@ -630,6 +634,8 @@ export function createCancelledExecutionContext(
         planManager: undefined,
         subagentSessionManager: undefined,
         subagentExecutor: undefined,
+        calibrationProfile: DEFAULT_PROFILE,
+        toolCallCounts: new Map(),
         ...overrides,
     };
 }

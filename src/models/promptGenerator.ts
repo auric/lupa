@@ -1,6 +1,9 @@
 import { DiffHunk } from '../types/contextTypes';
+import type { CodeIntelligenceBrief } from '../types/enrichedDiffTypes';
 import { ToolAwareSystemPromptGenerator } from '../prompts/toolAwareSystemPromptGenerator';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
+import type { ModelCalibrationProfile } from '../models/modelCalibration';
+import { groupFilesForReview, type FileGroup } from '../services/fileGrouper';
 
 /**
  * Centralized prompt generation service.
@@ -14,16 +17,22 @@ export class PromptGenerator {
      * Tool descriptions are provided to the LLM via the VS Code API tool schemas,
      * so the system prompt focuses on methodology and behavioral guidance.
      */
-    public generateToolAwareSystemPrompt(): string {
-        return this.toolAwarePromptGenerator.generateSystemPrompt();
+    public generateToolAwareSystemPrompt(
+        calibration: ModelCalibrationProfile
+    ): string {
+        return this.toolAwarePromptGenerator.generateSystemPrompt(calibration);
     }
 
     /**
      * Generate recursive review system prompt for the root controller agent.
      * Uses decompose → delegate → aggregate → synthesize methodology.
      */
-    public generateRecursiveSystemPrompt(): string {
-        return this.toolAwarePromptGenerator.generateRecursiveSystemPrompt();
+    public generateRecursiveSystemPrompt(
+        calibration: ModelCalibrationProfile
+    ): string {
+        return this.toolAwarePromptGenerator.generateRecursiveSystemPrompt(
+            calibration
+        );
     }
 
     /**
@@ -47,9 +56,14 @@ export class PromptGenerator {
         parsedDiff: DiffHunk[],
         userInstructions?: string,
         recursiveMode: boolean = false,
-        maxSubagents?: number
+        maxSubagents?: number,
+        codeIntelBrief?: CodeIntelligenceBrief
     ): string {
         const metadataSection = this.generateDiffMetadataSection(parsedDiff);
+        const briefSection =
+            codeIntelBrief && codeIntelBrief.enrichedSymbols.length > 0
+                ? this.formatCodeIntelligenceBrief(codeIntelBrief)
+                : '';
         const sanitizedInstructions = userInstructions
             ?.trim()
             .replace(/[<>]/g, '');
@@ -59,10 +73,13 @@ export class PromptGenerator {
         const reminder = this.generateRlmAnalysisReminder(
             parsedDiff.length,
             recursiveMode,
-            maxSubagents
+            maxSubagents,
+            recursiveMode && parsedDiff.length >= 4
+                ? groupFilesForReview(parsedDiff)
+                : undefined
         );
 
-        return `${metadataSection}${userFocusSection}${reminder}`;
+        return `${metadataSection}${briefSection}${userFocusSection}${reminder}`;
     }
 
     /**
@@ -111,16 +128,47 @@ export class PromptGenerator {
         return section;
     }
 
+    private formatCodeIntelligenceBrief(brief: CodeIntelligenceBrief): string {
+        let section = '<code_intelligence_brief>\n';
+        section +=
+            'LSP-verified metadata for symbols in changed regions. Use this to prioritize investigation.\n\n';
+
+        for (const sym of brief.enrichedSymbols) {
+            const exported = sym.isExported ? 'exported' : 'internal';
+            const safeName = sym.name
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            const type = (sym.typeSignature ?? 'unknown type')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            section += `- ${sym.file}:${sym.line} \`${safeName}\` (${sym.kind}, ${exported})\n`;
+            section += `  Type: ${type}\n`;
+            section += `  Refs: ${sym.totalReferences} total, ${sym.externalCallers} external, ${sym.testFileReferences} in tests\n`;
+        }
+
+        if (brief.timeoutCount > 0) {
+            section += `\nNote: ${brief.timeoutCount} symbol(s) could not be enriched (LSP timeout).\n`;
+        }
+
+        section += '</code_intelligence_brief>\n\n';
+        return section;
+    }
+
     /**
      * Generate analysis reminder for RLM approach.
      */
     private generateRlmAnalysisReminder(
         fileCount: number,
         recursiveMode: boolean,
-        maxSubagents?: number
+        maxSubagents?: number,
+        fileGroups?: FileGroup[]
     ): string {
         if (recursiveMode) {
-            return this.generateRecursiveRlmReminder(fileCount, maxSubagents);
+            return this.generateRecursiveRlmReminder(
+                fileCount,
+                maxSubagents,
+                fileGroups
+            );
         }
 
         const spawnSubagents = fileCount >= 4;
@@ -153,7 +201,8 @@ export class PromptGenerator {
      */
     private generateRecursiveRlmReminder(
         fileCount: number,
-        maxSubagents?: number
+        maxSubagents?: number,
+        fileGroups?: FileGroup[]
     ): string {
         // The real constraint is the total number of subagent spawns.
         const agentLimit = maxSubagents;
@@ -175,6 +224,10 @@ export class PromptGenerator {
                 'Complete the review yourself using `get_file_diff` to read remaining files directly.\n\n';
         }
 
+        if (fileGroups && fileGroups.length > 0) {
+            reminder += this.formatDelegationRoadmap(fileGroups);
+        }
+
         reminder += '**Workflow**:\n';
         reminder +=
             '1. Review `<diff_metadata>` above \u2014 you already have all file names and line counts\n';
@@ -182,27 +235,49 @@ export class PromptGenerator {
             '2. Call `get_file_diff` on **1 key file** (largest change or riskiest) to understand the PR\n';
         reminder += '3. Call `update_plan` — decompose into concern groups\n';
         reminder +=
-            '4. **Make multiple `run_subagent` calls in one response** — one per concern group (parallel execution)\n';
+            '4. **Call `run_subagent_batch`** with one task per concern group (parallel execution)\n';
         reminder +=
             '5. After agents return, call `update_plan` to record findings and coverage status\n';
         reminder +=
-            '6. If coverage gaps reported, group uncovered files and delegate via additional `run_subagent` calls\n';
+            '6. If coverage gaps reported, group uncovered files and delegate via additional `run_subagent_batch` calls\n';
         reminder += '7. Aggregate findings, check for cross-concern issues\n';
         reminder +=
             '8. Call `think_about_completion`, then `submit_review`\n\n';
 
         reminder +=
-            '⚠️ **Delegation is mandatory** — Read at most 1 diff for orientation, then delegate everything via `run_subagent`. ' +
+            '⚠️ **Delegation is mandatory** — Read at most 1 diff for orientation, then delegate everything via `run_subagent_batch`. ' +
             'Do NOT read additional diffs or investigate files yourself. ' +
             'Sub-agents read diffs on demand via `get_file_diff` and return findings to you.\n\n';
         reminder +=
             '⚠️ **Total file coverage required** — Every changed file must be reviewed. ' +
-            'If you receive a coverage gap report after sub-agents complete, group uncovered files and delegate them via additional `run_subagent` calls.\n\n';
+            'If you receive a coverage gap report after sub-agents complete, group uncovered files and delegate them via additional `run_subagent_batch` calls.\n\n';
         reminder +=
             'Quality matters more than quantity — a thorough review that finds zero issues is better than a review padded with speculative concerns.\n';
         reminder += '</analysis_task>';
 
         return reminder;
+    }
+
+    private formatDelegationRoadmap(groups: FileGroup[]): string {
+        const priorityLabel = (g: FileGroup) =>
+            g.priority >= 3 ? 'HIGH' : g.priority >= 2 ? 'MEDIUM' : 'LOW';
+
+        let roadmap = '<delegation_roadmap>\n';
+        roadmap +=
+            'Suggested investigation groups for parallel delegation via `run_subagent_batch`:\n\n';
+
+        for (let i = 0; i < groups.length; i++) {
+            const group = groups[i]!;
+            roadmap += `  Group ${i + 1} [${priorityLabel(group)} — ${group.complexity}]: ${group.label}\n`;
+            for (const file of group.files) {
+                roadmap += `    - ${file}\n`;
+            }
+        }
+
+        roadmap +=
+            '\nCall `run_subagent_batch` to investigate groups in parallel.\n';
+        roadmap += '</delegation_roadmap>\n\n';
+        return roadmap;
     }
 
     public dispose(): void {

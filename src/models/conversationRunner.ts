@@ -121,6 +121,10 @@ export class ConversationRunner {
 
     /** Maximum number of consecutive rate-limit retries before giving up */
     private static readonly MAX_RATE_LIMIT_RETRIES = 5;
+    /** Maximum consecutive "Response too long" retries before giving up */
+    private static readonly MAX_RESPONSE_TOO_LONG_RETRIES = 2;
+    /** Maximum consecutive non-recoverable errors before breaking the loop */
+    private static readonly MAX_CONSECUTIVE_ERRORS = 3;
     /** Initial backoff delay in ms for rate-limited requests */
     private static readonly INITIAL_BACKOFF_MS = 2000;
     /** Maximum backoff delay in ms */
@@ -169,13 +173,27 @@ export class ConversationRunner {
         let iteration = 0;
         let completionNudgeCount = 0;
         let rateLimitRetries = 0;
+        let responseTooLongRetries = 0;
+        let consecutiveErrors = 0;
         let lastSubstantiveResponse = '';
         let windDownInjected = false;
         let windDownNudged = false;
+        let urgentWindDownNudged = false;
         const WIND_DOWN_THRESHOLD = 0.85;
+        const URGENT_WIND_DOWN_THRESHOLD = 0.92;
+        const FINAL_BUFFER_ITERATIONS = 2;
         const windDownIteration = Math.floor(
             config.maxIterations * WIND_DOWN_THRESHOLD
         );
+        const urgentWindDownIteration = Math.floor(
+            config.maxIterations * URGENT_WIND_DOWN_THRESHOLD
+        );
+        // Only buffer multiple final iterations when budget is large enough
+        // to justify the overhead (>10 iterations).
+        const finalBufferStart =
+            config.maxIterations > 10
+                ? config.maxIterations - FINAL_BUFFER_ITERATIONS + 1
+                : config.maxIterations;
         const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
         this._hitMaxIterations = false;
@@ -207,7 +225,7 @@ export class ConversationRunner {
                     .filter((tool) => !config.disabledToolNames?.has(tool.name))
                     .map((tool) => tool.getVSCodeTool());
 
-                // Early wind-down nudge at ~80% of budget for subagents.
+                // Early wind-down nudge at ~85% of budget for subagents.
                 // Prompt-based budget management doesn't work — LLMs can't count
                 // iterations. This code-injected message gives a concrete signal.
                 if (
@@ -226,25 +244,46 @@ export class ConversationRunner {
                     );
                 }
 
-                // Wind-down: on the last iteration for non-explicit-completion
-                // conversations (subagents), force text response by removing tools
-                // and injecting a wrap-up message.
-                const isLastIteration = iteration === config.maxIterations;
-                const forceFinalResponse =
-                    isLastIteration &&
+                // Urgent wind-down nudge at ~92% — escalate urgency.
+                // Only fires if not already in the final buffer zone
+                // (where tools are removed anyway).
+                if (
                     !config.requiresExplicitCompletion &&
-                    !windDownInjected;
+                    iteration === urgentWindDownIteration &&
+                    iteration < finalBufferStart &&
+                    !urgentWindDownNudged
+                ) {
+                    urgentWindDownNudged = true;
+                    const remaining = config.maxIterations - iteration;
+                    conversation.addUserMessage(
+                        `⚠️ URGENT: Only ${remaining} iteration(s) remaining out of ${config.maxIterations}. ` +
+                            `Stop starting new investigations. Wrap up your current analysis and ` +
+                            `produce your complete findings immediately. ` +
+                            `A thorough partial answer is far more valuable than running out of budget with no written findings.`
+                    );
+                    Log.info(
+                        `${logPrefix} Urgent wind-down nudge injected at iteration ${iteration}/${config.maxIterations}`
+                    );
+                }
 
-                if (forceFinalResponse) {
+                // Final buffer: remove tools and force text response for
+                // the last N iterations of non-explicit-completion conversations
+                // (subagents). Giving 2 iterations instead of 1 provides a
+                // retry opportunity if the first forced-text response is poor.
+                const isInFinalBuffer =
+                    !config.requiresExplicitCompletion &&
+                    iteration >= finalBufferStart;
+
+                if (isInFinalBuffer && !windDownInjected) {
                     windDownInjected = true;
                     conversation.addUserMessage(
-                        'This is your final iteration. Please provide your complete findings as a text response. ' +
+                        'You are in your final iterations — no more tool calls are available. Please provide your complete findings as a text response. ' +
                             'Summarize everything you have found so far. A partial answer is better than no answer.'
                     );
                 }
 
                 const effectiveTools =
-                    forceFinalResponse || windDownInjected ? [] : vscodeTools;
+                    isInFinalBuffer || windDownInjected ? [] : vscodeTools;
 
                 let messages = this.prepareMessagesForLLM(
                     config.systemPrompt,
@@ -317,10 +356,12 @@ export class ConversationRunner {
                     token
                 );
 
-                // Reset rate-limit counter after successful API call.
-                // Without this, a later rate-limit hit would continue from
+                // Reset retry counters after successful API call.
+                // Without this, a later error would continue from
                 // the old retry count and prematurely exhaust retries.
                 rateLimitRetries = 0;
+                consecutiveErrors = 0;
+                responseTooLongRetries = 0;
 
                 if (token.isCancellationRequested) {
                     Log.info(`${logPrefix} Cancelled by user`);
@@ -605,6 +646,72 @@ export class ConversationRunner {
                 // Reset rate limit counter on non-rate-limit errors
                 rateLimitRetries = 0;
 
+                // "Response too long" — model output exceeded the API's
+                // output-token limit.  Retrying blindly just burns iterations
+                // because the model tends to produce the same long response.
+                // Give it up to MAX_RESPONSE_TOO_LONG_RETRIES chances with
+                // explicit guidance to shorten output, then give up.
+                if (this.isResponseTooLongError(error)) {
+                    responseTooLongRetries++;
+                    if (
+                        responseTooLongRetries >
+                        ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES
+                    ) {
+                        Log.error(
+                            `${logPrefix} Response too long: exceeded ${ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES} retries, giving up`
+                        );
+                        return (
+                            lastSubstantiveResponse ||
+                            'The model consistently generated responses that exceeded the maximum length. ' +
+                                'Please try with a simpler query or a model with a larger output window.'
+                        );
+                    }
+
+                    Log.warn(
+                        `${logPrefix} Response too long (attempt ${responseTooLongRetries}/${ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES}), ` +
+                            `adding conciseness guidance`
+                    );
+
+                    // Don't count as iteration — the model never finished
+                    iteration--;
+                    this._iterationsUsed = iteration;
+
+                    conversation.addAssistantMessage(
+                        'My previous response was too long and was rejected by the API. ' +
+                            'I must be much more concise. I will use tool calls for individual actions ' +
+                            'instead of generating long text output.'
+                    );
+                    continue;
+                }
+
+                // Reset response-too-long counter on unrelated errors
+                responseTooLongRetries = 0;
+
+                // Context overflow: the conversation exceeded the model's max tokens.
+                // Each retry adds more tokens, making it progressively worse — break immediately.
+                if (this.isContextOverflowError(error)) {
+                    Log.error(
+                        `${logPrefix} Context overflow at iteration ${iteration} — stopping to prevent token spiral`
+                    );
+                    return (
+                        lastSubstantiveResponse ||
+                        "The conversation exceeded the model's context limit. Partial results may be available."
+                    );
+                }
+
+                // Conversation history corruption: orphaned tool messages without
+                // a preceding assistant message with tool_calls. This is unrecoverable
+                // for this conversation — every subsequent request will fail identically.
+                if (this.isConversationCorruptionError(error)) {
+                    Log.error(
+                        `${logPrefix} Conversation history corrupted (orphaned tool messages) — stopping`
+                    );
+                    return (
+                        lastSubstantiveResponse ||
+                        'The conversation history became corrupted. Partial results may be available.'
+                    );
+                }
+
                 const fatalError = this.detectFatalError(error);
                 if (fatalError) {
                     Log.error(
@@ -627,6 +734,23 @@ export class ConversationRunner {
                     error.message.includes('service unavailable')
                 ) {
                     throw error;
+                }
+
+                // Track consecutive errors to prevent infinite error loops.
+                // Some API errors (e.g., malformed conversation state) repeat
+                // identically every iteration, burning budget without progress.
+                consecutiveErrors++;
+                if (
+                    consecutiveErrors >=
+                    ConversationRunner.MAX_CONSECUTIVE_ERRORS
+                ) {
+                    Log.error(
+                        `${logPrefix} ${consecutiveErrors} consecutive errors — stopping to prevent infinite error loop`
+                    );
+                    return (
+                        lastSubstantiveResponse ||
+                        `Stopped after ${consecutiveErrors} consecutive errors. Last error: ${getErrorMessage(error)}`
+                    );
                 }
 
                 conversation.addAssistantMessage(
@@ -751,6 +875,23 @@ export class ConversationRunner {
     }
 
     /**
+     * Check if an error is a "Response too long" error from the VS Code Copilot API.
+     * This occurs when the model's output exceeds the API's maximum output token limit.
+     * Retrying without guidance just produces the same overlong response.
+     */
+    private isResponseTooLongError(error: unknown): boolean {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+        const message = error.message ?? '';
+        return (
+            message.includes('Response too long') ||
+            message.includes('response_too_long') ||
+            message.includes('ResponseTooLong')
+        );
+    }
+
+    /**
      * Check if an error is a rate limit error from the VS Code Copilot API.
      * VS Code surfaces this as a LanguageModelError with name='ChatRateLimited'
      * (HTTP 429). This covers both transient rate limits and quota-flavored
@@ -772,6 +913,40 @@ export class ConversationRunner {
             message.includes('rate limit') ||
             message.includes('Rate limit') ||
             message.includes('RateLimited')
+        );
+    }
+
+    /**
+     * Check if an error indicates the conversation exceeded the model's context window.
+     * This is unrecoverable in the current conversation — each retry adds more tokens
+     * to the error messages, creating a progressively worsening spiral.
+     */
+    private isContextOverflowError(error: unknown): boolean {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+        const message = error.message ?? '';
+        return (
+            message.includes('maximum context length') ||
+            message.includes('context_length_exceeded')
+        );
+    }
+
+    /**
+     * Check if an error indicates conversation history corruption.
+     * This occurs when tool-role messages appear without a preceding assistant
+     * message containing tool_calls (e.g., after an error during tool execution
+     * that corrupts the message sequence). Unrecoverable for this conversation.
+     */
+    private isConversationCorruptionError(error: unknown): boolean {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+        const message = error.message ?? '';
+        return (
+            message.includes("role 'tool' must be a response to") ||
+            message.includes('tool_use result') ||
+            message.includes('tool result without')
         );
     }
 

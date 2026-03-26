@@ -736,6 +736,34 @@ export class GitService {
     }
 
     /**
+     * Get commit log between the default branch and the current branch.
+     * Returns one-line commit summaries for understanding PR intent.
+     */
+    public async getCommitLog(
+        baseBranch: string | undefined,
+        maxCount: number = 30
+    ): Promise<string> {
+        if (!this.isInitialized() || !this.repository) {
+            throw new Error('Git service not initialized');
+        }
+
+        const currentBranch = this.repository.state.HEAD?.name;
+        if (!baseBranch || !currentBranch) {
+            return '';
+        }
+
+        const args = [
+            'log',
+            '--format=%h %s',
+            '--no-merges',
+            `--max-count=${maxCount}`,
+            `${baseBranch}..${currentBranch}`,
+        ];
+
+        return this.executeGitCommand(args);
+    }
+
+    /**
      * Execute a Git command
      * @param args Arguments to pass to the git command
      */
