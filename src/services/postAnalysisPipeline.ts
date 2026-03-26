@@ -17,7 +17,10 @@ import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import { EvidenceAuditor, type EvidenceAuditResult } from './evidenceAuditor';
 import { AdversarialVerifier } from './adversarialVerifier';
 import { scoreFinding, type ScoringContext } from './findingScorer';
-import { runSelfReflection } from './selfReflectionScorer';
+import {
+    runSelfReflection,
+    type SelfReflectionScore,
+} from './selfReflectionScorer';
 import type { FeedbackStore as FeedbackStoreType } from './feedbackStore';
 import { Log } from './loggingService';
 
@@ -44,6 +47,7 @@ export interface PostAnalysisPipelineResult {
     droppedTitles: string[];
     rewrittenAnalysis: string | undefined;
     additionalToolCallRecords: ToolCallRecord[];
+    selfReflectionScores: SelfReflectionScore[];
 }
 
 export class PostAnalysisPipeline {
@@ -55,6 +59,7 @@ export class PostAnalysisPipeline {
         const droppedTitles: string[] = [];
         const additionalToolCallRecords: ToolCallRecord[] = [];
         let rewrittenAnalysis: string | undefined;
+        let selfReflectionScores: SelfReflectionScore[] = [];
 
         // Stage 1: Workflow enforcement (runs regardless of finding count)
         if (!options.token.isCancellationRequested) {
@@ -329,7 +334,7 @@ export class PostAnalysisPipeline {
             }
         }
 
-        // Stage 5b: Self-reflection scoring (Qodo-style confidence re-evaluation)
+        // Stage 5b: Self-reflection scoring (confidence re-evaluation)
         // Presents ALL surviving findings back to the model for 1-10 confidence scoring.
         // Findings below the per-model threshold are dropped. Replaces the binary self-critique.
         if (
@@ -348,6 +353,7 @@ export class PostAnalysisPipeline {
                 handler: options.handler,
                 toolRegistry: options.toolRegistry,
             });
+            selfReflectionScores = reflectionResult.scores;
             droppedTitles.push(...reflectionResult.dropped);
         }
 
@@ -382,7 +388,12 @@ export class PostAnalysisPipeline {
             );
         }
 
-        return { droppedTitles, rewrittenAnalysis, additionalToolCallRecords };
+        return {
+            droppedTitles,
+            rewrittenAnalysis,
+            additionalToolCallRecords,
+            selfReflectionScores,
+        };
     }
 
     private applyEvidenceAuditResults(

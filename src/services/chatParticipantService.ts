@@ -817,6 +817,24 @@ export class ChatParticipantService implements vscode.Disposable {
             debouncedHandler.flush();
             streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
 
+            if (pipelineResult.selfReflectionScores.length > 0) {
+                const scoreLines = pipelineResult.selfReflectionScores
+                    .sort((a, b) => b.score - a.score)
+                    .map(
+                        (s) => `| ${s.title} | ${s.score}/10 | ${s.rationale} |`
+                    )
+                    .join('\n');
+                const scoreSummary =
+                    '\n\n---\n\n' +
+                    '<details><summary>Self-Reflection Confidence Scores</summary>\n\n' +
+                    '| Finding | Score | Rationale |\n' +
+                    '|---------|-------|-----------|\n' +
+                    scoreLines +
+                    '\n\n' +
+                    '</details>';
+                streamMarkdownWithAnchors(stream, scoreSummary, gitRootUri);
+            }
+
             const contentAnalysis = this.analyzeResultContent(analysisResult);
 
             return {
