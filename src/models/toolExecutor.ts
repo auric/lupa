@@ -50,6 +50,7 @@ export interface ToolExecutionResult {
 export class ToolExecutor {
     private toolCallCount = 0;
     private toolCallCountsByName = new Map<string, number>();
+    private readonly localTools = new Map<string, ITool>();
 
     /**
      * @param toolRegistry Registry containing available tools
@@ -75,23 +76,21 @@ export class ToolExecutor {
     }
 
     /**
-     * Temporarily registers tools that aren't already in the registry.
-     * Returns a cleanup function that unregisters only the newly added tools.
-     * Use this for per-conversation tools that shouldn't persist in the global registry.
+     * Create a scoped ToolExecutor that includes additional local tools
+     * beyond those in the shared registry. Local tools take precedence
+     * over registry tools with the same name. The original registry is
+     * never mutated — no cleanup needed.
      */
-    registerTemporaryTools(tools: ITool[]): () => void {
-        const registered: string[] = [];
-        for (const tool of tools) {
-            if (!this.toolRegistry.hasTool(tool.name)) {
-                this.toolRegistry.registerTool(tool);
-                registered.push(tool.name);
-            }
+    createScoped(additionalTools: ITool[]): ToolExecutor {
+        const scoped = new ToolExecutor(
+            this.toolRegistry,
+            this.executionContext,
+            this.maxToolCalls
+        );
+        for (const tool of additionalTools) {
+            scoped.localTools.set(tool.name, tool);
         }
-        return () => {
-            for (const name of registered) {
-                this.toolRegistry.unregisterTool(name);
-            }
-        };
+        return scoped;
     }
 
     /**
@@ -157,7 +156,8 @@ export class ToolExecutor {
         }
 
         try {
-            const tool = this.toolRegistry.getTool(name);
+            const tool =
+                this.localTools.get(name) ?? this.toolRegistry.getTool(name);
 
             if (!tool) {
                 Log.warn(

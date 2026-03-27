@@ -43,7 +43,7 @@ const createMockToolExecutor = (
         metadata?: { isCompletion?: boolean };
     }> = []
 ) => {
-    return {
+    const mockExecutor = {
         executeTools: vi
             .fn()
             .mockImplementation((requests: Array<{ name: string }>) => {
@@ -61,8 +61,10 @@ const createMockToolExecutor = (
                 return Promise.resolve(matchedResults);
             }),
         getAvailableTools: vi.fn().mockReturnValue([]),
-        registerTemporaryTools: vi.fn().mockReturnValue(() => {}),
+        createScoped: vi.fn(),
     } as unknown as ToolExecutor;
+    (mockExecutor as any).createScoped.mockReturnValue(mockExecutor);
+    return mockExecutor;
 };
 
 const createMockTool = (name: string): ITool => ({
@@ -826,8 +828,9 @@ describe('ConversationRunner', () => {
                     ]);
                 }),
                 getAvailableTools: vi.fn().mockReturnValue([]),
-                registerTemporaryTools: vi.fn().mockReturnValue(() => {}),
+                createScoped: vi.fn(),
             } as unknown as ToolExecutor;
+            (toolExecutor as any).createScoped.mockReturnValue(toolExecutor);
 
             const runner = new ConversationRunner(modelManager, toolExecutor);
 
@@ -883,8 +886,9 @@ describe('ConversationRunner', () => {
                     ]);
                 }),
                 getAvailableTools: vi.fn().mockReturnValue([]),
-                registerTemporaryTools: vi.fn().mockReturnValue(() => {}),
+                createScoped: vi.fn(),
             } as unknown as ToolExecutor;
+            (toolExecutor as any).createScoped.mockReturnValue(toolExecutor);
 
             const runner = new ConversationRunner(modelManager, toolExecutor);
 
