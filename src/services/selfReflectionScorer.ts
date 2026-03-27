@@ -165,7 +165,7 @@ function collectScoresFromHandler(
             );
 
             if (toolName === SCORE_FINDING_TOOL_NAME && success) {
-                const findingId = String(args.findingId ?? '');
+                const findingId = String(args.finding_id ?? '');
                 const score = Number(args.score);
                 const rationale = String(args.rationale ?? '');
 

@@ -10,7 +10,7 @@ export class ScoreFindingTool extends BaseTool {
         'Score a review finding on a 1-10 confidence scale during self-reflection. Call this once for each finding to assign your confidence score.';
 
     schema = z.object({
-        findingId: z
+        finding_id: z
             .string()
             .describe('The unique identifier of the finding to score.'),
         score: z
@@ -36,7 +36,7 @@ export class ScoreFindingTool extends BaseTool {
             throw new vscode.CancellationError();
         }
         return toolSuccess(
-            `Score ${args.score}/10 recorded for finding ${args.findingId}.`
+            `Score ${args.score}/10 recorded for finding ${args.finding_id}.`
         );
     }
 }

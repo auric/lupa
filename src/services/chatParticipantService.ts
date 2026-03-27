@@ -819,9 +819,11 @@ export class ChatParticipantService implements vscode.Disposable {
             if (pipelineResult.selfReflectionScores.length > 0) {
                 const scoreLines = pipelineResult.selfReflectionScores
                     .sort((a, b) => b.score - a.score)
-                    .map(
-                        (s) => `| ${s.title} | ${s.score}/10 | ${s.rationale} |`
-                    )
+                    .map((s) => {
+                        const title = s.title.replace(/\|/g, '\\|');
+                        const rationale = s.rationale.replace(/\|/g, '\\|');
+                        return `| ${title} | ${s.score}/10 | ${rationale} |`;
+                    })
                     .join('\n');
                 const scoreSummary =
                     '\n\n---\n\n' +

@@ -302,7 +302,7 @@ describe('AdversarialVerifier', () => {
             expect(record.nestedCalls).toBe(nestedCalls);
         });
 
-        it('excludes record_finding, retract_finding, and score_finding from subagent tools', async () => {
+        it('excludes record_finding and retract_finding from subagent tools', async () => {
             store.record(makeFinding());
             mockExecutor.execute.mockResolvedValue(
                 makeSubagentResult({ response: 'VERDICT: CONFIRMED' })
@@ -320,7 +320,6 @@ describe('AdversarialVerifier', () => {
             expect(options.excludeTools).toEqual([
                 'record_finding',
                 'retract_finding',
-                'score_finding',
             ]);
         });
 

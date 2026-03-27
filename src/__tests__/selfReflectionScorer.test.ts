@@ -396,7 +396,7 @@ describe('runSelfReflection', () => {
                 handler.onToolCallComplete(
                     'call-1',
                     'score_finding',
-                    { findingId: f.id, score: 3, rationale: 'Speculative' },
+                    { finding_id: f.id, score: 3, rationale: 'Speculative' },
                     'ok',
                     true,
                     undefined,
@@ -421,7 +421,7 @@ describe('runSelfReflection', () => {
                 handler.onToolCallComplete(
                     'call-1',
                     'score_finding',
-                    { findingId: f.id, score: 7, rationale: 'Solid evidence' },
+                    { finding_id: f.id, score: 7, rationale: 'Solid evidence' },
                     'ok',
                     true,
                     undefined,
@@ -446,7 +446,7 @@ describe('runSelfReflection', () => {
                 handler.onToolCallComplete(
                     'call-1',
                     'score_finding',
-                    { findingId: f.id, score: 5, rationale: 'Just enough' },
+                    { finding_id: f.id, score: 5, rationale: 'Just enough' },
                     'ok',
                     true,
                     undefined,
@@ -509,7 +509,7 @@ describe('runSelfReflection', () => {
                     'call-1',
                     'score_finding',
                     {
-                        findingId: f.id,
+                        finding_id: f.id,
                         score: 7,
                         rationale: 'Good but not enough',
                     },
@@ -542,7 +542,7 @@ describe('runSelfReflection', () => {
                     'call-1',
                     'score_finding',
                     {
-                        findingId: f1.id,
+                        finding_id: f1.id,
                         score: 8,
                         rationale: 'Strong evidence',
                     },
@@ -556,7 +556,7 @@ describe('runSelfReflection', () => {
                     'call-2',
                     'score_finding',
                     {
-                        findingId: f2.id,
+                        finding_id: f2.id,
                         score: 2,
                         rationale: 'Pure speculation',
                     },
@@ -596,7 +596,7 @@ describe('runSelfReflection', () => {
                 handler.onToolCallComplete(
                     'call-1',
                     'score_finding',
-                    { findingId: f.id, score: 7, rationale: 'Good' },
+                    { finding_id: f.id, score: 7, rationale: 'Good' },
                     'ok',
                     true,
                     undefined,
@@ -613,7 +613,7 @@ describe('runSelfReflection', () => {
         expect(mockHandler.onToolCallComplete).toHaveBeenCalledWith(
             'call-1',
             'score_finding',
-            { findingId: f.id, score: 7, rationale: 'Good' },
+            { finding_id: f.id, score: 7, rationale: 'Good' },
             'ok',
             true,
             undefined,
@@ -629,7 +629,7 @@ describe('runSelfReflection', () => {
                 handler.onToolCallComplete(
                     'call-1',
                     'score_finding',
-                    { findingId: f.id, score: 3, rationale: 'Bad' },
+                    { finding_id: f.id, score: 3, rationale: 'Bad' },
                     'error',
                     false,
                     undefined,
@@ -654,7 +654,7 @@ describe('runSelfReflection', () => {
                 handler.onToolCallComplete(
                     'call-1',
                     'score_finding',
-                    { findingId: f.id, score: 8, rationale: 'First' },
+                    { finding_id: f.id, score: 8, rationale: 'First' },
                     'ok',
                     true,
                     undefined,
@@ -664,7 +664,7 @@ describe('runSelfReflection', () => {
                 handler.onToolCallComplete(
                     'call-2',
                     'score_finding',
-                    { findingId: f.id, score: 2, rationale: 'Revised' },
+                    { finding_id: f.id, score: 2, rationale: 'Revised' },
                     'ok',
                     true,
                     undefined,
