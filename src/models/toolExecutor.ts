@@ -75,6 +75,26 @@ export class ToolExecutor {
     }
 
     /**
+     * Temporarily registers tools that aren't already in the registry.
+     * Returns a cleanup function that unregisters only the newly added tools.
+     * Use this for per-conversation tools that shouldn't persist in the global registry.
+     */
+    registerTemporaryTools(tools: ITool[]): () => void {
+        const registered: string[] = [];
+        for (const tool of tools) {
+            if (!this.toolRegistry.hasTool(tool.name)) {
+                this.toolRegistry.registerTool(tool);
+                registered.push(tool.name);
+            }
+        }
+        return () => {
+            for (const name of registered) {
+                this.toolRegistry.unregisterTool(name);
+            }
+        };
+    }
+
+    /**
      * Format arguments for logging, truncating long values
      */
     private formatArgsForLog(args: any): string {

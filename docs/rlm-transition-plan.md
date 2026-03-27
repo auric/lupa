@@ -182,7 +182,7 @@ The RLM paper describes the REPL as an "operating system" the LLM interacts with
 
 | OS Concept         | Lupa Equivalent                                      |
 | ------------------ | ---------------------------------------------------- |
-| File System        | Git repository (via ReadFileTool, ListDirTool)       |
+| File System        | Git repository (via ReadFileTool, FileDiscoverer)    |
 | Process Spawning   | RunSubagentTool (spawn child review agents)          |
 | Search/Grep        | SearchForPatternTool (ripgrep-based)                 |
 | Symbol Resolution  | FindSymbolTool, FindUsagesTool (LSP-based)           |

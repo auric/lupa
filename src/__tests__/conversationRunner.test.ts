@@ -61,6 +61,7 @@ const createMockToolExecutor = (
                 return Promise.resolve(matchedResults);
             }),
         getAvailableTools: vi.fn().mockReturnValue([]),
+        registerTemporaryTools: vi.fn().mockReturnValue(() => {}),
     } as unknown as ToolExecutor;
 };
 
@@ -825,6 +826,7 @@ describe('ConversationRunner', () => {
                     ]);
                 }),
                 getAvailableTools: vi.fn().mockReturnValue([]),
+                registerTemporaryTools: vi.fn().mockReturnValue(() => {}),
             } as unknown as ToolExecutor;
 
             const runner = new ConversationRunner(modelManager, toolExecutor);
@@ -881,6 +883,7 @@ describe('ConversationRunner', () => {
                     ]);
                 }),
                 getAvailableTools: vi.fn().mockReturnValue([]),
+                registerTemporaryTools: vi.fn().mockReturnValue(() => {}),
             } as unknown as ToolExecutor;
 
             const runner = new ConversationRunner(modelManager, toolExecutor);
