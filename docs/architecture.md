@@ -570,7 +570,7 @@ VS Code API mocked via `__mocks__/vscode.js`:
 
 ### Gitignore Handling
 
-File discovery tools (`FindFilesByPatternTool`, `ListDirTool`, `GetSymbolsOverviewTool`) respect gitignore patterns via the `ignore` package. Patterns are loaded from three sources:
+File discovery tools (`FindFilesByPatternTool`, `GetSymbolsOverviewTool`) respect gitignore patterns via the `ignore` package. Patterns are loaded from three sources:
 
 1. **Global gitignore**: `core.excludesFile` from git config (e.g., `~/.gitignore_global`)
 2. **Root .gitignore**: The `.gitignore` file at the repository root

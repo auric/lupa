@@ -236,7 +236,7 @@ export class AdversarialVerifier {
     ): 'CONFIRMED' | 'REFUTED' | 'UNCERTAIN' {
         // Primary: extract from submit_verdict tool call
         const verdictCall = toolCalls.find(
-            (tc) => tc.toolName === 'submit_verdict'
+            (tc) => tc.toolName === 'submit_verdict' && tc.success
         );
         if (verdictCall) {
             const verdict = (verdictCall.arguments as Record<string, unknown>)
