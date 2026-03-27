@@ -577,8 +577,12 @@ export class SubagentExecutor {
      */
     private createFilteredRegistry(tools: ITool[]): ToolRegistry {
         const registry = new ToolRegistry();
+        const seen = new Set<string>();
         for (const tool of tools) {
-            registry.registerTool(tool);
+            if (!seen.has(tool.name)) {
+                seen.add(tool.name);
+                registry.registerTool(tool);
+            }
         }
         return registry;
     }
