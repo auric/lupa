@@ -100,6 +100,9 @@ index 1234567..abcdefg 100644
             getToolNames: vi
                 .fn()
                 .mockReturnValue(['find_symbol', 'submit_review']),
+            hasTool: vi.fn().mockReturnValue(false),
+            registerTool: vi.fn(),
+            unregisterTool: vi.fn(),
         };
 
         const mockModel = {

@@ -34,6 +34,9 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         getAllTools: Mock;
         getTool: Mock;
         getToolNames: Mock;
+        hasTool: Mock;
+        registerTool: Mock;
+        unregisterTool: Mock;
     };
     let mockCopilotModelManager: {
         getCurrentModel: Mock;
@@ -64,6 +67,9 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             getAllTools: vi.fn(() => []),
             getTool: vi.fn(() => undefined),
             getToolNames: vi.fn(() => []),
+            hasTool: vi.fn().mockReturnValue(false),
+            registerTool: vi.fn(),
+            unregisterTool: vi.fn(),
         };
 
         mockPromptGenerator = {
