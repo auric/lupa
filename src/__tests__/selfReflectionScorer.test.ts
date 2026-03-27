@@ -354,8 +354,6 @@ describe('runSelfReflection', () => {
         onToolCallStart?: ReturnType<typeof vi.fn>;
         onToolCallComplete?: ReturnType<typeof vi.fn>;
     };
-    let mockScoreFindingTool: { name: string };
-    let mockToolRegistry: { getTool: ReturnType<typeof vi.fn> };
 
     beforeEach(() => {
         store = new FindingStore();
@@ -366,10 +364,6 @@ describe('runSelfReflection', () => {
         mockHandler = {
             onToolCallStart: vi.fn(),
             onToolCallComplete: vi.fn(),
-        };
-        mockScoreFindingTool = { name: 'score_finding' };
-        mockToolRegistry = {
-            getTool: vi.fn().mockReturnValue(mockScoreFindingTool),
         };
     });
 
@@ -383,7 +377,6 @@ describe('runSelfReflection', () => {
             systemPrompt: 'You are a code reviewer.',
             token,
             handler: mockHandler as never,
-            toolRegistry: mockToolRegistry as never,
             ...overrides,
         });
     }
@@ -393,16 +386,6 @@ describe('runSelfReflection', () => {
 
         expect(result).toEqual({ scores: [], dropped: [], kept: [] });
         expect(mockConversationManager.addUserMessage).not.toHaveBeenCalled();
-        expect(mockConversationRunner.run).not.toHaveBeenCalled();
-    });
-
-    it('returns empty result when score_finding tool not in registry', async () => {
-        store.record(makeFinding({ title: 'Some finding' }));
-        mockToolRegistry.getTool.mockReturnValue(undefined);
-
-        const result = await runWithDefaults();
-
-        expect(result).toEqual({ scores: [], dropped: [], kept: [] });
         expect(mockConversationRunner.run).not.toHaveBeenCalled();
     });
 
@@ -511,7 +494,7 @@ describe('runSelfReflection', () => {
         expect(mockConversationRunner.run).toHaveBeenCalledOnce();
         const config = mockConversationRunner.run.mock.calls[0]![0];
         expect(config).toMatchObject({
-            tools: [mockScoreFindingTool],
+            tools: [expect.objectContaining({ name: 'score_finding' })],
             label: 'Self-Reflection Scoring',
             systemPrompt: 'You are a code reviewer.',
         });

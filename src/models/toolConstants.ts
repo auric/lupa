@@ -104,7 +104,6 @@ export const MAIN_ANALYSIS_ONLY_TOOLS = [
     ...DIFF_TOOLS,
     ...QUALITY_TOOLS,
     ...PR_CONTEXT_TOOLS,
-    'score_finding',
 ] as const;
 
 /**

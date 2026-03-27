@@ -43,7 +43,6 @@ import { GetFileDiffTool } from '../tools/getFileDiffTool';
 import { GetPRContextTool } from '../tools/getPRContextTool';
 import { RecordFindingTool } from '../tools/recordFindingTool';
 import { RetractFindingTool } from '../tools/retractFindingTool';
-import { ScoreFindingTool } from '../tools/scoreFindingTool';
 
 import { ValidateClaimTool } from '../tools/validateClaimTool';
 
@@ -341,7 +340,6 @@ export class ServiceManager implements vscode.Disposable {
             // Register finding management tools
             this.services.toolRegistry!.registerTool(new RecordFindingTool());
             this.services.toolRegistry!.registerTool(new RetractFindingTool());
-            this.services.toolRegistry!.registerTool(new ScoreFindingTool());
 
             // Register LSP-based claim validation tool
             const validateClaimTool = new ValidateClaimTool(

@@ -7,8 +7,8 @@ import type {
     ToolCallHandler,
 } from '../models/conversationRunner';
 import type { FindingStore } from '../sessions/findingStore';
-import type { ToolRegistry } from '../models/toolRegistry';
 import type * as vscode from 'vscode';
+import { ScoreFindingTool } from '../tools/scoreFindingTool';
 import { Log } from './loggingService';
 
 const SELF_REFLECTION_BUDGET = 10;
@@ -37,7 +37,6 @@ export interface SelfReflectionOptions {
     systemPrompt: string;
     token: vscode.CancellationToken;
     handler: ToolCallHandler;
-    toolRegistry: ToolRegistry;
 }
 
 export function buildSelfReflectionPrompt(
@@ -203,15 +202,7 @@ export async function runSelfReflection(
         return { scores: [], dropped: [], kept: [] };
     }
 
-    const scoreFindingTool = options.toolRegistry.getTool(
-        SCORE_FINDING_TOOL_NAME
-    );
-    if (!scoreFindingTool) {
-        Log.warn(
-            'score_finding tool not found in registry — skipping self-reflection'
-        );
-        return { scores: [], dropped: [], kept: [] };
-    }
+    const scoreFindingTool = new ScoreFindingTool();
 
     const threshold = options.calibrationProfile.selfReflectionThreshold;
     const prompt = buildSelfReflectionPrompt(

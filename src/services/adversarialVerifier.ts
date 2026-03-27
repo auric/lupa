@@ -198,11 +198,7 @@ export class AdversarialVerifier {
                     calibrationProfile,
                     parsedDiff,
                     findingStore,
-                    excludeTools: [
-                        'record_finding',
-                        'retract_finding',
-                        'score_finding',
-                    ],
+                    excludeTools: ['record_finding', 'retract_finding'],
                     additionalTools: [submitVerdictTool],
                 }
             );

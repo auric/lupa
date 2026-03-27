@@ -181,7 +181,7 @@ describe('modelCalibration', () => {
             expect(profile.disabledTools).toContain('get_symbols_overview');
             expect(profile.disabledTools).not.toContain('validate_claim');
             expect(profile.disabledTools).not.toContain('retract_finding');
-            expect(profile.disabledTools.length).toBe(4);
+            expect(profile.disabledTools.length).toBe(3);
         });
 
         it('GPT-4.1 has tight finding cap', () => {
@@ -189,10 +189,9 @@ describe('modelCalibration', () => {
             expect(profile.maxFindingsPerReview).toBe(5);
         });
 
-        it('Claude disables only score_finding', () => {
+        it('Claude has empty disabledTools', () => {
             const profile = getCalibrationProfile('claude', 'claude-sonnet');
-            expect(profile.disabledTools).toHaveLength(1);
-            expect(profile.disabledTools).toContain('score_finding');
+            expect(profile.disabledTools).toHaveLength(0);
         });
 
         it('Claude has generous finding cap', () => {
@@ -202,7 +201,7 @@ describe('modelCalibration', () => {
 
         it('default profile matches Claude tool config', () => {
             const defaultProfile = getCalibrationProfile('unknown', 'unknown');
-            expect(defaultProfile.disabledTools).toHaveLength(1);
+            expect(defaultProfile.disabledTools).toHaveLength(0);
             expect(defaultProfile.maxFindingsPerReview).toBe(15);
         });
     });

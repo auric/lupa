@@ -805,7 +805,6 @@ export class ChatParticipantService implements vscode.Disposable {
                 disabledToolNames,
                 token,
                 handler: recordingHandler,
-                toolRegistry: this.deps!.toolRegistry,
                 progressCallback: (msg) =>
                     stream.progress(`${ACTIVITY.analyzing} ${msg}`),
             });
