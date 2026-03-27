@@ -582,6 +582,10 @@ export class SubagentExecutor {
             if (!seen.has(tool.name)) {
                 seen.add(tool.name);
                 registry.registerTool(tool);
+            } else {
+                Log.warn(
+                    `Duplicate tool '${tool.name}' skipped during subagent registry creation`
+                );
             }
         }
         return registry;
