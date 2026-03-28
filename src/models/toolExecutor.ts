@@ -48,8 +48,8 @@ export interface ToolExecutionResult {
  * multiple concurrent analyses.
  */
 export class ToolExecutor {
-    private toolCallCount = 0;
-    private toolCallCountsByName = new Map<string, number>();
+    private sharedCallCount: { value: number };
+    private toolCallCountsByName: Map<string, number>;
     private readonly localTools = new Map<string, ITool>();
 
     /**
@@ -72,6 +72,8 @@ export class ToolExecutor {
                 'ToolExecutor requires ExecutionContext with a valid cancellationToken'
             );
         }
+        this.sharedCallCount = { value: 0 };
+        this.toolCallCountsByName = new Map<string, number>();
         this.executionContext.toolCallCounts = this.toolCallCountsByName;
     }
 
@@ -87,9 +89,17 @@ export class ToolExecutor {
             this.executionContext,
             this.maxToolCalls
         );
+        // Share parent's counters so all tool calls (direct and via batch_tools)
+        // are tracked in one place, maintaining consistent rate limiting.
+        scoped.sharedCallCount = this.sharedCallCount;
+        scoped.toolCallCountsByName = this.toolCallCountsByName;
+        this.executionContext.toolCallCounts = this.toolCallCountsByName;
         for (const tool of additionalTools) {
             scoped.localTools.set(tool.name, tool);
         }
+        // Update executionContext so batch_tools dispatches via scoped executor
+        // (which has access to local tools like score_finding).
+        this.executionContext.toolExecutor = scoped;
         return scoped;
     }
 
@@ -133,24 +143,26 @@ export class ToolExecutor {
         // Count BEFORE validation intentionally - rate limit protects against attempts,
         // not just successful executions. A model making many invalid calls is broken
         // and should be stopped. Like password lockout, we count all attempts.
-        this.toolCallCount++;
+        this.sharedCallCount.value++;
         this.toolCallCountsByName.set(
             name,
             (this.toolCallCountsByName.get(name) ?? 0) + 1
         );
 
-        Log.debug(`Tool '${name}' starting (call #${this.toolCallCount})`);
+        Log.debug(
+            `Tool '${name}' starting (call #${this.sharedCallCount.value})`
+        );
 
-        if (this.toolCallCount > this.maxToolCalls) {
+        if (this.sharedCallCount.value > this.maxToolCalls) {
             Log.warn(
-                `Tool '${name}' ✗ rate limit exceeded (${this.toolCallCount}/${this.maxToolCalls}) | args: ${this.formatArgsForLog(args)}`
+                `Tool '${name}' ✗ rate limit exceeded (${this.sharedCallCount.value}/${this.maxToolCalls}) | args: ${this.formatArgsForLog(args)}`
             );
             return {
                 name,
                 success: false,
                 error: ToolConstants.ERROR_MESSAGES.RATE_LIMIT_EXCEEDED(
                     this.maxToolCalls,
-                    this.toolCallCount
+                    this.sharedCallCount.value
                 ),
             };
         }
@@ -386,7 +398,7 @@ export class ToolExecutor {
      * @returns The number of tools executed so far
      */
     getToolCallCount(): number {
-        return this.toolCallCount;
+        return this.sharedCallCount.value;
     }
 
     /**
@@ -394,7 +406,7 @@ export class ToolExecutor {
      * Should be called at the start of each new analysis to ensure clean rate limiting.
      */
     resetToolCallCount(): void {
-        this.toolCallCount = 0;
+        this.sharedCallCount.value = 0;
     }
 
     /**

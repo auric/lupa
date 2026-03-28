@@ -57,7 +57,8 @@ export function buildSelfReflectionPrompt(
                 `Description: ${f.description}\n` +
                 `Affected component: ${f.affectedComponent || 'N/A'}\n` +
                 `Failure mechanism: ${f.failureMechanism || 'N/A'}\n` +
-                `Evidence: ${f.disproof.attempted ? f.disproof.result : 'none recorded'}\n` +
+                `Verification evidence: ${f.verificationEvidence || 'none recorded'}\n` +
+                `Disproof attempt: ${f.disproof.attempted ? f.disproof.result : 'none attempted'}\n` +
                 (diffSnippet ? `Relevant diff:\n${diffSnippet}\n` : '')
             );
         })

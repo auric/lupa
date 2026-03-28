@@ -182,7 +182,7 @@ describe('buildSelfReflectionPrompt', () => {
         expect(prompt).toContain('data_corruption');
     });
 
-    it('includes evidence from disproof result', () => {
+    it('includes disproof result labeled as disproof attempt', () => {
         const store = new FindingStore();
         const f = store.record(
             makeFinding({
@@ -196,10 +196,12 @@ describe('buildSelfReflectionPrompt', () => {
 
         const prompt = buildSelfReflectionPrompt([f], [], 5);
 
-        expect(prompt).toContain('Found explicit null check at line 42');
+        expect(prompt).toContain(
+            'Disproof attempt: Found explicit null check at line 42'
+        );
     });
 
-    it('shows "none recorded" when disproof was not attempted', () => {
+    it('shows "none attempted" when disproof was not attempted', () => {
         const store = new FindingStore();
         const f = store.record(
             makeFinding({
@@ -209,7 +211,33 @@ describe('buildSelfReflectionPrompt', () => {
 
         const prompt = buildSelfReflectionPrompt([f], [], 5);
 
-        expect(prompt).toContain('none recorded');
+        expect(prompt).toContain('Disproof attempt: none attempted');
+    });
+
+    it('includes verification evidence when present', () => {
+        const store = new FindingStore();
+        const f = store.record(
+            makeFinding({
+                verificationEvidence: 'Symbol lookup confirmed missing return',
+            })
+        );
+
+        const prompt = buildSelfReflectionPrompt([f], [], 5);
+
+        expect(prompt).toContain(
+            'Verification evidence: Symbol lookup confirmed missing return'
+        );
+    });
+
+    it('shows "none recorded" when verification evidence is absent', () => {
+        const store = new FindingStore();
+        const f = store.record(
+            makeFinding({ verificationEvidence: undefined })
+        );
+
+        const prompt = buildSelfReflectionPrompt([f], [], 5);
+
+        expect(prompt).toContain('Verification evidence: none recorded');
     });
 });
 
