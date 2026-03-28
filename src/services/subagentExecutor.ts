@@ -22,6 +22,7 @@ import type { ITool } from '../tools/ITool';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { FindingStore } from '../sessions/findingStore';
+import type { ObservationStore } from '../sessions/observationStore';
 import type { ExecutionContext } from '../types/executionContext';
 import type { DiffHunk } from '../types/contextTypes';
 import type { SubagentSessionManager } from './subagentSessionManager';
@@ -52,6 +53,8 @@ export interface SubagentExecuteOptions {
     childBudget?: number;
     /** Shared finding store for the analysis — enables subagents to record findings. */
     findingStore?: FindingStore;
+    /** Shared observation store for cross-agent architectural observations. */
+    observationStore?: ObservationStore;
     /** Model calibration profile inherited from parent — adjusts prompt behavior. */
     calibrationProfile: ModelCalibrationProfile;
     /** Additional tools to exclude from this subagent (beyond standard filters). */
@@ -217,6 +220,7 @@ export class SubagentExecutor {
                 currentAgentId: options?.agentId,
                 parsedDiff: options?.parsedDiff,
                 findingStore: options?.findingStore,
+                observationStore: options?.observationStore,
                 calibrationProfile:
                     options?.calibrationProfile ?? DEFAULT_PROFILE,
                 toolCallCounts: new Map(),

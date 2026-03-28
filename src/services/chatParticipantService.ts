@@ -28,6 +28,7 @@ import {
 } from '../models/toolConstants';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { FindingStore } from '../sessions/findingStore';
+import { ObservationStore } from '../sessions/observationStore';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
@@ -574,6 +575,7 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         const findingStore = new FindingStore();
+        const observationStore = new ObservationStore();
         const toolCallRecords: ToolCallRecord[] = [];
 
         // Create execution context as a mutable reference so parsedDiff can be
@@ -587,6 +589,7 @@ export class ChatParticipantService implements vscode.Disposable {
             currentDepth: 0,
             currentAgentId: 'root',
             findingStore,
+            observationStore,
             calibrationProfile,
             toolCallCounts: new Map<string, number>(),
             investigatedFiles: new Set<string>(),

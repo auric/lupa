@@ -107,6 +107,7 @@ If ANY finding rests on a wrong premise or missed documented intent → **DROP I
 **Coverage gaps**: If any sub-agent returned incomplete results (timeout, remaining areas noted), spawn additional sub-agents to cover those gaps
 
 - Identify cross-concern patterns (e.g., same anti-pattern in multiple files)
+- **Call \`get_observations\`** to review architectural observations left by sub-agents — these may reveal cross-cutting issues that individual agents missed (e.g., assumed invariants, hidden dependencies, convention violations across modules)
 - Assess overall PR risk
 - Call \`update_plan\` to mark all concern groups as complete
 
