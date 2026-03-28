@@ -760,4 +760,24 @@ describe('formatSelfReflectionScoresMarkdown', () => {
         expect(result).toContain('line1 line2');
         expect(result).not.toContain('A | B |');
     });
+
+    it('escapes HTML entities in title and rationale', () => {
+        const scores = [
+            {
+                findingId: 'f1',
+                title: '<script>alert("xss")</script>',
+                score: 5,
+                rationale: 'Contains </details> tag & ampersand',
+            },
+        ];
+
+        const result = formatSelfReflectionScoresMarkdown(scores);
+
+        expect(result).toContain('&lt;script&gt;alert("xss")&lt;/script&gt;');
+        expect(result).toContain(
+            'Contains &lt;/details&gt; tag &amp; ampersand'
+        );
+        expect(result).not.toContain('<script>');
+        expect(result).not.toContain('</details> tag');
+    });
 });

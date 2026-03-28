@@ -280,8 +280,16 @@ export function formatSelfReflectionScoresMarkdown(
     const scoreLines = scores
         .sort((a, b) => b.score - a.score)
         .map((s) => {
-            const title = s.title.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|');
+            const title = s.title
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\r?\n/g, ' ')
+                .replace(/\|/g, '\\|');
             const rationale = s.rationale
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
                 .replace(/\r?\n/g, ' ')
                 .replace(/\|/g, '\\|');
             return `| ${title} | ${s.score}/10 | ${rationale} |`;
