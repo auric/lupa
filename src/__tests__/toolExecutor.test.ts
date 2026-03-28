@@ -204,6 +204,46 @@ describe('ToolExecutor', () => {
                 false
             );
         });
+
+        it('should find local tools available in scoped executor', () => {
+            const localTool: ITool = {
+                name: 'local_tool',
+                description: 'A local-only tool',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'local_tool',
+                    description: 'A local-only tool',
+                    inputSchema: {},
+                }),
+                execute: async () => toolSuccess('ok'),
+            };
+            const scoped = toolExecutor.createScoped([localTool]);
+            expect(scoped.isToolAvailable('local_tool')).toBe(true);
+        });
+
+        it('should block global tools when restrictToLocal is true', () => {
+            const localTool: ITool = {
+                name: 'local_tool',
+                description: 'A local-only tool',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'local_tool',
+                    description: 'A local-only tool',
+                    inputSchema: {},
+                }),
+                execute: async () => toolSuccess('ok'),
+            };
+            const scoped = toolExecutor.createScoped([localTool], {
+                restrictToLocal: true,
+            });
+            expect(scoped.isToolAvailable('local_tool')).toBe(true);
+            expect(scoped.isToolAvailable('success_tool')).toBe(false);
+        });
+
+        it('should allow global tools when restrictToLocal is not set', () => {
+            const scoped = toolExecutor.createScoped([]);
+            expect(scoped.isToolAvailable('success_tool')).toBe(true);
+        });
     });
 
     describe('Edge Cases', () => {

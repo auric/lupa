@@ -82,6 +82,14 @@ export class ToolExecutor {
     }
 
     /**
+     * The execution context for the current analysis.
+     * Used by ConversationRunner to save/restore toolExecutor across scoped runs.
+     */
+    getExecutionContext(): ExecutionContext {
+        return this.executionContext;
+    }
+
+    /**
      * Bind this executor's counters to the execution context.
      * Must be called once after constructing the primary (non-scoped) executor.
      */
@@ -407,7 +415,10 @@ export class ToolExecutor {
      * @returns True if the tool is available, false otherwise
      */
     isToolAvailable(name: string): boolean {
-        return this.toolRegistry.hasTool(name);
+        if (this.localTools.has(name)) {
+            return true;
+        }
+        return !this.restrictToLocal && this.toolRegistry.hasTool(name);
     }
 
     /**
