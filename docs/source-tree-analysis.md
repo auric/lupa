@@ -105,7 +105,6 @@ src/
 │   ├── findSymbolTool.ts         # Find symbol definitions
 │   ├── findUsagesTool.ts         # Find symbol usages
 │   ├── readFileTool.ts           # Read file content
-│   ├── listDirTool.ts            # List directory
 │   ├── findFilesByPatternTool.ts # Glob file search
 │   ├── getSymbolsOverviewTool.ts # Hierarchical symbols
 │   ├── searchForPatternTool.ts   # Text/regex search
