@@ -51,6 +51,7 @@ export class ToolExecutor {
     private sharedCallCount: { value: number };
     private toolCallCountsByName: Map<string, number>;
     private readonly localTools = new Map<string, ITool>();
+    private restrictToLocal = false;
 
     /**
      * @param toolRegistry Registry containing available tools
@@ -83,7 +84,10 @@ export class ToolExecutor {
      * over registry tools with the same name. The original registry is
      * never mutated — no cleanup needed.
      */
-    createScoped(additionalTools: ITool[]): ToolExecutor {
+    createScoped(
+        additionalTools: ITool[],
+        options?: { restrictToLocal?: boolean }
+    ): ToolExecutor {
         const scoped = new ToolExecutor(
             this.toolRegistry,
             this.executionContext,
@@ -94,6 +98,7 @@ export class ToolExecutor {
         scoped.sharedCallCount = this.sharedCallCount;
         scoped.toolCallCountsByName = this.toolCallCountsByName;
         this.executionContext.toolCallCounts = this.toolCallCountsByName;
+        scoped.restrictToLocal = options?.restrictToLocal ?? false;
         for (const tool of additionalTools) {
             scoped.localTools.set(tool.name, tool);
         }
@@ -168,8 +173,10 @@ export class ToolExecutor {
         }
 
         try {
-            const tool =
-                this.localTools.get(name) ?? this.toolRegistry.getTool(name);
+            const tool = this.restrictToLocal
+                ? this.localTools.get(name)
+                : (this.localTools.get(name) ??
+                  this.toolRegistry.getTool(name));
 
             if (!tool) {
                 Log.warn(

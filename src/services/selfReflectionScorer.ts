@@ -225,6 +225,7 @@ export async function runSelfReflection(
             maxIterations: SELF_REFLECTION_BUDGET,
             tools: [scoreFindingTool],
             label: 'Self-Reflection Scoring',
+            restrictToLocalTools: true,
         },
         options.conversationManager,
         options.token,
