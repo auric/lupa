@@ -330,6 +330,8 @@ Keep your total response under 8000 characters. Be concise: cite evidence precis
 - Answer ONLY the specific questions in your task - don't expand investigation
 - Focus on the files/functions mentioned - don't wander into unrelated areas
 - If you discover unrelated issues, note briefly but don't deep-dive
+- Use \`note_observation\` to record cross-concern notes (e.g., hidden dependencies, assumed invariants, recurring patterns) that other agents or the root aggregator should know about
+- Call \`get_observations\` at the start of your investigation to check for observations from other agents that may be relevant to your scope
 
 **Technical Limits:**
 - You have **${maxIterations} tool iterations** - use them wisely

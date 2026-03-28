@@ -84,7 +84,8 @@ After calling \`update_plan\`:
 → Put ALL concern groups into ONE \`run_subagent_batch\` call. They execute in parallel. Do NOT investigate files yourself.
 
 After all sub-agents return:
-→ \`think\`: topic="Cross-concern synthesis", analysis=[validated findings from sub-agents], identified_risks=[gaps or uncertain findings], next_action="synthesize and submit"
+→ \`get_observations\`: Read cross-concern observations left by sub-agents — check for hidden dependencies, assumed invariants, or patterns that span multiple concern groups
+→ \`think\`: topic="Cross-concern synthesis", analysis=[validated findings from sub-agents + observations], identified_risks=[gaps or uncertain findings], next_action="synthesize and submit"
 → Apply ALL verification checks from \`<finding_quality>\` above to each MEDIUM+ finding. Drop findings that fail.
 → Bias check: Am I reporting too many issues? Scrutinize each finding — would I mass-file this as a bug report with my name on it? If not, drop it. Zero findings is a valid and common outcome for well-written code.
 

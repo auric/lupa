@@ -20,6 +20,8 @@ export function generateRecursiveToolGuide(): string {
 | \`submit_review\` | **FINAL ACTION** — deliver aggregated, structured review |
 | \`record_finding\` | Commit findings as discovered — survives timeout |
 | \`validate_claim\` | LSP-verify critical claims before including in final review |
+| \`note_observation\` | Record cross-concern architectural observations for other agents |
+| \`get_observations\` | Read observations from sub-agents during aggregation |
 | \`batch_tools\` | Wrap multiple independent tool calls into one parallel invocation |
 
 ⚠️ **Read at most 1 diff for orientation.** Do NOT call \`get_file_diff\` more than once or use \`read_file\`. Sub-agents read all remaining diffs.

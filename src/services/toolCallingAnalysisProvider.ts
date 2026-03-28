@@ -27,6 +27,7 @@ import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { FindingStore } from '../sessions/findingStore';
+import { ObservationStore } from '../sessions/observationStore';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
@@ -109,6 +110,7 @@ export class ToolCallingAnalysisProvider {
             : undefined;
 
         const findingStore = new FindingStore();
+        const observationStore = new ObservationStore();
 
         // Wire recursive state to SubagentExecutor for aggregate progress reporting
         if (recursiveState) {
@@ -139,6 +141,7 @@ export class ToolCallingAnalysisProvider {
             currentDepth: 0,
             currentAgentId: 'root',
             findingStore,
+            observationStore,
             toolCallCounts: new Map<string, number>(),
             investigatedFiles: new Set<string>(),
         } as ExecutionContext;
