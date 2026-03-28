@@ -4,6 +4,7 @@ import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubagentExecutor } from '../services/subagentExecutor';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { FindingStore } from '../sessions/findingStore';
+import type { ObservationStore } from '../sessions/observationStore';
 import type { DiffHunk } from './contextTypes';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
 import type { ToolExecutor } from '../models/toolExecutor';
@@ -81,6 +82,13 @@ export interface ExecutionContext {
      * Findings survive timeout/cancellation and are structured from the start.
      */
     findingStore?: FindingStore;
+
+    /**
+     * Per-analysis observation store for cross-agent architectural observations.
+     * Shared across all agents in a recursive analysis so they can exchange
+     * lightweight notes about patterns, concerns, and conventions.
+     */
+    observationStore?: ObservationStore;
 
     /**
      * Model-specific calibration profile for the current analysis.
