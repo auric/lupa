@@ -151,14 +151,13 @@ Token management, conversation state, and tool execution infrastructure.
 
 LLM-callable tools extending `BaseTool` with Zod schemas.
 
-**Context Tools** (8):
+**Context Tools** (7):
 
 | Tool                     | Purpose                                       |
 | ------------------------ | --------------------------------------------- |
 | `FindSymbolTool`         | Find code symbol definitions with full source |
 | `FindUsagesTool`         | Find all usages of a symbol                   |
 | `ReadFileTool`           | Read file content with pagination             |
-| `ListDirTool`            | List directory contents                       |
 | `FindFilesByPatternTool` | Glob-based file search                        |
 | `GetSymbolsOverviewTool` | Hierarchical symbol structure                 |
 | `SearchForPatternTool`   | Ripgrep-based text search                     |
