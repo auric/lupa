@@ -59,6 +59,13 @@ export interface ConversationRunnerConfig {
         iteration: number,
         maxIterations: number
     ) => string | undefined;
+    /**
+     * If true, the scoped ToolExecutor will ONLY resolve tools from the local
+     * tools list — no fallback to the global registry. Use for sandboxed
+     * conversations (e.g., self-reflection scoring) that should never execute
+     * arbitrary tools.
+     */
+    restrictToLocalTools?: boolean;
 }
 
 /**
@@ -204,7 +211,9 @@ export class ConversationRunner {
         this._iterationsUsed = 0;
         const toolNamesCalled = new Set<string>();
 
-        this.currentExecutor = this.toolExecutor.createScoped(config.tools);
+        this.currentExecutor = this.toolExecutor.createScoped(config.tools, {
+            restrictToLocal: config.restrictToLocalTools,
+        });
 
         while (iteration < config.maxIterations) {
             iteration++;

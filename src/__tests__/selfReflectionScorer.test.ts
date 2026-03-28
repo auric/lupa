@@ -3,6 +3,7 @@ import {
     buildSelfReflectionPrompt,
     getDiffSnippetForFinding,
     runSelfReflection,
+    formatSelfReflectionScoresMarkdown,
 } from '../services/selfReflectionScorer';
 import { FindingStore } from '../sessions/findingStore';
 import { createMockCancellationToken } from './testUtils/mockFactories';
@@ -708,5 +709,55 @@ describe('runSelfReflection', () => {
         expect(result.scores).toHaveLength(1);
         expect(result.scores[0]!.score).toBe(8);
         expect(result.scores[0]!.rationale).toBe('First');
+    });
+});
+
+describe('formatSelfReflectionScoresMarkdown', () => {
+    it('formats scores as a collapsible markdown table sorted by score descending', () => {
+        const scores = [
+            {
+                findingId: 'f1',
+                title: 'Low issue',
+                score: 3,
+                rationale: 'Not very confident',
+            },
+            {
+                findingId: 'f2',
+                title: 'High issue',
+                score: 9,
+                rationale: 'Very confident',
+            },
+        ];
+
+        const result = formatSelfReflectionScoresMarkdown(scores);
+
+        expect(result).toContain(
+            '<details><summary>Self-Reflection Confidence Scores</summary>'
+        );
+        expect(result).toContain('| Finding | Score | Rationale |');
+        // High score should appear before low score
+        const highIdx = result.indexOf('High issue');
+        const lowIdx = result.indexOf('Low issue');
+        expect(highIdx).toBeLessThan(lowIdx);
+        expect(result).toContain('| High issue | 9/10 | Very confident |');
+        expect(result).toContain('| Low issue | 3/10 | Not very confident |');
+        expect(result).toContain('</details>');
+    });
+
+    it('escapes pipe characters and newlines in title and rationale', () => {
+        const scores = [
+            {
+                findingId: 'f1',
+                title: 'A | B',
+                score: 5,
+                rationale: 'line1\nline2',
+            },
+        ];
+
+        const result = formatSelfReflectionScoresMarkdown(scores);
+
+        expect(result).toContain('A \\| B');
+        expect(result).toContain('line1 line2');
+        expect(result).not.toContain('A | B |');
     });
 });

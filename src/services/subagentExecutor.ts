@@ -193,7 +193,15 @@ export class SubagentExecutor {
             }
 
             if (options?.additionalTools?.length) {
-                filteredTools = [...filteredTools, ...options.additionalTools];
+                const additionalNames = new Set(
+                    options.additionalTools.map((t) => t.name)
+                );
+                filteredTools = [
+                    ...filteredTools.filter(
+                        (t) => !additionalNames.has(t.name)
+                    ),
+                    ...options.additionalTools,
+                ];
             }
 
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
@@ -232,6 +240,7 @@ export class SubagentExecutor {
                 childContext,
                 maxIterations * ANALYSIS_LIMITS.toolCallMultiplier
             );
+            toolExecutor.bindToContext();
             childContext.toolExecutor = toolExecutor;
             const conversationRunner = new ConversationRunner(
                 this.llmClient,

@@ -225,6 +225,7 @@ export async function runSelfReflection(
             maxIterations: SELF_REFLECTION_BUDGET,
             tools: [scoreFindingTool],
             label: 'Self-Reflection Scoring',
+            restrictToLocalTools: true,
         },
         options.conversationManager,
         options.token,
@@ -267,4 +268,33 @@ export async function runSelfReflection(
     );
 
     return { scores, dropped, kept };
+}
+
+/**
+ * Format self-reflection scores as a collapsible markdown table.
+ * Used by both the chat participant and webview rendering paths.
+ */
+export function formatSelfReflectionScoresMarkdown(
+    scores: SelfReflectionScore[]
+): string {
+    const scoreLines = scores
+        .sort((a, b) => b.score - a.score)
+        .map((s) => {
+            const title = s.title.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|');
+            const rationale = s.rationale
+                .replace(/\r?\n/g, ' ')
+                .replace(/\|/g, '\\|');
+            return `| ${title} | ${s.score}/10 | ${rationale} |`;
+        })
+        .join('\n');
+
+    return (
+        '\n\n---\n\n' +
+        '<details><summary>Self-Reflection Confidence Scores</summary>\n\n' +
+        '| Finding | Score | Rationale |\n' +
+        '|---------|-------|-----------|\n' +
+        scoreLines +
+        '\n\n' +
+        '</details>'
+    );
 }

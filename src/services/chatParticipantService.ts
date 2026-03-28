@@ -32,6 +32,7 @@ import { ObservationStore } from '../sessions/observationStore';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
+import { formatSelfReflectionScoresMarkdown } from './selfReflectionScorer';
 import { TokenValidator } from '../models/tokenValidator';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
@@ -300,6 +301,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 this.deps.toolRegistry,
                 explorationContext
             );
+            toolExecutor.bindToContext();
             explorationContext.toolExecutor = toolExecutor;
 
             const runner = new ConversationRunner(client, toolExecutor);
@@ -599,6 +601,7 @@ export class ChatParticipantService implements vscode.Disposable {
             this.deps!.toolRegistry,
             executionContext
         );
+        toolExecutor.bindToContext();
         executionContext.toolExecutor = toolExecutor;
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
@@ -820,26 +823,9 @@ export class ChatParticipantService implements vscode.Disposable {
             streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
 
             if (pipelineResult.selfReflectionScores.length > 0) {
-                const scoreLines = pipelineResult.selfReflectionScores
-                    .sort((a, b) => b.score - a.score)
-                    .map((s) => {
-                        const title = s.title
-                            .replace(/\r?\n/g, ' ')
-                            .replace(/\|/g, '\\|');
-                        const rationale = s.rationale
-                            .replace(/\r?\n/g, ' ')
-                            .replace(/\|/g, '\\|');
-                        return `| ${title} | ${s.score}/10 | ${rationale} |`;
-                    })
-                    .join('\n');
-                const scoreSummary =
-                    '\n\n---\n\n' +
-                    '<details><summary>Self-Reflection Confidence Scores</summary>\n\n' +
-                    '| Finding | Score | Rationale |\n' +
-                    '|---------|-------|-----------|\n' +
-                    scoreLines +
-                    '\n\n' +
-                    '</details>';
+                const scoreSummary = formatSelfReflectionScoresMarkdown(
+                    pipelineResult.selfReflectionScores
+                );
                 streamMarkdownWithAnchors(stream, scoreSummary, gitRootUri);
             }
 

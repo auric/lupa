@@ -99,6 +99,7 @@ describe('BatchToolsTool', () => {
 
         context = createMockExecutionContext();
         toolExecutor = new ToolExecutor(toolRegistry, context);
+        toolExecutor.bindToContext();
         context.toolExecutor = toolExecutor;
     });
 
@@ -480,6 +481,7 @@ describe('BatchToolsTool', () => {
                 limitedContext,
                 3 // Only 3 tool calls allowed (batch_tools itself + 2 inner)
             );
+            limitedExecutor.bindToContext();
             limitedContext.toolExecutor = limitedExecutor;
 
             // This will use 1 call for batch_tools via the executor,

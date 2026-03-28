@@ -82,6 +82,7 @@ describe('ToolExecutor', () => {
             toolRegistry,
             createMockExecutionContext()
         );
+        toolExecutor.bindToContext();
         successTool = new MockSuccessTool();
         errorTool = new MockErrorTool();
         delayTool = new MockDelayTool();
@@ -265,6 +266,7 @@ describe('ToolExecutor', () => {
                 createMockExecutionContext(),
                 3
             );
+            limitedExecutor.bindToContext();
 
             const result1 = await limitedExecutor.executeTool('success_tool', {
                 message: 'test1',
@@ -288,6 +290,7 @@ describe('ToolExecutor', () => {
                 createMockExecutionContext(),
                 3
             );
+            limitedExecutor.bindToContext();
 
             // Make 3 successful calls
             await limitedExecutor.executeTool('success_tool', {
@@ -318,6 +321,7 @@ describe('ToolExecutor', () => {
                 createMockExecutionContext(),
                 10
             );
+            limitedExecutor.bindToContext();
 
             await limitedExecutor.executeTool('success_tool', {
                 message: 'test1',
@@ -340,6 +344,7 @@ describe('ToolExecutor', () => {
                 toolRegistry,
                 createMockExecutionContext()
             );
+            defaultExecutor.bindToContext();
 
             expect(defaultExecutor.getToolCallCount()).toBe(0);
 
@@ -584,6 +589,7 @@ describe('ToolExecutor', () => {
                 toolRegistry,
                 mockExecutionContext
             );
+            toolExecutorWithContext.bindToContext();
 
             await toolExecutorWithContext.executeTool(
                 'context_capture_tool',
@@ -617,6 +623,7 @@ describe('ToolExecutor', () => {
                 toolRegistry,
                 createMockExecutionContext()
             );
+            toolExecutorWithContext.bindToContext();
 
             await toolExecutorWithContext.executeTool('context_check_tool', {});
 
@@ -652,6 +659,7 @@ describe('ToolExecutor', () => {
                 toolRegistry,
                 cancelledContext
             );
+            toolExecutorWithCancelledToken.bindToContext();
 
             await expect(
                 toolExecutorWithCancelledToken.executeTool('slow_tool', {})
@@ -715,6 +723,7 @@ describe('ToolExecutor', () => {
                 cancelledContext,
                 1 // Very low limit
             );
+            limitedExecutor.bindToContext();
 
             // Make calls that would exceed the rate limit
             // First call should throw CancellationError, NOT increment count and return rate-limit error
