@@ -75,6 +75,17 @@ export class ToolExecutor {
         }
         this.sharedCallCount = { value: 0 };
         this.toolCallCountsByName = new Map<string, number>();
+        // NOTE: executionContext.toolCallCounts is NOT set here — callers must
+        // call bindToContext() after construction for the primary executor.
+        // This avoids a transient clobber in createScoped() where the constructor
+        // would momentarily overwrite the parent's map with a fresh empty one.
+    }
+
+    /**
+     * Bind this executor's counters to the execution context.
+     * Must be called once after constructing the primary (non-scoped) executor.
+     */
+    bindToContext(): void {
         this.executionContext.toolCallCounts = this.toolCallCountsByName;
     }
 
@@ -97,7 +108,6 @@ export class ToolExecutor {
         // are tracked in one place, maintaining consistent rate limiting.
         scoped.sharedCallCount = this.sharedCallCount;
         scoped.toolCallCountsByName = this.toolCallCountsByName;
-        this.executionContext.toolCallCounts = this.toolCallCountsByName;
         scoped.restrictToLocal = options?.restrictToLocal ?? false;
         for (const tool of additionalTools) {
             scoped.localTools.set(tool.name, tool);

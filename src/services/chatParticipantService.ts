@@ -300,6 +300,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 this.deps.toolRegistry,
                 explorationContext
             );
+            toolExecutor.bindToContext();
             explorationContext.toolExecutor = toolExecutor;
 
             const runner = new ConversationRunner(client, toolExecutor);
@@ -597,6 +598,7 @@ export class ChatParticipantService implements vscode.Disposable {
             this.deps!.toolRegistry,
             executionContext
         );
+        toolExecutor.bindToContext();
         executionContext.toolExecutor = toolExecutor;
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);

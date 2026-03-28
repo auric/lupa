@@ -147,6 +147,7 @@ export class ToolCallingAnalysisProvider {
             this.toolRegistry,
             executionContext
         );
+        toolExecutor.bindToContext();
         executionContext.toolExecutor = toolExecutor;
         const conversationRunner = new ConversationRunner(
             this.copilotModelManager,

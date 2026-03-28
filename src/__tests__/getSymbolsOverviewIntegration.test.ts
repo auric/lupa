@@ -96,6 +96,7 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
             toolRegistry,
             createMockExecutionContext()
         );
+        toolExecutor.bindToContext();
 
         vi.clearAllMocks();
     });

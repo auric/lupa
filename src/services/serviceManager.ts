@@ -217,6 +217,7 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry,
             utilityContext
         );
+        this.services.toolExecutor.bindToContext();
         utilityContext.toolExecutor = this.services.toolExecutor;
         this.services.conversationManager = new ConversationManager();
         // Note: SubagentSessionManager and SubagentExecutor are created per-analysis
