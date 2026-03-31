@@ -3070,7 +3070,6 @@ describe('ChatParticipantService', () => {
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
         let mockGitOperations: any;
-        let runConfigCapture: any;
 
         beforeEach(() => {
             const mockParticipant = { dispose: vi.fn() };
@@ -3104,13 +3103,11 @@ describe('ChatParticipantService', () => {
                     rootUri: { fsPath: '/test/git-root' },
                 }),
             };
-            runConfigCapture = null;
 
             vi.mocked(ConversationRunner).mockImplementation(function (
                 this: any
             ) {
-                this.run = vi.fn().mockImplementation((config) => {
-                    runConfigCapture = config;
+                this.run = vi.fn().mockImplementation((_config) => {
                     return Promise.resolve(
                         '## Summary\n\nAnalysis with at least 20 characters for submit_review.'
                     );
