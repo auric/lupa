@@ -1,11 +1,7 @@
 import * as vscode from 'vscode';
 import * as z from 'zod';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-    AnalysisEngine,
-    type AnalysisEngineInput,
-    type AnalysisEngineOutput,
-} from '../services/analysisEngine';
+import { AnalysisEngine } from '../services/analysisEngine';
 import { ToolResult } from '../types/toolResultTypes';
 import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
