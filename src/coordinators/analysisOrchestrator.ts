@@ -149,6 +149,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                     const result = await this.services.analysisEngine.analyze(
                         {
                             diff: diffText,
+                            parsedDiff: undefined,
                             llmClient: this.services.copilotModelManager,
                             model: {
                                 family: copilotModel.family,

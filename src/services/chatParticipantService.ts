@@ -544,6 +544,7 @@ export class ChatParticipantService implements vscode.Disposable {
 
         const input: AnalysisEngineInput = {
             diff: diffResult.diffText,
+            parsedDiff,
             llmClient: new ChatLLMClient(request.model, timeoutMs),
             model: {
                 family: request.model.family,
@@ -622,7 +623,7 @@ export class ChatParticipantService implements vscode.Disposable {
         return {
             metadata: {
                 command: request.command as 'branch' | 'changes',
-                filesAnalyzed: parsedDiff.length,
+                filesAnalyzed: result.filesAnalyzed,
                 issuesFound: contentAnalysis.issuesFound,
                 hasCriticalIssues: contentAnalysis.hasCriticalIssues,
                 hasSecurityIssues: contentAnalysis.hasSecurityIssues,

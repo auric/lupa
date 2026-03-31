@@ -997,6 +997,7 @@ describe('ChatParticipantService', () => {
                         createMockAnalysisEngineResult({
                             analysisText:
                                 'Analysis with 🔴 critical issue and 🔒 security risk',
+                            filesAnalyzed: 1,
                         })
                     ),
                 } as any,

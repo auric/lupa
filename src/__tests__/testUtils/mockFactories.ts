@@ -663,6 +663,7 @@ export function createMockAnalysisEngineInput(
 ): AnalysisEngineInput {
     return {
         diff: overrides.diff ?? 'mock diff content',
+        parsedDiff: overrides.parsedDiff ?? undefined,
         llmClient: overrides.llmClient ?? ({} as ILLMClient),
         model: overrides.model ?? {
             family: 'gpt-4o',
@@ -704,5 +705,6 @@ export function createMockAnalysisEngineResult(
         error: overrides.error ?? undefined,
         iterationsUsed: overrides.iterationsUsed ?? 5,
         selfReflectionScores: overrides.selfReflectionScores ?? [],
+        filesAnalyzed: overrides.filesAnalyzed ?? 0,
     };
 }
