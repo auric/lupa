@@ -188,7 +188,7 @@ index 1234567..abcdefg 100644
 
             await provider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: sampleDiff,
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -216,7 +216,7 @@ index 1234567..abcdefg 100644
 
             await provider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: sampleDiff,
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -284,7 +284,7 @@ index 1234567..abcdefg 100644
 
             const result = await provider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: sampleDiff,
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -319,7 +319,7 @@ index 1234567..abcdefg 100644
 
             await provider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: sampleDiff,
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -346,7 +346,7 @@ index 1234567..abcdefg 100644
 
             await provider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: sampleDiff,
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -508,7 +508,7 @@ index 1234567..abcdefg 100644
 
             const result = await provider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: sampleDiff,
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -539,7 +539,7 @@ index 1234567..abcdefg 100644
 
             const result = await provider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: sampleDiff,
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -580,7 +580,7 @@ index 0000000..3333333
 
             await provider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: complexDiff,
+                    parsedDiff: DiffUtils.parseDiff(complexDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -675,7 +675,7 @@ index 3333333..4444444 100644
             const [result1, result2] = await Promise.all([
                 provider.analyze(
                     createMockAnalysisEngineInput({
-                        diff: diff1,
+                        parsedDiff: DiffUtils.parseDiff(diff1),
                         llmClient: mockCopilotModelManager as any,
                         token: tokenSource1.token,
                     }),
@@ -683,7 +683,7 @@ index 3333333..4444444 100644
                 ),
                 provider.analyze(
                     createMockAnalysisEngineInput({
-                        diff: diff2,
+                        parsedDiff: DiffUtils.parseDiff(diff2),
                         llmClient: mockCopilotModelManager as any,
                         token: tokenSource2.token,
                     }),
@@ -799,7 +799,7 @@ index 3333333..4444444 100644
             const [simpleResult, complexResult] = await Promise.all([
                 provider.analyze(
                     createMockAnalysisEngineInput({
-                        diff: simpleDiff,
+                        parsedDiff: DiffUtils.parseDiff(simpleDiff),
                         llmClient: mockCopilotModelManager as any,
                         token: tokenSource1.token,
                     }),
@@ -807,7 +807,7 @@ index 3333333..4444444 100644
                 ),
                 provider.analyze(
                     createMockAnalysisEngineInput({
-                        diff: complexDiff,
+                        parsedDiff: DiffUtils.parseDiff(complexDiff),
                         llmClient: mockCopilotModelManager as any,
                         token: tokenSource2.token,
                     }),
@@ -903,7 +903,7 @@ index 3333333..4444444 100644
             const [result1, result2] = await Promise.all([
                 provider.analyze(
                     createMockAnalysisEngineInput({
-                        diff: diff1,
+                        parsedDiff: DiffUtils.parseDiff(diff1),
                         llmClient: mockCopilotModelManager as any,
                         token: tokenSource1.token,
                     }),
@@ -911,7 +911,7 @@ index 3333333..4444444 100644
                 ),
                 provider.analyze(
                     createMockAnalysisEngineInput({
-                        diff: diff2,
+                        parsedDiff: DiffUtils.parseDiff(diff2),
                         llmClient: mockCopilotModelManager as any,
                         token: tokenSource2.token,
                     }),
@@ -945,7 +945,7 @@ index 3333333..4444444 100644
 
             const result = await provider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: sampleDiff,
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: cancelledSource.token,
                 }),
@@ -982,7 +982,7 @@ index 3333333..4444444 100644
 
             await rlmProvider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: sampleDiff,
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -1017,7 +1017,7 @@ index 3333333..4444444 100644
 
             await noRecursionProvider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: sampleDiff,
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),

@@ -5,6 +5,7 @@ import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { Log } from '../services/loggingService';
 import { formatSelfReflectionScoresMarkdown } from '../services/selfReflectionScorer';
+import { DiffUtils } from '../utils/diffUtils';
 
 /**
  * AnalysisOrchestrator handles the core PR analysis workflow.
@@ -148,8 +149,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
 
                     const result = await this.services.analysisEngine.analyze(
                         {
-                            diff: diffText,
-                            parsedDiff: undefined,
+                            parsedDiff: DiffUtils.parseDiff(diffText),
                             llmClient: this.services.copilotModelManager,
                             model: {
                                 family: copilotModel.family,

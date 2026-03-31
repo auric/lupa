@@ -12,7 +12,6 @@ import type {
     ToolCallRecord,
     SubagentProgressContext,
 } from '../types/toolCallTypes';
-import { DiffUtils } from '../utils/diffUtils';
 import type { DiffHunk } from '../types/contextTypes';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
@@ -42,8 +41,7 @@ export interface ModelInfo {
 }
 
 export interface AnalysisEngineInput {
-    diff: string;
-    parsedDiff: DiffHunk[] | undefined;
+    parsedDiff: DiffHunk[];
     llmClient: ILLMClient;
     model: ModelInfo;
     token: vscode.CancellationToken;
@@ -199,8 +197,7 @@ export class AnalysisEngine implements vscode.Disposable {
 
             // Parse diff for structured analysis (reuse pre-parsed if provided)
             output.onProgress('Processing diff...', 0.5);
-            const parsedDiff =
-                input.parsedDiff ?? DiffUtils.parseDiff(input.diff);
+            const parsedDiff = input.parsedDiff;
             filesAnalyzed = parsedDiff.length;
 
             Log.info(

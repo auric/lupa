@@ -543,7 +543,6 @@ export class ChatParticipantService implements vscode.Disposable {
             this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
 
         const input: AnalysisEngineInput = {
-            diff: diffResult.diffText,
             parsedDiff,
             llmClient: new ChatLLMClient(request.model, timeoutMs),
             model: {

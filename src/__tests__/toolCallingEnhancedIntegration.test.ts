@@ -10,6 +10,7 @@ import {
     createMockAnalysisEngineInput,
     createMockAnalysisEngineOutput,
 } from './testUtils/mockFactories';
+import { DiffUtils } from '../utils/diffUtils';
 
 // Mock VS Code
 vi.mock('vscode');
@@ -177,7 +178,7 @@ describe('AnalysisEngine Enhanced Integration', () => {
 
             const result = await analysisProvider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: smallDiff,
+                    parsedDiff: DiffUtils.parseDiff(smallDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -231,7 +232,7 @@ describe('AnalysisEngine Enhanced Integration', () => {
 
             const result = await analysisProvider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: smallDiff,
+                    parsedDiff: DiffUtils.parseDiff(smallDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -313,7 +314,7 @@ describe('AnalysisEngine Enhanced Integration', () => {
 
             const result = await analysisProvider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: smallDiff,
+                    parsedDiff: DiffUtils.parseDiff(smallDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -396,7 +397,7 @@ describe('AnalysisEngine Enhanced Integration', () => {
 
             const result = await analysisProvider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -444,7 +445,7 @@ describe('AnalysisEngine Enhanced Integration', () => {
 
             const result = await analysisProvider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -493,7 +494,7 @@ describe('AnalysisEngine Enhanced Integration', () => {
 
             const result = await analysisProvider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -567,7 +568,7 @@ describe('AnalysisEngine Enhanced Integration', () => {
 
             const result = await analysisProvider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -643,7 +644,7 @@ describe('AnalysisEngine Enhanced Integration', () => {
 
             const result = await analysisProvider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),

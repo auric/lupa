@@ -662,8 +662,7 @@ export function createMockAnalysisEngineInput(
     overrides: Partial<AnalysisEngineInput> = {}
 ): AnalysisEngineInput {
     return {
-        diff: overrides.diff ?? 'mock diff content',
-        parsedDiff: overrides.parsedDiff ?? undefined,
+        parsedDiff: overrides.parsedDiff ?? [],
         llmClient: overrides.llmClient ?? ({} as ILLMClient),
         model: overrides.model ?? {
             family: 'gpt-4o',

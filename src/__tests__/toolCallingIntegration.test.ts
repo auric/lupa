@@ -14,6 +14,7 @@ import {
     createMockAnalysisEngineOutput,
 } from './testUtils/mockFactories';
 import { PromptGenerator } from '../models/promptGenerator';
+import { DiffUtils } from '../utils/diffUtils';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -514,7 +515,7 @@ describe('Tool-Calling Integration Tests', () => {
 
             await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff: 'test diff',
+                    parsedDiff: DiffUtils.parseDiff('test diff'),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
