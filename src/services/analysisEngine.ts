@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { ConversationManager } from '../models/conversationManager';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
-import { CopilotModelManager } from '../models/copilotModelManager';
 import { PromptGenerator } from '../models/promptGenerator';
 import { TokenValidator } from '../models/tokenValidator';
 import {
@@ -11,8 +10,6 @@ import {
 } from '../models/conversationRunner';
 import type {
     ToolCallRecord,
-    ToolCallingAnalysisResult,
-    AnalysisProgressCallback,
     SubagentProgressContext,
 } from '../types/toolCallTypes';
 import { DiffUtils } from '../utils/diffUtils';
@@ -38,6 +35,7 @@ import {
     type SelfReflectionScore,
 } from './selfReflectionScorer';
 import type { ILLMClient } from '../models/ILLMClient';
+import type { ChatToolCallHandler } from '../types/chatTypes';
 
 export interface ModelInfo {
     family: string;
@@ -52,6 +50,7 @@ export interface AnalysisEngineInput {
     model: ModelInfo;
     token: vscode.CancellationToken;
     userPromptSuffix: string | undefined;
+    chatHandler: ChatToolCallHandler | undefined;
 }
 
 export interface AnalysisEngineOutput {
@@ -85,7 +84,6 @@ export interface AnalysisEngineResult {
 export class AnalysisEngine {
     constructor(
         private toolRegistry: ToolRegistry,
-        private copilotModelManager: CopilotModelManager,
         private promptGenerator: PromptGenerator,
         private workspaceSettings: WorkspaceSettingsService,
         private diffEnricher: DiffEnricher,
@@ -108,10 +106,9 @@ export class AnalysisEngine {
      * @returns Promise resolving to the analysis result with tool call history
      */
     async analyze(
-        diff: string,
-        token: vscode.CancellationToken,
-        progressCallback?: AnalysisProgressCallback
-    ): Promise<ToolCallingAnalysisResult> {
+        input: AnalysisEngineInput,
+        output: AnalysisEngineOutput
+    ): Promise<AnalysisEngineResult> {
         // === Per-analysis state (local for concurrent-safety) ===
         const toolCallRecords: ToolCallRecord[] = [];
         let currentIteration = 0;
@@ -130,12 +127,12 @@ export class AnalysisEngine {
             this.workspaceSettings
         );
         const subagentExecutor = new SubagentExecutor(
-            this.copilotModelManager,
+            input.llmClient,
             this.toolRegistry,
             new SubagentPromptGenerator(),
             this.workspaceSettings,
-            undefined, // No chat handler in command context
-            progressCallback,
+            input.chatHandler,
+            (msg, inc) => output.onProgress(msg, inc),
             progressContext
         );
 
@@ -174,7 +171,7 @@ export class AnalysisEngine {
             planManager,
             subagentSessionManager,
             subagentExecutor,
-            cancellationToken: token,
+            cancellationToken: input.token,
             recursiveState,
             currentDepth: 0,
             currentAgentId: 'root',
@@ -190,7 +187,7 @@ export class AnalysisEngine {
         toolExecutor.bindToContext();
         executionContext.toolExecutor = toolExecutor;
         const conversationRunner = new ConversationRunner(
-            this.copilotModelManager,
+            input.llmClient,
             toolExecutor
         );
 
@@ -198,39 +195,39 @@ export class AnalysisEngine {
         let analysisError: string | undefined;
         let analysisText = '';
         let toolCallCount = 0;
+        let selfReflectionScores: SelfReflectionScore[] = [];
 
         try {
             Log.info('Starting analysis with tool-calling support');
-            progressCallback?.('Initializing analysis...', 0.5);
-            subagentSessionManager.setParentCancellationToken(token);
+            output.onProgress('Initializing analysis...', 0.5);
+            subagentSessionManager.setParentCancellationToken(input.token);
 
             // Parse diff for structured analysis
-            progressCallback?.('Processing diff...', 0.5);
-            const parsedDiff = DiffUtils.parseDiff(diff);
+            output.onProgress('Processing diff...', 0.5);
+            const parsedDiff = DiffUtils.parseDiff(input.diff);
 
             Log.info(
                 `Tools always enabled, ${parsedDiff.length} files via diff tools`
             );
 
             // Enrich changed symbols with LSP metadata for the Code Intelligence Brief
-            progressCallback?.('Building code intelligence brief...', 0.5);
+            output.onProgress('Building code intelligence brief...', 0.5);
             const codeIntelBrief = await this.diffEnricher.enrich(
                 parsedDiff,
-                token
+                input.token
             );
             Log.info(
                 `Code intelligence brief: ${codeIntelBrief.enrichedSymbols.length} symbols, ${codeIntelBrief.timeoutCount} timeouts`
             );
 
             // Resolve model and calibration profile before prompt generation
-            const model = await this.copilotModelManager.getCurrentModel();
             Log.info(
-                `Using model: ${model.name} (${model.vendor}/${model.id}, ${model.maxInputTokens} tokens)`
+                `Using model: ${input.model.name} (${input.model.id}, ${input.model.maxInputTokens} tokens)`
             );
 
             const calibrationProfile = getCalibrationProfile(
-                model.family,
-                model.id
+                input.model.family,
+                input.model.id
             );
             executionContext.calibrationProfile = calibrationProfile;
             Log.info(
@@ -251,16 +248,17 @@ export class AnalysisEngine {
             executionContext.parsedDiff = parsedDiff;
             const userMessage = this.promptGenerator.generateUserPrompt(
                 parsedDiff,
-                undefined,
+                input.userPromptSuffix,
                 isRecursiveMode,
                 this.workspaceSettings.getMaxSubagentsPerSession(),
                 codeIntelBrief
             );
 
             conversationManager.addUserMessage(userMessage);
-            progressCallback?.('Starting conversation with AI model...', 0.5);
+            output.onProgress('Starting conversation with AI model...', 0.5);
 
-            const tokenValidator = new TokenValidator(model);
+            const chatModel = await input.llmClient.getCurrentModel();
+            const tokenValidator = new TokenValidator(chatModel);
 
             // Create context status function that captures local state
             const getContextStatusSuffix = async (): Promise<string> => {
@@ -325,10 +323,11 @@ export class AnalysisEngine {
                 onIterationStart: (current, max) => {
                     currentIteration = current;
                     currentMaxIterations = max;
-                    progressCallback?.(
+                    output.onProgress(
                         `Turn ${current}/${max}: Analyzing...`,
                         0.2
                     );
+                    output.onIterationStart?.(current, max);
                 },
                 onToolCallComplete: (
                     toolCallId,
@@ -341,7 +340,7 @@ export class AnalysisEngine {
                     metadata
                 ) => {
                     toolCallCount++;
-                    toolCallRecords.push({
+                    const record: ToolCallRecord = {
                         id: toolCallId,
                         toolName,
                         arguments: args,
@@ -353,7 +352,10 @@ export class AnalysisEngine {
                         nestedCalls: metadata?.nestedToolCalls,
                         executionTimeMs: metadata?.executionTimeMs,
                         iterationsUsed: metadata?.iterationsUsed,
-                    });
+                    };
+                    toolCallRecords.push(record);
+                    output.onToolCallStart?.(toolCallId, toolName, args);
+                    output.onToolCallComplete?.(record);
                 },
                 getContextStatusSuffix,
             };
@@ -386,7 +388,7 @@ export class AnalysisEngine {
                     disabledToolNames,
                 },
                 conversationManager,
-                token,
+                input.token,
                 handler
             );
             analysisCompleted = !conversationRunner.wasCancelled;
@@ -407,11 +409,9 @@ export class AnalysisEngine {
                     systemPrompt,
                     availableTools: availableTools,
                     disabledToolNames,
-                    token,
+                    token: input.token,
                     handler,
-                    progressCallback: progressCallback
-                        ? (msg, inc) => progressCallback(msg, inc)
-                        : undefined,
+                    progressCallback: (msg, inc) => output.onProgress(msg, inc),
                 });
 
                 toolCallRecords.push(
@@ -421,13 +421,15 @@ export class AnalysisEngine {
                     analysisText = pipelineResult.rewrittenAnalysis;
                 }
 
-                if (pipelineResult.selfReflectionScores.length > 0) {
-                    analysisText += formatSelfReflectionScoresMarkdown(
-                        pipelineResult.selfReflectionScores
-                    );
+                selfReflectionScores = pipelineResult.selfReflectionScores;
+                if (selfReflectionScores.length > 0) {
+                    analysisText +=
+                        formatSelfReflectionScoresMarkdown(
+                            selfReflectionScores
+                        );
                 }
 
-                progressCallback?.(
+                output.onProgress(
                     `Analysis complete (${toolCallCount} tool calls)`,
                     2
                 );
@@ -458,14 +460,15 @@ export class AnalysisEngine {
             }
         }
 
-        return this.buildAnalysisResult(
-            toolCallRecords,
+        return {
             analysisText,
-            analysisCompleted,
-            analysisError,
-            conversationRunner.wasCancelled,
-            conversationRunner.iterationsUsed
-        );
+            toolCallRecords: [...toolCallRecords],
+            completed: analysisCompleted,
+            wasCancelled: conversationRunner.wasCancelled,
+            error: analysisError,
+            iterationsUsed: conversationRunner.iterationsUsed,
+            selfReflectionScores,
+        };
     }
 
     private createCoverageGapCallback(
@@ -506,33 +509,6 @@ export class AnalysisEngine {
             }
 
             return recursiveState.getCoverageGapMessage(allFiles);
-        };
-    }
-
-    private buildAnalysisResult(
-        toolCallRecords: ToolCallRecord[],
-        analysis: string,
-        completed: boolean,
-        error: string | undefined,
-        wasCancelled: boolean,
-        iterationsUsed?: number
-    ): ToolCallingAnalysisResult {
-        const successfulCalls = toolCallRecords.filter((r) => r.success).length;
-        const failedCalls = toolCallRecords.filter((r) => !r.success).length;
-
-        return {
-            analysis,
-            toolCalls: {
-                calls: [...toolCallRecords],
-                totalCalls: toolCallRecords.length,
-                successfulCalls,
-                failedCalls,
-                analysisCompleted: completed,
-                analysisError: error,
-                iterationsUsed,
-                maxIterations: this.maxIterations,
-            },
-            wasCancelled,
         };
     }
 

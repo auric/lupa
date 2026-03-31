@@ -1,9 +1,5 @@
 import * as vscode from 'vscode';
 import { AnalysisMode } from '../types/modelTypes';
-import type {
-    ToolCallsData,
-    AnalysisProgressCallback,
-} from '../types/toolCallTypes';
 import { IServiceRegistry } from '../services/serviceManager';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -146,30 +142,51 @@ export class AnalysisOrchestrator implements vscode.Disposable {
 
                     updateProgress('Starting analysis...');
 
-                    const progressCallback: AnalysisProgressCallback =
-                        updateProgress;
+                    const copilotModel =
+                        await this.services.copilotModelManager.getCurrentModel();
 
                     const result = await this.services.analysisEngine.analyze(
-                        diffText,
-                        cancellationTokenSource.token,
-                        progressCallback
+                        {
+                            diff: diffText,
+                            llmClient: this.services.copilotModelManager,
+                            model: {
+                                family: copilotModel.family,
+                                id: copilotModel.id,
+                                name: copilotModel.name,
+                                maxInputTokens: copilotModel.maxInputTokens,
+                            },
+                            token: cancellationTokenSource.token,
+                            userPromptSuffix: undefined,
+                            chatHandler: undefined,
+                        },
+                        {
+                            onProgress: updateProgress,
+                        }
                     );
 
                     if (result.wasCancelled) {
                         throw new vscode.CancellationError();
                     }
 
-                    const analysis = result.analysis;
-                    const toolCallsData: ToolCallsData | undefined =
-                        result.toolCalls;
-
                     // Display results in webview
                     const title = `PR Analysis: ${refName}`;
                     this.services.uiManager.displayAnalysisResults(
                         title,
                         diffText,
-                        analysis,
-                        toolCallsData
+                        result.analysisText,
+                        {
+                            calls: result.toolCallRecords,
+                            totalCalls: result.toolCallRecords.length,
+                            successfulCalls: result.toolCallRecords.filter(
+                                (r) => r.success
+                            ).length,
+                            failedCalls: result.toolCallRecords.filter(
+                                (r) => !r.success
+                            ).length,
+                            analysisCompleted: result.completed,
+                            analysisError: result.error,
+                            iterationsUsed: result.iterationsUsed,
+                        }
                     );
 
                     this.services.statusBar.showTemporaryMessage(

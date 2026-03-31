@@ -226,7 +226,6 @@ export class ServiceManager implements vscode.Disposable {
         // for concurrent-safety. The shared conversationManager is kept for other uses.
         this.services.analysisEngine = new AnalysisEngine(
             this.services.toolRegistry,
-            this.services.copilotModelManager!,
             this.services.promptGenerator!,
             this.services.workspaceSettings!,
             this.services.diffEnricher!,
