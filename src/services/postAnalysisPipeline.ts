@@ -340,6 +340,12 @@ export class PostAnalysisPipeline {
             !options.token.isCancellationRequested
         ) {
             options.progressCallback?.('Self-reflection scoring...', 0.75);
+
+            // Snapshot conversation state — self-reflection adds its own prompt
+            // and tool calls which would pollute the Stage 6 rewrite context.
+            const preReflectionMessageCount =
+                options.conversationManager.getMessageCount();
+
             const reflectionResult = await runSelfReflection({
                 findingStore: options.findingStore,
                 parsedDiff: options.parsedDiff,
@@ -350,6 +356,13 @@ export class PostAnalysisPipeline {
                 token: options.token,
                 handler: options.handler,
             });
+
+            // Restore conversation to pre-reflection state so Stage 6
+            // rewrite only sees the main analysis messages.
+            options.conversationManager.truncateToMessageCount(
+                preReflectionMessageCount
+            );
+
             selfReflectionScores = reflectionResult.scores;
             droppedTitles.push(...reflectionResult.dropped);
         }

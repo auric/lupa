@@ -277,7 +277,7 @@ export async function runSelfReflection(
 export function formatSelfReflectionScoresMarkdown(
     scores: SelfReflectionScore[]
 ): string {
-    const scoreLines = scores
+    const scoreLines = [...scores]
         .sort((a, b) => b.score - a.score)
         .map((s) => {
             const title = s.title

@@ -131,6 +131,22 @@ export class ConversationManager {
     }
 
     /**
+     * Truncate the conversation history to a specific message count.
+     * Removes all messages after the given count, restoring the conversation
+     * to an earlier state. Useful for cleaning up temporary conversation
+     * branches (e.g., self-reflection scoring) before continuing.
+     * @param count The number of messages to keep from the start
+     */
+    truncateToMessageCount(count: number): void {
+        if (count < 0) {
+            count = 0;
+        }
+        if (count < this.messages.length) {
+            this.messages.length = count;
+        }
+    }
+
+    /**
      * Get a slice of the conversation history.
      * @param start Starting index (inclusive)
      * @param end Ending index (exclusive). If not provided, goes to the end

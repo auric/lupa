@@ -402,7 +402,18 @@ export class ToolExecutor {
      * @returns Array of available tool instances
      */
     getAvailableTools(): ITool[] {
-        return this.toolRegistry.getAllTools();
+        const registryTools = this.restrictToLocal
+            ? []
+            : this.toolRegistry.getAllTools();
+        const localToolArray = Array.from(this.localTools.values());
+        if (localToolArray.length === 0) {
+            return registryTools;
+        }
+        const seen = new Set(localToolArray.map((t) => t.name));
+        return [
+            ...localToolArray,
+            ...registryTools.filter((t) => !seen.has(t.name)),
+        ];
     }
 
     getToolCallCountByName(name: string): number {
@@ -435,6 +446,7 @@ export class ToolExecutor {
      */
     resetToolCallCount(): void {
         this.sharedCallCount.value = 0;
+        this.toolCallCountsByName.clear();
     }
 
     /**

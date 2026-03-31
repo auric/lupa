@@ -780,4 +780,16 @@ describe('formatSelfReflectionScoresMarkdown', () => {
         expect(result).not.toContain('<script>');
         expect(result).not.toContain('</details> tag');
     });
+
+    it('does not mutate the original array order', () => {
+        const scores = [
+            { findingId: 'f1', title: 'Low', score: 3, rationale: 'r1' },
+            { findingId: 'f2', title: 'High', score: 8, rationale: 'r2' },
+            { findingId: 'f3', title: 'Lowest', score: 1, rationale: 'r3' },
+        ];
+
+        formatSelfReflectionScoresMarkdown(scores);
+
+        expect(scores.map((s) => s.score)).toEqual([3, 8, 1]);
+    });
 });

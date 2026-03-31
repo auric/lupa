@@ -299,6 +299,67 @@ describe('ConversationManager', () => {
                 'Current',
             ]);
         });
+
+        it('should truncate to a given message count', () => {
+            // Already has 3 messages from beforeEach
+            expect(conversationManager.getMessageCount()).toBe(3);
+
+            conversationManager.truncateToMessageCount(1);
+
+            expect(conversationManager.getMessageCount()).toBe(1);
+            expect(conversationManager.getHistory()[0].content).toBe(
+                'Message 1'
+            );
+        });
+
+        it('should be a no-op when truncating to current count or higher', () => {
+            expect(conversationManager.getMessageCount()).toBe(3);
+
+            conversationManager.truncateToMessageCount(3);
+            expect(conversationManager.getMessageCount()).toBe(3);
+
+            conversationManager.truncateToMessageCount(100);
+            expect(conversationManager.getMessageCount()).toBe(3);
+        });
+
+        it('should truncate to zero', () => {
+            conversationManager.truncateToMessageCount(0);
+            expect(conversationManager.getMessageCount()).toBe(0);
+            expect(conversationManager.hasMessages()).toBe(false);
+        });
+
+        it('should clamp negative count to zero', () => {
+            conversationManager.truncateToMessageCount(-5);
+            expect(conversationManager.getMessageCount()).toBe(0);
+        });
+
+        it('should support snapshot/restore pattern for temporary branches', () => {
+            conversationManager.clearHistory();
+            conversationManager.addUserMessage('Main analysis prompt');
+            conversationManager.addAssistantMessage('Main analysis response');
+
+            // Snapshot
+            const snapshot = conversationManager.getMessageCount();
+            expect(snapshot).toBe(2);
+
+            // Temporary branch (e.g., self-reflection)
+            conversationManager.addUserMessage('Self-reflection prompt');
+            conversationManager.addAssistantMessage(null, [
+                {
+                    id: 'c1',
+                    function: { name: 'score_finding', arguments: '{}' },
+                },
+            ]);
+            conversationManager.addToolMessage('c1', 'Score result');
+            expect(conversationManager.getMessageCount()).toBe(5);
+
+            // Restore
+            conversationManager.truncateToMessageCount(snapshot);
+            expect(conversationManager.getMessageCount()).toBe(2);
+            expect(conversationManager.getLastMessage()?.content).toBe(
+                'Main analysis response'
+            );
+        });
     });
 
     describe('Message Types and Validation', () => {

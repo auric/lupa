@@ -244,6 +244,57 @@ describe('ToolExecutor', () => {
             const scoped = toolExecutor.createScoped([]);
             expect(scoped.isToolAvailable('success_tool')).toBe(true);
         });
+
+        it('should return localTools from getAvailableTools on a scoped executor', () => {
+            const localTool: ITool = {
+                name: 'local_tool',
+                description: 'A local-only tool',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'local_tool',
+                    description: 'A local-only tool',
+                    inputSchema: {},
+                }),
+                execute: async () => toolSuccess('ok'),
+            };
+            const scoped = toolExecutor.createScoped([localTool]);
+            const available = scoped.getAvailableTools();
+            expect(available.some((t) => t.name === 'local_tool')).toBe(true);
+            // Global tools should still be present
+            expect(available.some((t) => t.name === 'success_tool')).toBe(true);
+        });
+
+        it('should return only localTools from getAvailableTools when restrictToLocal', () => {
+            const localTool: ITool = {
+                name: 'local_tool',
+                description: 'A local-only tool',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'local_tool',
+                    description: 'A local-only tool',
+                    inputSchema: {},
+                }),
+                execute: async () => toolSuccess('ok'),
+            };
+            const scoped = toolExecutor.createScoped([localTool], {
+                restrictToLocal: true,
+            });
+            const available = scoped.getAvailableTools();
+            expect(available).toHaveLength(1);
+            expect(available[0].name).toBe('local_tool');
+        });
+
+        it('should clear toolCallCountsByName on resetToolCallCount', async () => {
+            await toolExecutor.executeTool('success_tool', {
+                message: 'a',
+            });
+            expect(toolExecutor.getToolCallCountByName('success_tool')).toBe(1);
+
+            toolExecutor.resetToolCallCount();
+
+            expect(toolExecutor.getToolCallCountByName('success_tool')).toBe(0);
+            expect(toolExecutor.getToolCallCount()).toBe(0);
+        });
     });
 
     describe('Edge Cases', () => {
