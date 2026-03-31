@@ -474,147 +474,9 @@ describe('ChatParticipantService', () => {
             );
         });
 
-        it('should use recursive system prompt when maxRecursionDepth >= 1 and RLM approach', async () => {
-            const mockGitService = {
-                isInitialized: vi.fn().mockReturnValue(true),
-                compareBranches: vi.fn().mockResolvedValue({
-                    diffText:
-                        'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,1 +1,1 @@\n-old\n+new',
-                    refName: 'feature/test',
-                    error: undefined,
-                }),
-            };
-            vi.mocked(GitService.getInstance).mockReturnValue(
-                mockGitService as unknown as GitService
-            );
-
-            const recursiveWorkspaceSettings = {
-                ...mockWorkspaceSettings,
-                getMaxRecursionDepth: vi.fn().mockReturnValue(1),
-                getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
-            };
-
-            const recursivePromptGenerator = {
-                ...mockPromptGenerator,
-                generateRecursiveSystemPrompt: vi
-                    .fn()
-                    .mockReturnValue('Recursive system prompt'),
-            };
-
-            const instance = ChatParticipantService.getInstance();
-            instance.setDependencies({
-                toolRegistry: mockToolRegistry,
-                workspaceSettings: recursiveWorkspaceSettings,
-                promptGenerator: recursivePromptGenerator,
-                gitOperations: mockGitOperations,
-                analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue(createMockAnalysisEngineResult()),
-                } as any,
-                diffEnricher: {
-                    enrich: vi.fn().mockResolvedValue({
-                        enrichedSymbols: [],
-                        generatedAt: Date.now(),
-                        timeoutCount: 0,
-                    }),
-                } as any,
-                findingValidator: {
-                    validate: vi.fn().mockResolvedValue({
-                        validated: [],
-                        dropped: 0,
-                        downgraded: 0,
-                        kept: 0,
-                    }),
-                } as any,
-            });
-
-            await capturedHandler(
-                {
-                    command: 'branch',
-                    model: {
-                        id: 'test-model',
-                        name: 'test-model',
-                        maxInputTokens: 100000,
-                    },
-                },
-                {},
-                mockStream,
-                mockToken
-            );
-
-            // Analysis now goes through analysisEngine, which handles prompt selection internally
-            const mockAnalyze = (instance as any).deps.analysisEngine.analyze;
-            expect(mockAnalyze).toHaveBeenCalled();
-        });
-
-        it('should use non-recursive system prompt when RLM approach but depth=0', async () => {
-            const mockGitService = {
-                isInitialized: vi.fn().mockReturnValue(true),
-                compareBranches: vi.fn().mockResolvedValue({
-                    diffText:
-                        'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,1 +1,1 @@\n-old\n+new',
-                    refName: 'feature/test',
-                    error: undefined,
-                }),
-            };
-            vi.mocked(GitService.getInstance).mockReturnValue(
-                mockGitService as unknown as GitService
-            );
-
-            const nonRecursiveSettings = {
-                ...mockWorkspaceSettings,
-                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
-                getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
-            };
-
-            const instance = ChatParticipantService.getInstance();
-            instance.setDependencies({
-                toolRegistry: mockToolRegistry,
-                workspaceSettings: nonRecursiveSettings,
-                promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations,
-                analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue(createMockAnalysisEngineResult()),
-                } as any,
-                diffEnricher: {
-                    enrich: vi.fn().mockResolvedValue({
-                        enrichedSymbols: [],
-                        generatedAt: Date.now(),
-                        timeoutCount: 0,
-                    }),
-                } as any,
-                findingValidator: {
-                    validate: vi.fn().mockResolvedValue({
-                        validated: [],
-                        dropped: 0,
-                        downgraded: 0,
-                        kept: 0,
-                    }),
-                } as any,
-            });
-
-            await capturedHandler(
-                {
-                    command: 'branch',
-                    model: {
-                        id: 'test-model',
-                        name: 'test-model',
-                        maxInputTokens: 100000,
-                    },
-                },
-                {},
-                mockStream,
-                mockToken
-            );
-
-            // depth=0 means non-recursive even with RLM approach
-            // Analysis now goes through analysisEngine, which handles prompt selection internally
-            const mockAnalyze = (instance as any).deps.analysisEngine.analyze;
-            expect(mockAnalyze).toHaveBeenCalled();
-        });
+        // Recursive vs non-recursive prompt selection tests removed:
+        // That logic now lives in AnalysisEngine; see analysisEngineIntegration.test.ts
+        // "recursive mode integration" describe block.
     });
 
     describe('/changes command', () => {
@@ -1131,14 +993,12 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue(
-                            createMockAnalysisEngineResult({
-                                analysisText:
-                                    'Analysis with 🔴 critical issue and 🔒 security risk',
-                            })
-                        ),
+                    analyze: vi.fn().mockResolvedValue(
+                        createMockAnalysisEngineResult({
+                            analysisText:
+                                'Analysis with 🔴 critical issue and 🔒 security risk',
+                        })
+                    ),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -1472,16 +1332,14 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     analysisEngine: {
-                        analyze: vi
-                            .fn()
-                            .mockResolvedValue(
-                                createMockAnalysisEngineResult({
-                                    analysisText: '',
-                                    completed: false,
-                                    wasCancelled: true,
-                                    iterationsUsed: 0,
-                                })
-                            ),
+                        analyze: vi.fn().mockResolvedValue(
+                            createMockAnalysisEngineResult({
+                                analysisText: '',
+                                completed: false,
+                                wasCancelled: true,
+                                iterationsUsed: 0,
+                            })
+                        ),
                     } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
@@ -1541,16 +1399,14 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     analysisEngine: {
-                        analyze: vi
-                            .fn()
-                            .mockResolvedValue(
-                                createMockAnalysisEngineResult({
-                                    analysisText: '',
-                                    completed: false,
-                                    wasCancelled: true,
-                                    iterationsUsed: 0,
-                                })
-                            ),
+                        analyze: vi.fn().mockResolvedValue(
+                            createMockAnalysisEngineResult({
+                                analysisText: '',
+                                completed: false,
+                                wasCancelled: true,
+                                iterationsUsed: 0,
+                            })
+                        ),
                     } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
@@ -1711,6 +1567,76 @@ describe('ChatParticipantService', () => {
                     cancelled: true,
                     responseIsIncomplete: true,
                 });
+            });
+        });
+
+        describe('analysis engine result.error', () => {
+            it('should format error with addErrorSection and return errorDetails', async () => {
+                const mockToken = {
+                    isCancellationRequested: false,
+                    onCancellationRequested: vi.fn(),
+                };
+
+                const mockGitService = {
+                    isInitialized: vi.fn().mockReturnValue(true),
+                    compareBranches: vi.fn().mockResolvedValue({
+                        diffText: 'mock diff',
+                        refName: 'feature/test',
+                        error: undefined,
+                    }),
+                };
+                vi.mocked(GitService.getInstance).mockReturnValue(
+                    mockGitService as unknown as GitService
+                );
+
+                const instance = ChatParticipantService.getInstance();
+                instance.setDependencies({
+                    toolRegistry: mockToolRegistry,
+                    workspaceSettings: mockWorkspaceSettings,
+                    promptGenerator: mockPromptGenerator,
+                    gitOperations: mockGitOperations,
+                    analysisEngine: {
+                        analyze: vi.fn().mockResolvedValue(
+                            createMockAnalysisEngineResult({
+                                error: 'Model rate limited',
+                                completed: false,
+                                analysisText: '',
+                            })
+                        ),
+                    } as any,
+                    diffEnricher: {
+                        enrich: vi.fn().mockResolvedValue({
+                            enrichedSymbols: [],
+                            generatedAt: Date.now(),
+                            timeoutCount: 0,
+                        }),
+                    } as any,
+                    findingValidator: {
+                        validate: vi.fn().mockResolvedValue({
+                            validated: [],
+                            dropped: 0,
+                            downgraded: 0,
+                            kept: 0,
+                        }),
+                    } as any,
+                });
+
+                const result = await capturedHandler(
+                    { command: 'branch', model: { id: 'test-model' } },
+                    {},
+                    mockStream,
+                    mockToken
+                );
+
+                expect(mockStream.markdown).toHaveBeenCalledWith(
+                    expect.stringContaining('Analysis Error')
+                );
+                expect(result).toHaveProperty('errorDetails');
+                expect(result.errorDetails.message).toBe('Model rate limited');
+                expect(result.metadata).toHaveProperty(
+                    'responseIsIncomplete',
+                    true
+                );
             });
         });
 

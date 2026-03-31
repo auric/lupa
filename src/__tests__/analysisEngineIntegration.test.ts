@@ -938,6 +938,25 @@ index 3333333..4444444 100644
         });
     });
 
+    describe('cancellation handling', () => {
+        it('should return wasCancelled=true and completed=false with pre-cancelled token', async () => {
+            const cancelledSource = createMockCancellationTokenSource();
+            cancelledSource.cancel();
+
+            const result = await provider.analyze(
+                createMockAnalysisEngineInput({
+                    diff: sampleDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    token: cancelledSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
+
+            expect(result.wasCancelled).toBe(true);
+            expect(result.completed).toBe(false);
+        });
+    });
+
     describe('recursive mode integration', () => {
         it('should use recursive system prompt when analysisApproach is rlm with depth >= 1', async () => {
             const rlmSettings = createMockWorkspaceSettings({
