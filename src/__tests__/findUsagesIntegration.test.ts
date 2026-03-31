@@ -1,10 +1,6 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-    AnalysisEngine,
-    type AnalysisEngineInput,
-    type AnalysisEngineOutput,
-} from '../services/analysisEngine';
+import { AnalysisEngine } from '../services/analysisEngine';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';

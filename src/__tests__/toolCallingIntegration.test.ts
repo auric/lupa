@@ -1,10 +1,6 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
-import {
-    AnalysisEngine,
-    type AnalysisEngineInput,
-    type AnalysisEngineOutput,
-} from '../services/analysisEngine';
+import { AnalysisEngine } from '../services/analysisEngine';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindSymbolTool } from '../tools/findSymbolTool';

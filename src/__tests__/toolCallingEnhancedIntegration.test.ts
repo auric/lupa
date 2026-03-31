@@ -1,11 +1,7 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import * as vscode from 'vscode';
 import { z } from 'zod';
-import {
-    AnalysisEngine,
-    type AnalysisEngineInput,
-    type AnalysisEngineOutput,
-} from '../services/analysisEngine';
+import { AnalysisEngine } from '../services/analysisEngine';
 import { TokenConstants } from '../models/tokenConstants';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import {
