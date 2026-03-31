@@ -208,17 +208,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -272,17 +270,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -334,17 +330,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -407,17 +401,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -467,17 +459,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -547,17 +537,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: recursivePromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -622,17 +610,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -742,17 +728,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -806,17 +790,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -866,17 +848,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -926,17 +906,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -993,17 +971,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -1053,17 +1029,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -1119,17 +1093,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -1189,17 +1161,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -1250,18 +1220,16 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText:
-                                'Analysis with 🔴 critical issue and 🔒 security risk',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText:
+                            'Analysis with 🔴 critical issue and 🔒 security risk',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -1325,17 +1293,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -1473,17 +1439,15 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     analysisEngine: {
-                        analyze: vi
-                            .fn()
-                            .mockResolvedValue({
-                                analysisText: 'Mock analysis result',
-                                toolCallRecords: [],
-                                completed: true,
-                                wasCancelled: false,
-                                error: undefined,
-                                iterationsUsed: 5,
-                                selfReflectionScores: [],
-                            }),
+                        analyze: vi.fn().mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
                     } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
@@ -1543,17 +1507,15 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     analysisEngine: {
-                        analyze: vi
-                            .fn()
-                            .mockResolvedValue({
-                                analysisText: 'Mock analysis result',
-                                toolCallRecords: [],
-                                completed: true,
-                                wasCancelled: false,
-                                error: undefined,
-                                iterationsUsed: 5,
-                                selfReflectionScores: [],
-                            }),
+                        analyze: vi.fn().mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
                     } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
@@ -1615,17 +1577,15 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     analysisEngine: {
-                        analyze: vi
-                            .fn()
-                            .mockResolvedValue({
-                                analysisText: '',
-                                toolCallRecords: [],
-                                completed: false,
-                                wasCancelled: true,
-                                error: undefined,
-                                iterationsUsed: 0,
-                                selfReflectionScores: [],
-                            }),
+                        analyze: vi.fn().mockResolvedValue({
+                            analysisText: '',
+                            toolCallRecords: [],
+                            completed: false,
+                            wasCancelled: true,
+                            error: undefined,
+                            iterationsUsed: 0,
+                            selfReflectionScores: [],
+                        }),
                     } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
@@ -1685,17 +1645,15 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     analysisEngine: {
-                        analyze: vi
-                            .fn()
-                            .mockResolvedValue({
-                                analysisText: '',
-                                toolCallRecords: [],
-                                completed: false,
-                                wasCancelled: true,
-                                error: undefined,
-                                iterationsUsed: 0,
-                                selfReflectionScores: [],
-                            }),
+                        analyze: vi.fn().mockResolvedValue({
+                            analysisText: '',
+                            toolCallRecords: [],
+                            completed: false,
+                            wasCancelled: true,
+                            error: undefined,
+                            iterationsUsed: 0,
+                            selfReflectionScores: [],
+                        }),
                     } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
@@ -1754,17 +1712,15 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     analysisEngine: {
-                        analyze: vi
-                            .fn()
-                            .mockResolvedValue({
-                                analysisText: 'Mock analysis result',
-                                toolCallRecords: [],
-                                completed: true,
-                                wasCancelled: false,
-                                error: undefined,
-                                iterationsUsed: 5,
-                                selfReflectionScores: [],
-                            }),
+                        analyze: vi.fn().mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
                     } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
@@ -1825,17 +1781,15 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     analysisEngine: {
-                        analyze: vi
-                            .fn()
-                            .mockResolvedValue({
-                                analysisText: 'Mock analysis result',
-                                toolCallRecords: [],
-                                completed: true,
-                                wasCancelled: false,
-                                error: undefined,
-                                iterationsUsed: 5,
-                                selfReflectionScores: [],
-                            }),
+                        analyze: vi.fn().mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
                     } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
@@ -1897,17 +1851,15 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     analysisEngine: {
-                        analyze: vi
-                            .fn()
-                            .mockResolvedValue({
-                                analysisText: 'Mock analysis result',
-                                toolCallRecords: [],
-                                completed: true,
-                                wasCancelled: false,
-                                error: undefined,
-                                iterationsUsed: 5,
-                                selfReflectionScores: [],
-                            }),
+                        analyze: vi.fn().mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
                     } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
@@ -1970,17 +1922,15 @@ describe('ChatParticipantService', () => {
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
                     analysisEngine: {
-                        analyze: vi
-                            .fn()
-                            .mockResolvedValue({
-                                analysisText: 'Mock analysis result',
-                                toolCallRecords: [],
-                                completed: true,
-                                wasCancelled: false,
-                                error: undefined,
-                                iterationsUsed: 5,
-                                selfReflectionScores: [],
-                            }),
+                        analyze: vi.fn().mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
                     } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
@@ -2100,17 +2050,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -2167,17 +2115,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -2228,17 +2174,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -2309,17 +2253,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -2373,17 +2315,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -2438,17 +2378,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -2505,17 +2443,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -2569,17 +2505,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -2628,17 +2562,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -2688,17 +2620,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -2776,17 +2706,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -2852,17 +2780,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -2918,17 +2844,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -3023,17 +2947,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -3095,17 +3017,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -3226,17 +3146,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
@@ -3305,17 +3223,15 @@ describe('ChatParticipantService', () => {
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
                 analysisEngine: {
-                    analyze: vi
-                        .fn()
-                        .mockResolvedValue({
-                            analysisText: 'Mock analysis result',
-                            toolCallRecords: [],
-                            completed: true,
-                            wasCancelled: false,
-                            error: undefined,
-                            iterationsUsed: 5,
-                            selfReflectionScores: [],
-                        }),
+                    analyze: vi.fn().mockResolvedValue({
+                        analysisText: 'Mock analysis result',
+                        toolCallRecords: [],
+                        completed: true,
+                        wasCancelled: false,
+                        error: undefined,
+                        iterationsUsed: 5,
+                        selfReflectionScores: [],
+                    }),
                 } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
