@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import * as vscode from 'vscode';
 import { z } from 'zod';
-import { AnalysisEngine } from '../services/analysisEngine';
+import {
+    AnalysisEngine,
+    type AnalysisEngineInput,
+    type AnalysisEngineOutput,
+} from '../services/analysisEngine';
 import { TokenConstants } from '../models/tokenConstants';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import {
@@ -100,7 +104,6 @@ describe('AnalysisEngine Enhanced Integration', () => {
 
         analysisProvider = new AnalysisEngine(
             mockToolRegistry as any,
-            mockCopilotModelManager as any,
             mockPromptGenerator as any,
             mockWorkspaceSettings,
             mockDiffEnricher,
@@ -175,11 +178,25 @@ describe('AnalysisEngine Enhanced Integration', () => {
             });
 
             const result = await analysisProvider.analyze(
-                smallDiff,
-                tokenSource.token
+                {
+                    diff: smallDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Final analysis based on available context. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
         });
@@ -225,11 +242,25 @@ describe('AnalysisEngine Enhanced Integration', () => {
             });
 
             const result = await analysisProvider.analyze(
-                smallDiff,
-                tokenSource.token
+                {
+                    diff: smallDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Final analysis with limited context. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
         });
@@ -303,11 +334,25 @@ describe('AnalysisEngine Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                smallDiff,
-                tokenSource.token
+                {
+                    diff: smallDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Analysis based on error message. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
             // The tool error is passed to the LLM internally, verifiable through the final result
@@ -382,11 +427,25 @@ describe('AnalysisEngine Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff: diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Based on the file content, here is my analysis: The function was renamed from old() to new(). Padding added for minimum character requirement.'
             );
 
@@ -426,11 +485,25 @@ describe('AnalysisEngine Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff: diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Analysis after error recovery. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
             // Error recovery is handled internally, verifiable through successful analysis completion
@@ -471,11 +544,25 @@ describe('AnalysisEngine Enhanced Integration', () => {
             });
 
             const result = await analysisProvider.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff: diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Conversation reached maximum iterations with no findings.'
             );
         });
@@ -541,11 +628,25 @@ describe('AnalysisEngine Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff: diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Analysis despite tool failure. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
             // The tool error is passed to the LLM internally, verifiable through the final result
@@ -613,11 +714,25 @@ describe('AnalysisEngine Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff: diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Analysis with malformed tool call handled. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
         });

@@ -1,7 +1,11 @@
 import * as vscode from 'vscode';
 import * as z from 'zod';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AnalysisEngine } from '../services/analysisEngine';
+import {
+    AnalysisEngine,
+    type AnalysisEngineInput,
+    type AnalysisEngineOutput,
+} from '../services/analysisEngine';
 import { ToolResult } from '../types/toolResultTypes';
 import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
@@ -155,7 +159,6 @@ index 1234567..abcdefg 100644
 
         provider = new AnalysisEngine(
             mockToolRegistry,
-            mockCopilotModelManager,
             mockPromptGenerator,
             mockWorkspaceSettings,
             mockDiffEnricher,
@@ -185,7 +188,24 @@ index 1234567..abcdefg 100644
                 'generateUserPrompt'
             );
 
-            await provider.analyze(sampleDiff, tokenSource.token);
+            await provider.analyze(
+                {
+                    diff: sampleDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
+            );
 
             // Verify tool-aware system prompt was generated
             expect(generateToolAwareSystemPromptSpy).toHaveBeenCalled();
@@ -206,7 +226,24 @@ index 1234567..abcdefg 100644
         it('should parse diff using DiffUtils', async () => {
             const parseDiffSpy = vi.spyOn(DiffUtils, 'parseDiff');
 
-            await provider.analyze(sampleDiff, tokenSource.token);
+            await provider.analyze(
+                {
+                    diff: sampleDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
+            );
 
             expect(parseDiffSpy).toHaveBeenCalledWith(sampleDiff);
         });
@@ -268,8 +305,22 @@ index 1234567..abcdefg 100644
                 });
 
             const result = await provider.analyze(
-                sampleDiff,
-                tokenSource.token
+                {
+                    diff: sampleDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
             // Verify tool execute was called with parsed arguments
@@ -287,7 +338,7 @@ index 1234567..abcdefg 100644
             );
 
             // Verify final result
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Final analysis based on tool results. This review includes comprehensive findings about the validateToken function and its usage patterns.'
             );
         });
@@ -298,7 +349,24 @@ index 1234567..abcdefg 100644
                 'generateToolAwareSystemPrompt'
             );
 
-            await provider.analyze(sampleDiff, tokenSource.token);
+            await provider.analyze(
+                {
+                    diff: sampleDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
+            );
 
             // System prompt generation no longer receives tools directly (sent via VS Code API)
             expect(generateToolAwareSystemPromptSpy).toHaveBeenCalled();
@@ -318,7 +386,24 @@ index 1234567..abcdefg 100644
                 'generateUserPrompt'
             );
 
-            await provider.analyze(sampleDiff, tokenSource.token);
+            await provider.analyze(
+                {
+                    diff: sampleDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
+            );
 
             const userPromptCall = generateUserPromptSpy.mock.calls[0];
             const [parsedDiffParam] = userPromptCall;
@@ -397,11 +482,25 @@ index 1234567..abcdefg 100644
                 });
 
             const result = await provider.analyze(
-                sampleDiff,
-                tokenSource.token
+                {
+                    diff: sampleDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Analysis despite tool error. The review continues with available information and provides recommendations based on the code changes.'
             );
             // Tool messages are now added to internal ConversationManager
@@ -470,12 +569,26 @@ index 1234567..abcdefg 100644
                 });
 
             const result = await provider.analyze(
-                sampleDiff,
-                tokenSource.token
+                {
+                    diff: sampleDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
             // Should still complete despite malformed arguments
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Final result. Despite the malformed tool arguments, the analysis completed successfully with comprehensive findings and recommendations.'
             );
             // Verify tool was called with empty object for malformed JSON
@@ -497,12 +610,26 @@ index 1234567..abcdefg 100644
             );
 
             const result = await provider.analyze(
-                sampleDiff,
-                tokenSource.token
+                {
+                    diff: sampleDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toContain('Error during analysis');
-            expect(result.analysis).toContain('LLM service unavailable');
+            expect(result.analysisText).toContain('Error during analysis');
+            expect(result.analysisText).toContain('LLM service unavailable');
         });
     });
 
@@ -533,7 +660,24 @@ index 0000000..3333333
                 'generateUserPrompt'
             );
 
-            await provider.analyze(complexDiff, tokenSource.token);
+            await provider.analyze(
+                {
+                    diff: complexDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
+            );
 
             const parsedDiff = generateUserPromptSpy.mock
                 .calls[0][0] as DiffHunk[];
@@ -621,25 +765,59 @@ index 3333333..4444444 100644
 
             // Run both analyses concurrently
             const [result1, result2] = await Promise.all([
-                provider.analyze(diff1, tokenSource1.token),
-                provider.analyze(diff2, tokenSource2.token),
+                provider.analyze(
+                    {
+                        diff: diff1,
+                        llmClient: mockCopilotModelManager as any,
+                        model: {
+                            family: 'gpt-4o',
+                            id: 'gpt-4o',
+                            name: 'GPT-4o',
+                            maxInputTokens: 8000,
+                        },
+                        token: tokenSource1.token,
+                        userPromptSuffix: undefined,
+                        chatHandler: undefined,
+                    },
+                    {
+                        onProgress: vi.fn(),
+                    }
+                ),
+                provider.analyze(
+                    {
+                        diff: diff2,
+                        llmClient: mockCopilotModelManager as any,
+                        model: {
+                            family: 'gpt-4o',
+                            id: 'gpt-4o',
+                            name: 'GPT-4o',
+                            maxInputTokens: 8000,
+                        },
+                        token: tokenSource2.token,
+                        userPromptSuffix: undefined,
+                        chatHandler: undefined,
+                    },
+                    {
+                        onProgress: vi.fn(),
+                    }
+                ),
             ]);
 
             // Verify each analysis got its own distinct result
-            expect(result1.analysis).toContain('Concurrent analysis 1');
-            expect(result1.analysis).toContain('file1');
-            expect(result2.analysis).toContain('Concurrent analysis 2');
-            expect(result2.analysis).toContain('file2');
+            expect(result1.analysisText).toContain('Concurrent analysis 1');
+            expect(result1.analysisText).toContain('file1');
+            expect(result2.analysisText).toContain('Concurrent analysis 2');
+            expect(result2.analysisText).toContain('file2');
 
             // Verify tool call records are separate for each analysis
-            expect(result1.toolCalls.calls).toHaveLength(1);
-            expect(result1.toolCalls.calls[0].id).toBe('call_analysis_1');
-            expect(result2.toolCalls.calls).toHaveLength(1);
-            expect(result2.toolCalls.calls[0].id).toBe('call_analysis_2');
+            expect(result1.toolCallRecords).toHaveLength(1);
+            expect(result1.toolCallRecords[0].id).toBe('call_analysis_1');
+            expect(result2.toolCallRecords).toHaveLength(1);
+            expect(result2.toolCallRecords[0].id).toBe('call_analysis_2');
 
             // Verify both completed successfully
-            expect(result1.toolCalls.analysisCompleted).toBe(true);
-            expect(result2.toolCalls.analysisCompleted).toBe(true);
+            expect(result1.completed).toBe(true);
+            expect(result2.completed).toBe(true);
 
             // Cleanup
             tokenSource1.dispose();
@@ -731,21 +909,55 @@ index 3333333..4444444 100644
             const tokenSource2 = new vscode.CancellationTokenSource();
 
             const [simpleResult, complexResult] = await Promise.all([
-                provider.analyze(simpleDiff, tokenSource1.token),
-                provider.analyze(complexDiff, tokenSource2.token),
+                provider.analyze(
+                    {
+                        diff: simpleDiff,
+                        llmClient: mockCopilotModelManager as any,
+                        model: {
+                            family: 'gpt-4o',
+                            id: 'gpt-4o',
+                            name: 'GPT-4o',
+                            maxInputTokens: 8000,
+                        },
+                        token: tokenSource1.token,
+                        userPromptSuffix: undefined,
+                        chatHandler: undefined,
+                    },
+                    {
+                        onProgress: vi.fn(),
+                    }
+                ),
+                provider.analyze(
+                    {
+                        diff: complexDiff,
+                        llmClient: mockCopilotModelManager as any,
+                        model: {
+                            family: 'gpt-4o',
+                            id: 'gpt-4o',
+                            name: 'GPT-4o',
+                            maxInputTokens: 8000,
+                        },
+                        token: tokenSource2.token,
+                        userPromptSuffix: undefined,
+                        chatHandler: undefined,
+                    },
+                    {
+                        onProgress: vi.fn(),
+                    }
+                ),
             ]);
 
             // Simple analysis: 1 iteration (immediate submit)
-            expect(simpleResult.toolCalls.totalCalls).toBe(1);
-            expect(simpleResult.analysis).toContain('Single iteration');
+            expect(simpleResult.toolCallRecords.length).toBe(1);
+            expect(simpleResult.analysisText).toContain('Single iteration');
 
             // Complex analysis: 2 iterations (tool call + submit)
-            expect(complexResult.toolCalls.totalCalls).toBe(2);
-            expect(complexResult.analysis).toContain('Two iterations');
+            expect(complexResult.toolCallRecords.length).toBe(2);
+            expect(complexResult.analysisText).toContain('Two iterations');
 
             // Both completed independently
-            expect(simpleResult.toolCalls.analysisCompleted).toBe(true);
-            expect(complexResult.toolCalls.analysisCompleted).toBe(true);
+            expect(simpleResult.completed).toBe(true);
+            expect(complexResult.completed).toBe(true);
 
             tokenSource1.dispose();
             tokenSource2.dispose();
@@ -821,23 +1033,57 @@ index 3333333..4444444 100644
 
             // Run both analyses concurrently
             const [result1, result2] = await Promise.all([
-                provider.analyze(diff1, tokenSource1.token),
-                provider.analyze(diff2, tokenSource2.token),
+                provider.analyze(
+                    {
+                        diff: diff1,
+                        llmClient: mockCopilotModelManager as any,
+                        model: {
+                            family: 'gpt-4o',
+                            id: 'gpt-4o',
+                            name: 'GPT-4o',
+                            maxInputTokens: 8000,
+                        },
+                        token: tokenSource1.token,
+                        userPromptSuffix: undefined,
+                        chatHandler: undefined,
+                    },
+                    {
+                        onProgress: vi.fn(),
+                    }
+                ),
+                provider.analyze(
+                    {
+                        diff: diff2,
+                        llmClient: mockCopilotModelManager as any,
+                        model: {
+                            family: 'gpt-4o',
+                            id: 'gpt-4o',
+                            name: 'GPT-4o',
+                            maxInputTokens: 8000,
+                        },
+                        token: tokenSource2.token,
+                        userPromptSuffix: undefined,
+                        chatHandler: undefined,
+                    },
+                    {
+                        onProgress: vi.fn(),
+                    }
+                ),
             ]);
 
             // Both should complete successfully without interfering
-            expect(result1.toolCalls.analysisCompleted).toBe(true);
-            expect(result2.toolCalls.analysisCompleted).toBe(true);
-            expect(result1.analysis).toContain(
+            expect(result1.completed).toBe(true);
+            expect(result2.completed).toBe(true);
+            expect(result1.analysisText).toContain(
                 'SubagentSessionManager isolated'
             );
-            expect(result2.analysis).toContain(
+            expect(result2.analysisText).toContain(
                 'SubagentSessionManager isolated'
             );
 
             // Each analysis should have independent tool call records
-            expect(result1.toolCalls.calls[0].id).toContain('call_1_');
-            expect(result2.toolCalls.calls[0].id).toContain('call_2_');
+            expect(result1.toolCallRecords[0].id).toContain('call_1_');
+            expect(result2.toolCallRecords[0].id).toContain('call_2_');
 
             tokenSource1.dispose();
             tokenSource2.dispose();
@@ -852,7 +1098,6 @@ index 3333333..4444444 100644
 
             const rlmProvider = new AnalysisEngine(
                 mockToolRegistry,
-                mockCopilotModelManager,
                 mockPromptGenerator,
                 rlmSettings,
                 mockDiffEnricher,
@@ -868,7 +1113,24 @@ index 3333333..4444444 100644
                 'generateToolAwareSystemPrompt'
             );
 
-            await rlmProvider.analyze(sampleDiff, tokenSource.token);
+            await rlmProvider.analyze(
+                {
+                    diff: sampleDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
+            );
 
             expect(generateRecursiveSpy).toHaveBeenCalled();
             expect(generateToolAwareSpy).not.toHaveBeenCalled();
@@ -881,7 +1143,6 @@ index 3333333..4444444 100644
 
             const noRecursionProvider = new AnalysisEngine(
                 mockToolRegistry,
-                mockCopilotModelManager,
                 mockPromptGenerator,
                 noRecursionSettings,
                 mockDiffEnricher,
@@ -897,7 +1158,24 @@ index 3333333..4444444 100644
                 'generateToolAwareSystemPrompt'
             );
 
-            await noRecursionProvider.analyze(sampleDiff, tokenSource.token);
+            await noRecursionProvider.analyze(
+                {
+                    diff: sampleDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
+            );
 
             expect(generateToolAwareSpy).toHaveBeenCalled();
             expect(generateRecursiveSpy).not.toHaveBeenCalled();

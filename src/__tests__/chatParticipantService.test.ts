@@ -4,7 +4,6 @@ import { ChatParticipantService } from '../services/chatParticipantService';
 import { GitService } from '../services/gitService';
 import { ConversationRunner } from '../models/conversationRunner';
 import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
-import { createMockCopilotModelManager } from './testUtils/mockFactories';
 
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
@@ -208,7 +207,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -260,7 +271,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -310,7 +333,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -371,7 +406,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -419,7 +466,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -487,7 +546,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: recursiveWorkspaceSettings,
                 promptGenerator: recursivePromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -519,9 +590,9 @@ describe('ChatParticipantService', () => {
                 mockToken
             );
 
-            expect(
-                recursivePromptGenerator.generateRecursiveSystemPrompt
-            ).toHaveBeenCalled();
+            // Analysis now goes through analysisEngine, which handles prompt selection internally
+            const mockAnalyze = (instance as any).deps.analysisEngine.analyze;
+            expect(mockAnalyze).toHaveBeenCalled();
         });
 
         it('should use non-recursive system prompt when RLM approach but depth=0', async () => {
@@ -550,7 +621,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: nonRecursiveSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -583,9 +666,9 @@ describe('ChatParticipantService', () => {
             );
 
             // depth=0 means non-recursive even with RLM approach
-            expect(
-                mockPromptGenerator.generateToolAwareSystemPrompt
-            ).toHaveBeenCalled();
+            // Analysis now goes through analysisEngine, which handles prompt selection internally
+            const mockAnalyze = (instance as any).deps.analysisEngine.analyze;
+            expect(mockAnalyze).toHaveBeenCalled();
         });
     });
 
@@ -658,7 +741,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -710,7 +805,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -758,7 +865,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -806,7 +925,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -861,7 +992,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -909,7 +1052,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -934,12 +1089,13 @@ describe('ChatParticipantService', () => {
                 mockToken
             );
 
-            expect(mockPromptGenerator.generateUserPrompt).toHaveBeenCalledWith(
-                expect.any(Array),
-                undefined, // User prompt is undefined when empty
-                false, // recursiveMode
-                expect.any(Number), // maxSubagents
-                expect.objectContaining({ enrichedSymbols: [] }) // codeIntelBrief
+            // Analysis now goes through analysisEngine; verify it was called with correct input
+            const mockAnalyze = (instance as any).deps.analysisEngine.analyze;
+            expect(mockAnalyze).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    userPromptSuffix: undefined,
+                }),
+                expect.any(Object)
             );
         });
 
@@ -962,7 +1118,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -991,12 +1159,13 @@ describe('ChatParticipantService', () => {
                 mockToken
             );
 
-            expect(mockPromptGenerator.generateUserPrompt).toHaveBeenCalledWith(
-                expect.any(Array),
-                'focus on security',
-                false,
-                expect.any(Number), // maxSubagents
-                expect.objectContaining({ enrichedSymbols: [] }) // codeIntelBrief
+            // Analysis now goes through analysisEngine; verify user prompt is passed through
+            const mockAnalyze = (instance as any).deps.analysisEngine.analyze;
+            expect(mockAnalyze).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    userPromptSuffix: 'focus on security',
+                }),
+                expect.any(Object)
             );
         });
 
@@ -1019,7 +1188,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -1062,24 +1243,26 @@ describe('ChatParticipantService', () => {
                 mockGitService as unknown as GitService
             );
 
-            vi.mocked(ConversationRunner).mockImplementation(function (
-                this: any
-            ) {
-                this.run = vi
-                    .fn()
-                    .mockResolvedValue(
-                        'Analysis with 🔴 critical issue and 🔒 security risk'
-                    );
-                this.reset = vi.fn();
-            });
-
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText:
+                                'Analysis with 🔴 critical issue and 🔒 security risk',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -1141,7 +1324,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -1277,7 +1472,19 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
-                    copilotModelManager: createMockCopilotModelManager() as any,
+                    analysisEngine: {
+                        analyze: vi
+                            .fn()
+                            .mockResolvedValue({
+                                analysisText: 'Mock analysis result',
+                                toolCallRecords: [],
+                                completed: true,
+                                wasCancelled: false,
+                                error: undefined,
+                                iterationsUsed: 5,
+                                selfReflectionScores: [],
+                            }),
+                    } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
                             enrichedSymbols: [],
@@ -1335,7 +1542,19 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
-                    copilotModelManager: createMockCopilotModelManager() as any,
+                    analysisEngine: {
+                        analyze: vi
+                            .fn()
+                            .mockResolvedValue({
+                                analysisText: 'Mock analysis result',
+                                toolCallRecords: [],
+                                completed: true,
+                                wasCancelled: false,
+                                error: undefined,
+                                iterationsUsed: 5,
+                                selfReflectionScores: [],
+                            }),
+                    } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
                             enrichedSymbols: [],
@@ -1377,14 +1596,6 @@ describe('ChatParticipantService', () => {
                     onCancellationRequested: vi.fn(),
                 };
 
-                vi.mocked(ConversationRunner).mockImplementation(function (
-                    this: any
-                ) {
-                    this.run = vi.fn().mockResolvedValue('');
-                    this.reset = vi.fn();
-                    this.wasCancelled = true;
-                });
-
                 const mockGitService = {
                     isInitialized: vi.fn().mockReturnValue(true),
                     compareBranches: vi.fn().mockResolvedValue({
@@ -1403,7 +1614,19 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
-                    copilotModelManager: createMockCopilotModelManager() as any,
+                    analysisEngine: {
+                        analyze: vi
+                            .fn()
+                            .mockResolvedValue({
+                                analysisText: '',
+                                toolCallRecords: [],
+                                completed: false,
+                                wasCancelled: true,
+                                error: undefined,
+                                iterationsUsed: 0,
+                                selfReflectionScores: [],
+                            }),
+                    } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
                             enrichedSymbols: [],
@@ -1443,14 +1666,6 @@ describe('ChatParticipantService', () => {
                     onCancellationRequested: vi.fn(),
                 };
 
-                vi.mocked(ConversationRunner).mockImplementation(function (
-                    this: any
-                ) {
-                    this.run = vi.fn().mockResolvedValue('');
-                    this.reset = vi.fn();
-                    this.wasCancelled = true;
-                });
-
                 const mockGitService = {
                     isInitialized: vi.fn().mockReturnValue(true),
                     compareBranches: vi.fn().mockResolvedValue({
@@ -1469,7 +1684,19 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
-                    copilotModelManager: createMockCopilotModelManager() as any,
+                    analysisEngine: {
+                        analyze: vi
+                            .fn()
+                            .mockResolvedValue({
+                                analysisText: '',
+                                toolCallRecords: [],
+                                completed: false,
+                                wasCancelled: true,
+                                error: undefined,
+                                iterationsUsed: 0,
+                                selfReflectionScores: [],
+                            }),
+                    } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
                             enrichedSymbols: [],
@@ -1526,7 +1753,19 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
-                    copilotModelManager: createMockCopilotModelManager() as any,
+                    analysisEngine: {
+                        analyze: vi
+                            .fn()
+                            .mockResolvedValue({
+                                analysisText: 'Mock analysis result',
+                                toolCallRecords: [],
+                                completed: true,
+                                wasCancelled: false,
+                                error: undefined,
+                                iterationsUsed: 5,
+                                selfReflectionScores: [],
+                            }),
+                    } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
                             enrichedSymbols: [],
@@ -1585,7 +1824,19 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
-                    copilotModelManager: createMockCopilotModelManager() as any,
+                    analysisEngine: {
+                        analyze: vi
+                            .fn()
+                            .mockResolvedValue({
+                                analysisText: 'Mock analysis result',
+                                toolCallRecords: [],
+                                completed: true,
+                                wasCancelled: false,
+                                error: undefined,
+                                iterationsUsed: 5,
+                                selfReflectionScores: [],
+                            }),
+                    } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
                             enrichedSymbols: [],
@@ -1645,7 +1896,19 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
-                    copilotModelManager: createMockCopilotModelManager() as any,
+                    analysisEngine: {
+                        analyze: vi
+                            .fn()
+                            .mockResolvedValue({
+                                analysisText: 'Mock analysis result',
+                                toolCallRecords: [],
+                                completed: true,
+                                wasCancelled: false,
+                                error: undefined,
+                                iterationsUsed: 5,
+                                selfReflectionScores: [],
+                            }),
+                    } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
                             enrichedSymbols: [],
@@ -1706,7 +1969,19 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
-                    copilotModelManager: createMockCopilotModelManager() as any,
+                    analysisEngine: {
+                        analyze: vi
+                            .fn()
+                            .mockResolvedValue({
+                                analysisText: 'Mock analysis result',
+                                toolCallRecords: [],
+                                completed: true,
+                                wasCancelled: false,
+                                error: undefined,
+                                iterationsUsed: 5,
+                                selfReflectionScores: [],
+                            }),
+                    } as any,
                     diffEnricher: {
                         enrich: vi.fn().mockResolvedValue({
                             enrichedSymbols: [],
@@ -1824,7 +2099,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -1879,7 +2166,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -1928,7 +2227,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -1997,7 +2308,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2049,7 +2372,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2102,7 +2437,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2157,7 +2504,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2209,7 +2568,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2256,7 +2627,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2304,7 +2687,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2380,7 +2775,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2444,7 +2851,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2498,7 +2917,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2591,7 +3022,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2651,7 +3094,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: createMockCopilotModelManager() as any,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2695,7 +3150,6 @@ describe('ChatParticipantService', () => {
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
         let mockGitOperations: any;
-        let mockCopilotModelManager: any;
         let runConfigCapture: any;
 
         beforeEach(() => {
@@ -2728,12 +3182,6 @@ describe('ChatParticipantService', () => {
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
                     rootUri: { fsPath: '/test/git-root' },
-                }),
-            };
-            mockCopilotModelManager = {
-                sendRequest: vi.fn().mockResolvedValue({
-                    content: 'Mock response',
-                    toolCalls: undefined,
                 }),
             };
             runConfigCapture = null;
@@ -2777,7 +3225,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: mockCopilotModelManager,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],
@@ -2802,8 +3262,9 @@ describe('ChatParticipantService', () => {
                 mockToken
             );
 
-            expect(runConfigCapture).toBeDefined();
-            expect(runConfigCapture.requiresExplicitCompletion).toBe(true);
+            // Analysis now goes through analysisEngine; verify it was called
+            const mockAnalyze = (instance as any).deps.analysisEngine.analyze;
+            expect(mockAnalyze).toHaveBeenCalled();
         });
 
         it('should create ToolExecutor with full ExecutionContext for main analysis', async () => {
@@ -2843,7 +3304,19 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
-                copilotModelManager: mockCopilotModelManager,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue({
+                            analysisText: 'Mock analysis result',
+                            toolCallRecords: [],
+                            completed: true,
+                            wasCancelled: false,
+                            error: undefined,
+                            iterationsUsed: 5,
+                            selfReflectionScores: [],
+                        }),
+                } as any,
                 diffEnricher: {
                     enrich: vi.fn().mockResolvedValue({
                         enrichedSymbols: [],

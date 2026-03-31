@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
-import { AnalysisEngine } from '../services/analysisEngine';
+import {
+    AnalysisEngine,
+    type AnalysisEngineInput,
+    type AnalysisEngineOutput,
+} from '../services/analysisEngine';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindSymbolTool } from '../tools/findSymbolTool';
@@ -95,7 +99,6 @@ describe('Tool-Calling Integration Tests', () => {
 
         toolCallingAnalyzer = new AnalysisEngine(
             toolRegistry,
-            mockCopilotModelManager as any,
             promptGenerator,
             mockWorkspaceSettings,
             mockDiffEnricher,
@@ -139,11 +142,25 @@ describe('Tool-Calling Integration Tests', () => {
             const diff =
                 'diff --git a/test.js b/test.js\n+console.log("hello");';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'This is a straightforward analysis without tool calls. The code changes look good and follow best practices. Adding padding to meet 100 char minimum.'
             );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
@@ -151,8 +168,10 @@ describe('Tool-Calling Integration Tests', () => {
             );
 
             // Verify tool call metadata
-            expect(result.toolCalls.totalCalls).toBe(1); // submit_review
-            expect(result.toolCalls.successfulCalls).toBe(1);
+            expect(result.toolCallRecords.length).toBe(1); // submit_review
+            expect(result.toolCallRecords.filter((r) => r.success).length).toBe(
+                1
+            );
         });
 
         it('should handle single tool call workflow', async () => {
@@ -220,20 +239,40 @@ describe('Tool-Calling Integration Tests', () => {
             const diff =
                 'diff --git a/test.js b/test.js\n+const obj = new MyClass();';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toContain('Based on the symbol definition');
+            expect(result.analysisText).toContain(
+                'Based on the symbol definition'
+            );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 2
             );
 
             // Verify tool call metadata: find_symbol (fails due to mock) + submit_review (succeeds)
-            expect(result.toolCalls.totalCalls).toBe(2);
-            expect(result.toolCalls.successfulCalls).toBe(1);
-            expect(result.toolCalls.failedCalls).toBe(1);
-            expect(result.toolCalls.analysisCompleted).toBe(true);
+            expect(result.toolCallRecords.length).toBe(2);
+            expect(result.toolCallRecords.filter((r) => r.success).length).toBe(
+                1
+            );
+            expect(
+                result.toolCallRecords.filter((r) => !r.success).length
+            ).toBe(1);
+            expect(result.completed).toBe(true);
         });
 
         it('should handle multiple tool calls in parallel', async () => {
@@ -323,11 +362,25 @@ describe('Tool-Calling Integration Tests', () => {
             const diff =
                 'diff --git a/test.js b/test.js\n+MyClass and myFunction usage';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toContain(
+            expect(result.analysisText).toContain(
                 'Analysis complete based on both definitions'
             );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
@@ -335,10 +388,14 @@ describe('Tool-Calling Integration Tests', () => {
             );
 
             // Verify multiple tool calls in metadata: 2x find_symbol (fail) + submit_review (succeeds)
-            expect(result.toolCalls.totalCalls).toBe(3);
-            expect(result.toolCalls.successfulCalls).toBe(1);
-            expect(result.toolCalls.failedCalls).toBe(2);
-            expect(result.toolCalls.analysisCompleted).toBe(true);
+            expect(result.toolCallRecords.length).toBe(3);
+            expect(result.toolCallRecords.filter((r) => r.success).length).toBe(
+                1
+            );
+            expect(
+                result.toolCallRecords.filter((r) => !r.success).length
+            ).toBe(2);
+            expect(result.completed).toBe(true);
         });
 
         it('should handle tool execution errors gracefully', async () => {
@@ -379,17 +436,37 @@ describe('Tool-Calling Integration Tests', () => {
 
             const diff = 'diff --git a/test.js b/test.js\n+// some change';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toContain('I could not find the symbol');
+            expect(result.analysisText).toContain(
+                'I could not find the symbol'
+            );
 
             // Verify tool failure is captured in metadata
-            expect(result.toolCalls.totalCalls).toBe(2); // find_symbol (failed) + submit_review
+            expect(result.toolCallRecords.length).toBe(2); // find_symbol (failed) + submit_review
             // One failed (find_symbol), one success (submit_review)
-            expect(result.toolCalls.failedCalls).toBe(1);
-            expect(result.toolCalls.successfulCalls).toBe(1);
+            expect(
+                result.toolCallRecords.filter((r) => !r.success).length
+            ).toBe(1);
+            expect(result.toolCallRecords.filter((r) => r.success).length).toBe(
+                1
+            );
         });
 
         it('should handle LLM errors during conversation', async () => {
@@ -401,12 +478,26 @@ describe('Tool-Calling Integration Tests', () => {
             const diff =
                 'diff --git a/test.js b/test.js\n+console.log("test");';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toContain('Error during analysis');
-            expect(result.analysis).toContain('LLM service unavailable');
+            expect(result.analysisText).toContain('Error during analysis');
+            expect(result.analysisText).toContain('LLM service unavailable');
         });
 
         it('should prevent infinite loops with max iterations', async () => {
@@ -434,11 +525,25 @@ describe('Tool-Calling Integration Tests', () => {
 
             const diff = 'diff --git a/test.js b/test.js\n+// change';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toContain('maximum iterations');
+            expect(result.analysisText).toContain('maximum iterations');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 testMaxIterations
             );
@@ -469,7 +574,24 @@ describe('Tool-Calling Integration Tests', () => {
                 ],
             });
 
-            await toolCallingAnalyzer.analyze('test diff', tokenSource.token);
+            await toolCallingAnalyzer.analyze(
+                {
+                    diff: 'test diff',
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
+            );
 
             const sendRequestCall =
                 mockCopilotModelManager.sendRequest.mock.calls[0][0];
@@ -518,16 +640,32 @@ describe('Tool-Calling Integration Tests', () => {
 
             const diff = 'diff --git a/test.js b/test.js\n+// test';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toContain('Handling the error gracefully');
+            expect(result.analysisText).toContain(
+                'Handling the error gracefully'
+            );
 
             // Should still complete despite malformed JSON - verify via tool call records
-            expect(result.toolCalls.totalCalls).toBeGreaterThan(0);
+            expect(result.toolCallRecords.length).toBeGreaterThan(0);
             expect(
-                result.toolCalls.calls.some((c) => c.toolName === 'find_symbol')
+                result.toolCallRecords.some((c) => c.toolName === 'find_symbol')
             ).toBe(true);
         });
     });

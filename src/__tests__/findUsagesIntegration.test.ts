@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AnalysisEngine } from '../services/analysisEngine';
+import {
+    AnalysisEngine,
+    type AnalysisEngineInput,
+    type AnalysisEngineOutput,
+} from '../services/analysisEngine';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
@@ -92,7 +96,6 @@ describe('FindUsages Integration Tests', () => {
 
         toolCallingAnalyzer = new AnalysisEngine(
             toolRegistry,
-            mockCopilotModelManager as any,
             promptGenerator,
             mockWorkspaceSettings,
             mockDiffEnricher,
@@ -216,11 +219,25 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Based on the tool results, I found 2 usages of MyClass. The analysis is complete with all references identified and formatted. Adding padding to meet 100 char minimum.'
             );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
@@ -293,11 +310,25 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class UnusedClass {}';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'No usages found for this class, it appears to be unused. The symbol exists in the codebase but has no references. Adding padding to meet 100 char minimum.'
             );
         });
@@ -401,11 +432,25 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class ClassA {}\n+class ClassB {}';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Both classes have one usage each. ClassA and ClassB are both referenced once in the codebase usage files. Adding padding to meet 100 char minimum.'
             );
             expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(4); // Two tools × (1 definition + 1 reference call each) = 4 calls
@@ -451,11 +496,25 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+// some change';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'I encountered an error finding usages for that symbol. The file could not be opened or the symbol was not found. Adding padding to meet 100 char minimum.'
             );
         });
@@ -519,7 +578,24 @@ describe('FindUsages Integration Tests', () => {
 
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
-            await toolCallingAnalyzer.analyze(diff, tokenSource.token);
+            await toolCallingAnalyzer.analyze(
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
+            );
 
             expect(capturedContext?.includeDeclaration).toBe(true);
         });
@@ -598,7 +674,24 @@ describe('FindUsages Integration Tests', () => {
 
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
-            await toolCallingAnalyzer.analyze(diff, tokenSource.token);
+            await toolCallingAnalyzer.analyze(
+                {
+                    diff,
+                    llmClient: mockCopilotModelManager as any,
+                    model: {
+                        family: 'gpt-4o',
+                        id: 'gpt-4o',
+                        name: 'GPT-4o',
+                        maxInputTokens: 8000,
+                    },
+                    token: tokenSource.token,
+                    userPromptSuffix: undefined,
+                    chatHandler: undefined,
+                },
+                {
+                    onProgress: vi.fn(),
+                }
+            );
 
             // The context_line_count parameter is passed to the tool - verification is done
             // through the tool being called correctly via the mocked executeCommand
