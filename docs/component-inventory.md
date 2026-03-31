@@ -17,21 +17,21 @@
 
 ## Services (`src/services/`)
 
-| Service                       | File                             | Description                                |
-| ----------------------------- | -------------------------------- | ------------------------------------------ |
-| `ServiceManager`              | `serviceManager.ts`              | DI container with 3-phase initialization   |
-| `ToolCallingAnalysisProvider` | `toolCallingAnalysisProvider.ts` | Main analysis engine with tool-calling     |
-| `ChatParticipantService`      | `chatParticipantService.ts`      | `@lupa` chat participant                   |
-| `GitOperationsManager`        | `gitOperationsManager.ts`        | High-level Git operations                  |
-| `GitService`                  | `gitService.ts`                  | Low-level Git commands                     |
-| `UIManager`                   | `uiManager.ts`                   | Webview panel management                   |
-| `WorkspaceSettingsService`    | `workspaceSettingsService.ts`    | Settings persistence (`.vscode/lupa.json`) |
-| `LoggingService`              | `loggingService.ts`              | Centralized logging with levels            |
-| `StatusBarService`            | `statusBarService.ts`            | Status bar item management                 |
-| `ChatFollowupProvider`        | `chatFollowupProvider.ts`        | Chat followup suggestions                  |
-| `LanguageModelToolProvider`   | `languageModelToolProvider.ts`   | Agent Mode tool registration               |
-| `RipgrepSearchService`        | `ripgrepSearchService.ts`        | VS Code ripgrep integration                |
-| `ToolTestingWebviewService`   | `toolTestingWebview.ts`          | Tool testing UI (development)              |
+| Service                     | File                           | Description                                |
+| --------------------------- | ------------------------------ | ------------------------------------------ |
+| `ServiceManager`            | `serviceManager.ts`            | DI container with 3-phase initialization   |
+| `AnalysisEngine`            | `analysisEngine.ts`            | Main analysis engine with tool-calling     |
+| `ChatParticipantService`    | `chatParticipantService.ts`    | `@lupa` chat participant                   |
+| `GitOperationsManager`      | `gitOperationsManager.ts`      | High-level Git operations                  |
+| `GitService`                | `gitService.ts`                | Low-level Git commands                     |
+| `UIManager`                 | `uiManager.ts`                 | Webview panel management                   |
+| `WorkspaceSettingsService`  | `workspaceSettingsService.ts`  | Settings persistence (`.vscode/lupa.json`) |
+| `LoggingService`            | `loggingService.ts`            | Centralized logging with levels            |
+| `StatusBarService`          | `statusBarService.ts`          | Status bar item management                 |
+| `ChatFollowupProvider`      | `chatFollowupProvider.ts`      | Chat followup suggestions                  |
+| `LanguageModelToolProvider` | `languageModelToolProvider.ts` | Agent Mode tool registration               |
+| `RipgrepSearchService`      | `ripgrepSearchService.ts`      | VS Code ripgrep integration                |
+| `ToolTestingWebviewService` | `toolTestingWebview.ts`        | Tool testing UI (development)              |
 
 ### Per-Analysis Components
 

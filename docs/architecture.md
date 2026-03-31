@@ -63,7 +63,7 @@
 │           ▼                       ▼                        ▼             │
 │  ┌──────────────────┐     ┌──────────────────┐     ┌─────────────────┐  │
 │  │  AnalysisOrch.   │     │ ServiceManager   │     │   ToolRegistry  │  │
-│  │  CommandRegistry │     │ ToolCallingProv. │     │   ToolExecutor  │  │
+│  │  CommandRegistry │     │ AnalysisEngine   │     │   ToolExecutor  │  │
 │  │  CopilotModelCo. │     │ GitOperations    │     │   BaseTool      │  │
 │  └──────────────────┘     └──────────────────┘     └─────────────────┘  │
 │                                   │                                      │
@@ -110,16 +110,16 @@ High-level orchestration components that coordinate multiple services.
 
 Core business logic implementing specific capabilities.
 
-| Service                       | Responsibility                            |
-| ----------------------------- | ----------------------------------------- |
-| `ServiceManager`              | DI container with 3-phase initialization  |
-| `ToolCallingAnalysisProvider` | Main analysis loop with tool-calling      |
-| `GitOperationsManager`        | Git repository and diff operations        |
-| `ChatParticipantService`      | `@lupa` chat participant for Copilot Chat |
-| `UIManager`                   | Webview panel management                  |
-| `WorkspaceSettingsService`    | Persisted settings (`.vscode/lupa.json`)  |
-| `LoggingService`              | Centralized logging with levels           |
-| `StatusBarService`            | Status bar item management                |
+| Service                    | Responsibility                            |
+| -------------------------- | ----------------------------------------- |
+| `ServiceManager`           | DI container with 3-phase initialization  |
+| `AnalysisEngine`           | Main analysis loop with tool-calling      |
+| `GitOperationsManager`     | Git repository and diff operations        |
+| `ChatParticipantService`   | `@lupa` chat participant for Copilot Chat |
+| `UIManager`                | Webview panel management                  |
+| `WorkspaceSettingsService` | Persisted settings (`.vscode/lupa.json`)  |
+| `LoggingService`           | Centralized logging with levels           |
+| `StatusBarService`         | Status bar item management                |
 
 ### Per-Analysis Components
 
@@ -254,7 +254,7 @@ SymbolExtractor;
 ToolRegistry;
 ToolExecutor;
 ConversationManager;
-ToolCallingAnalysisProvider; // Creates per-analysis: SubagentExecutor, SubagentSessionManager, PlanSessionManager
+AnalysisEngine; // Creates per-analysis: SubagentExecutor, SubagentSessionManager, PlanSessionManager
 ChatParticipantService;
 LanguageModelToolProvider;
 // + All tools registered
@@ -276,7 +276,7 @@ User triggers analysis
             │
             ▼
 ┌───────────────────────────────┐
-│  ToolCallingAnalysisProvider  │
+│  AnalysisEngine               │
 │  - Creates per-analysis state │
 │  - Generates prompts          │
 │  - Manages conversation       │
@@ -311,7 +311,7 @@ User triggers analysis
 
 ### Concurrency Model
 
-`ToolCallingAnalysisProvider` supports concurrent analysis sessions. Each call to `analyze()` creates isolated per-analysis state:
+`AnalysisEngine` supports concurrent analysis sessions. Each call to `analyze()` creates isolated per-analysis state:
 
 | Component                | Scope        | Purpose                              |
 | ------------------------ | ------------ | ------------------------------------ |
@@ -447,7 +447,7 @@ Subagents enable delegated investigations with isolated context. Each analysis c
 
 Each subagent gets its own `CancellationTokenSource` (local variable in `RunSubagentBatchTool.execute()`, never an instance field) to prevent cross-cancellation between parallel subagents. The token is linked to the parent analysis token via `SubagentSessionManager.registerSubagentCancellation()`.
 
-**Initialization order**: `SubagentSessionManager.setParentCancellationToken()` must be called early in the analysis flow (before any tool execution) to ensure subagent cancellation propagation works. See `ToolCallingAnalysisProvider.analyze()` for the pattern.
+**Initialization order**: `SubagentSessionManager.setParentCancellationToken()` must be called early in the analysis flow (before any tool execution) to ensure subagent cancellation propagation works. See `AnalysisEngine.analyze()` for the pattern.
 
 **Cancellation detection**: `SubagentExecutor` checks `ConversationRunner.hitMaxIterations` and `ConversationRunner.wasCancelled` boolean flags rather than raw `token.isCancellationRequested`. This prevents false cancellation signals from unrelated token events. At the top level, `ToolCallingAnalysisResult.wasCancelled` propagates cancellation state from `ConversationRunner` through to coordinators.
 
@@ -628,7 +628,7 @@ Lupa uses a Recursive Language Model (RLM) approach where a root agent decompose
 
 Total spawns per analysis are capped by `maxSubagentsPerSession` (hardcoded to 200).
 
-**Recursive mode activates** when `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. The root agent reads at most 1 key diff (the most impactful file) for orientation, then MUST delegate all investigation to sub-agents via `run_subagent_batch` when there are 3+ files to review. Sub-agents are spawned in parallel (all in the same turn) and each reads their own diffs via `get_file_diff`. Child agents with `canRecurse=true` MUST spawn sub-agents to further decompose when assigned 4+ files — this is enforced as a MANDATORY rule in the system prompts.
+**Recursive mode activates** when `maxRecursionDepth >= 1`. This applies to both `AnalysisEngine` and `ChatParticipantService`. The root agent reads at most 1 key diff (the most impactful file) for orientation, then MUST delegate all investigation to sub-agents via `run_subagent_batch` when there are 3+ files to review. Sub-agents are spawned in parallel (all in the same turn) and each reads their own diffs via `get_file_diff`. Child agents with `canRecurse=true` MUST spawn sub-agents to further decompose when assigned 4+ files — this is enforced as a MANDATORY rule in the system prompts.
 
 **Non-recursive mode** (`maxRecursionDepth === 0`): A single agent reviews all files directly with subagent delegation for larger PRs. Subagents can call `get_file_diff` to read diffs on demand but do not see `<diff_metadata>`; the parent agent must provide explicit file paths when delegating work.
 

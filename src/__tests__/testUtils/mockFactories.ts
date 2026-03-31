@@ -563,19 +563,6 @@ export function createMockWorkspaceSettings(
 }
 
 /**
- * Standard mock for CopilotModelManager.
- */
-export function createMockCopilotModelManager() {
-    return {
-        sendRequest: vi.fn(),
-        getCurrentModel: vi.fn().mockResolvedValue({
-            countTokens: vi.fn().mockResolvedValue(100),
-            maxInputTokens: 8000,
-        }),
-    };
-}
-
-/**
  * Creates a mock CancellationToken for simple use cases where a full
  * CancellationTokenSource is not needed.
  *
