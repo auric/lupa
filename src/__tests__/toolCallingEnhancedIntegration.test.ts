@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import * as vscode from 'vscode';
 import { z } from 'zod';
-import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
+import { AnalysisEngine } from '../services/analysisEngine';
 import { TokenConstants } from '../models/tokenConstants';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import {
@@ -28,8 +28,8 @@ vi.mock('../services/loggingService', () => ({
     },
 }));
 
-describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
-    let analysisProvider: ToolCallingAnalysisProvider;
+describe('AnalysisEngine Enhanced Integration', () => {
+    let analysisProvider: AnalysisEngine;
     let mockToolRegistry: {
         getAllTools: Mock;
         getTool: Mock;
@@ -98,7 +98,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             }),
         } as any;
 
-        analysisProvider = new ToolCallingAnalysisProvider(
+        analysisProvider = new AnalysisEngine(
             mockToolRegistry as any,
             mockCopilotModelManager as any,
             mockPromptGenerator as any,

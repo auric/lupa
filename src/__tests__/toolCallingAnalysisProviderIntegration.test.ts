@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as z from 'zod';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
+import { AnalysisEngine } from '../services/analysisEngine';
 import { ToolResult } from '../types/toolResultTypes';
 import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
@@ -53,8 +53,8 @@ class MockAnalysisTool implements ITool {
     }
 }
 
-describe('ToolCallingAnalysisProvider Integration', () => {
-    let provider: ToolCallingAnalysisProvider;
+describe('AnalysisEngine Integration', () => {
+    let provider: AnalysisEngine;
     let mockToolRegistry: any;
     let mockCopilotModelManager: any;
     let mockPromptGenerator: PromptGenerator;
@@ -153,7 +153,7 @@ index 1234567..abcdefg 100644
             }),
         } as any;
 
-        provider = new ToolCallingAnalysisProvider(
+        provider = new AnalysisEngine(
             mockToolRegistry,
             mockCopilotModelManager,
             mockPromptGenerator,
@@ -850,7 +850,7 @@ index 3333333..4444444 100644
                 maxRecursionDepth: 2,
             });
 
-            const rlmProvider = new ToolCallingAnalysisProvider(
+            const rlmProvider = new AnalysisEngine(
                 mockToolRegistry,
                 mockCopilotModelManager,
                 mockPromptGenerator,
@@ -879,7 +879,7 @@ index 3333333..4444444 100644
                 maxRecursionDepth: 0,
             });
 
-            const noRecursionProvider = new ToolCallingAnalysisProvider(
+            const noRecursionProvider = new AnalysisEngine(
                 mockToolRegistry,
                 mockCopilotModelManager,
                 mockPromptGenerator,

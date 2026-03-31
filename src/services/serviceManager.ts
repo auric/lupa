@@ -23,7 +23,7 @@ import { FindingValidator } from './findingValidator';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ConversationManager } from '../models/conversationManager';
-import { ToolCallingAnalysisProvider } from './toolCallingAnalysisProvider';
+import { AnalysisEngine } from './analysisEngine';
 import type { ExecutionContext } from '../types/executionContext';
 import { DEFAULT_PROFILE } from '../models/modelCalibration';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -77,10 +77,10 @@ export interface IServiceRegistry {
     toolRegistry: ToolRegistry;
     toolExecutor: ToolExecutor;
     conversationManager: ConversationManager;
-    toolCallingAnalysisProvider: ToolCallingAnalysisProvider;
+    analysisEngine: AnalysisEngine;
 
     // Note: SubagentExecutor and SubagentSessionManager are created per-analysis
-    // in ToolCallingAnalysisProvider for concurrent-safety.
+    // in AnalysisEngine for concurrent-safety.
 
     // Language Model Tool Provider
     languageModelToolProvider: LanguageModelToolProvider;
@@ -199,7 +199,7 @@ export class ServiceManager implements vscode.Disposable {
         this.services.toolRegistry = new ToolRegistry();
 
         // NOTE: This singleton ToolExecutor is for utility purposes only (e.g., tool testing webview).
-        // For actual analysis sessions, ToolCallingAnalysisProvider and ChatParticipantService
+        // For actual analysis sessions, AnalysisEngine and ChatParticipantService
         // create per-analysis ToolExecutor instances with proper ExecutionContext to ensure
         // concurrent-safety and per-session state isolation.
         //
@@ -221,23 +221,22 @@ export class ServiceManager implements vscode.Disposable {
         utilityContext.toolExecutor = this.services.toolExecutor;
         this.services.conversationManager = new ConversationManager();
         // Note: SubagentSessionManager and SubagentExecutor are created per-analysis
-        // in ToolCallingAnalysisProvider for concurrent-safety.
-        // Note: ToolCallingAnalysisProvider creates its own ConversationManager per-analysis
+        // in AnalysisEngine for concurrent-safety.
+        // Note: AnalysisEngine creates its own ConversationManager per-analysis
         // for concurrent-safety. The shared conversationManager is kept for other uses.
-        this.services.toolCallingAnalysisProvider =
-            new ToolCallingAnalysisProvider(
-                this.services.toolRegistry,
-                this.services.copilotModelManager!,
-                this.services.promptGenerator!,
-                this.services.workspaceSettings!,
-                this.services.diffEnricher!,
-                this.services.findingValidator!
-            );
+        this.services.analysisEngine = new AnalysisEngine(
+            this.services.toolRegistry,
+            this.services.copilotModelManager!,
+            this.services.promptGenerator!,
+            this.services.workspaceSettings!,
+            this.services.diffEnricher!,
+            this.services.findingValidator!
+        );
 
         // Register available tools
         this.initializeTools();
 
-        // Note: PlanSessionManager is created per-analysis in ToolCallingAnalysisProvider
+        // Note: PlanSessionManager is created per-analysis in AnalysisEngine
 
         // Initialize tool testing webview service
         // Passes workspaceSettings instead of toolExecutor so webview can create per-request executors
@@ -388,7 +387,7 @@ export class ServiceManager implements vscode.Disposable {
         const servicesToDispose = [
             this.services.promptGenerator,
             this.services.languageModelToolProvider,
-            this.services.toolCallingAnalysisProvider,
+            this.services.analysisEngine,
             this.services.conversationManager,
             this.services.toolExecutor,
             this.services.toolRegistry,

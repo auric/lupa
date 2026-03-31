@@ -149,12 +149,11 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                     const progressCallback: AnalysisProgressCallback =
                         updateProgress;
 
-                    const result =
-                        await this.services.toolCallingAnalysisProvider.analyze(
-                            diffText,
-                            cancellationTokenSource.token,
-                            progressCallback
-                        );
+                    const result = await this.services.analysisEngine.analyze(
+                        diffText,
+                        cancellationTokenSource.token,
+                        progressCallback
+                    );
 
                     if (result.wasCancelled) {
                         throw new vscode.CancellationError();

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
-import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
+import { AnalysisEngine } from '../services/analysisEngine';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindSymbolTool } from '../tools/findSymbolTool';
@@ -37,7 +37,7 @@ const mockCopilotModelManager = {
 };
 
 describe('Tool-Calling Integration Tests', () => {
-    let toolCallingAnalyzer: ToolCallingAnalysisProvider;
+    let toolCallingAnalyzer: AnalysisEngine;
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let findSymbolTool: FindSymbolTool;
@@ -93,7 +93,7 @@ describe('Tool-Calling Integration Tests', () => {
             }),
         } as any;
 
-        toolCallingAnalyzer = new ToolCallingAnalysisProvider(
+        toolCallingAnalyzer = new AnalysisEngine(
             toolRegistry,
             mockCopilotModelManager as any,
             promptGenerator,
