@@ -202,24 +202,6 @@ const x = 1;
         });
     });
 
-    describe('think_about_completion gate', () => {
-        it('gates are enforced at orchestrator level, not in submit_review', () => {
-            // think_about_completion and requiredToolsBeforeDone enforcement
-            // lives in toolCallingAnalysisProvider (orchestrator level), not in the tool.
-            // This prevents infinite retry loops in the conversation loop.
-            // See toolCallingAnalysisProvider.test.ts for gate tests.
-            expect(true).toBe(true);
-        });
-    });
-
-    describe('requiredToolsBeforeDone gate', () => {
-        it('gates are enforced at orchestrator level, not in submit_review', () => {
-            // requiredToolsBeforeDone enforcement lives in toolCallingAnalysisProvider (orchestrator level).
-            // See think_about_completion gate describe block for full rationale.
-            expect(true).toBe(true);
-        });
-    });
-
     describe('FindingStore gate', () => {
         function createFindingStore(
             ...partials: Partial<
@@ -237,7 +219,8 @@ const x = 1;
                     lineRange: p.lineRange ?? [10, 15],
                     description: p.description ?? 'desc',
                     affectedComponent: p.affectedComponent ?? 'Handler',
-                    failureMechanism: p.failureMechanism ?? 'NPE',
+                    failureMechanism:
+                        p.failureMechanism ?? 'wrong_return_value',
                     supportingToolCalls: p.supportingToolCalls ?? ['read_file'],
                     disproof: p.disproof ?? {
                         attempted: true,
