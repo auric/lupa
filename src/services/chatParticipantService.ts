@@ -589,6 +589,25 @@ export class ChatParticipantService implements vscode.Disposable {
             return this.handleCancellation(stream);
         }
 
+        if (result.error) {
+            Log.error(
+                '[ChatParticipantService]: Analysis failed',
+                result.error
+            );
+            const response = new ChatResponseBuilder()
+                .addErrorSection(
+                    'Analysis Error',
+                    'Something went wrong during analysis. Please try again.',
+                    result.error
+                )
+                .build();
+            stream.markdown(response);
+            return {
+                errorDetails: { message: result.error },
+                metadata: { responseIsIncomplete: true },
+            };
+        }
+
         streamMarkdownWithAnchors(stream, result.analysisText, gitRootUri);
 
         if (result.selfReflectionScores.length > 0) {
