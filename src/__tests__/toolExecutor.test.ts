@@ -82,6 +82,7 @@ describe('ToolExecutor', () => {
             toolRegistry,
             createMockExecutionContext()
         );
+        toolExecutor.bindToContext();
         successTool = new MockSuccessTool();
         errorTool = new MockErrorTool();
         delayTool = new MockDelayTool();
@@ -203,6 +204,97 @@ describe('ToolExecutor', () => {
                 false
             );
         });
+
+        it('should find local tools available in scoped executor', () => {
+            const localTool: ITool = {
+                name: 'local_tool',
+                description: 'A local-only tool',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'local_tool',
+                    description: 'A local-only tool',
+                    inputSchema: {},
+                }),
+                execute: async () => toolSuccess('ok'),
+            };
+            const scoped = toolExecutor.createScoped([localTool]);
+            expect(scoped.isToolAvailable('local_tool')).toBe(true);
+        });
+
+        it('should block global tools when restrictToLocal is true', () => {
+            const localTool: ITool = {
+                name: 'local_tool',
+                description: 'A local-only tool',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'local_tool',
+                    description: 'A local-only tool',
+                    inputSchema: {},
+                }),
+                execute: async () => toolSuccess('ok'),
+            };
+            const scoped = toolExecutor.createScoped([localTool], {
+                restrictToLocal: true,
+            });
+            expect(scoped.isToolAvailable('local_tool')).toBe(true);
+            expect(scoped.isToolAvailable('success_tool')).toBe(false);
+        });
+
+        it('should allow global tools when restrictToLocal is not set', () => {
+            const scoped = toolExecutor.createScoped([]);
+            expect(scoped.isToolAvailable('success_tool')).toBe(true);
+        });
+
+        it('should return localTools from getAvailableTools on a scoped executor', () => {
+            const localTool: ITool = {
+                name: 'local_tool',
+                description: 'A local-only tool',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'local_tool',
+                    description: 'A local-only tool',
+                    inputSchema: {},
+                }),
+                execute: async () => toolSuccess('ok'),
+            };
+            const scoped = toolExecutor.createScoped([localTool]);
+            const available = scoped.getAvailableTools();
+            expect(available.some((t) => t.name === 'local_tool')).toBe(true);
+            // Global tools should still be present
+            expect(available.some((t) => t.name === 'success_tool')).toBe(true);
+        });
+
+        it('should return only localTools from getAvailableTools when restrictToLocal', () => {
+            const localTool: ITool = {
+                name: 'local_tool',
+                description: 'A local-only tool',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'local_tool',
+                    description: 'A local-only tool',
+                    inputSchema: {},
+                }),
+                execute: async () => toolSuccess('ok'),
+            };
+            const scoped = toolExecutor.createScoped([localTool], {
+                restrictToLocal: true,
+            });
+            const available = scoped.getAvailableTools();
+            expect(available).toHaveLength(1);
+            expect(available[0].name).toBe('local_tool');
+        });
+
+        it('should clear toolCallCountsByName on resetToolCallCount', async () => {
+            await toolExecutor.executeTool('success_tool', {
+                message: 'a',
+            });
+            expect(toolExecutor.getToolCallCountByName('success_tool')).toBe(1);
+
+            toolExecutor.resetToolCallCount();
+
+            expect(toolExecutor.getToolCallCountByName('success_tool')).toBe(0);
+            expect(toolExecutor.getToolCallCount()).toBe(0);
+        });
     });
 
     describe('Edge Cases', () => {
@@ -265,6 +357,7 @@ describe('ToolExecutor', () => {
                 createMockExecutionContext(),
                 3
             );
+            limitedExecutor.bindToContext();
 
             const result1 = await limitedExecutor.executeTool('success_tool', {
                 message: 'test1',
@@ -288,6 +381,7 @@ describe('ToolExecutor', () => {
                 createMockExecutionContext(),
                 3
             );
+            limitedExecutor.bindToContext();
 
             // Make 3 successful calls
             await limitedExecutor.executeTool('success_tool', {
@@ -318,6 +412,7 @@ describe('ToolExecutor', () => {
                 createMockExecutionContext(),
                 10
             );
+            limitedExecutor.bindToContext();
 
             await limitedExecutor.executeTool('success_tool', {
                 message: 'test1',
@@ -340,6 +435,7 @@ describe('ToolExecutor', () => {
                 toolRegistry,
                 createMockExecutionContext()
             );
+            defaultExecutor.bindToContext();
 
             expect(defaultExecutor.getToolCallCount()).toBe(0);
 
@@ -584,6 +680,7 @@ describe('ToolExecutor', () => {
                 toolRegistry,
                 mockExecutionContext
             );
+            toolExecutorWithContext.bindToContext();
 
             await toolExecutorWithContext.executeTool(
                 'context_capture_tool',
@@ -617,6 +714,7 @@ describe('ToolExecutor', () => {
                 toolRegistry,
                 createMockExecutionContext()
             );
+            toolExecutorWithContext.bindToContext();
 
             await toolExecutorWithContext.executeTool('context_check_tool', {});
 
@@ -652,6 +750,7 @@ describe('ToolExecutor', () => {
                 toolRegistry,
                 cancelledContext
             );
+            toolExecutorWithCancelledToken.bindToContext();
 
             await expect(
                 toolExecutorWithCancelledToken.executeTool('slow_tool', {})
@@ -715,6 +814,7 @@ describe('ToolExecutor', () => {
                 cancelledContext,
                 1 // Very low limit
             );
+            limitedExecutor.bindToContext();
 
             // Make calls that would exceed the rate limit
             // First call should throw CancellationError, NOT increment count and return rate-limit error

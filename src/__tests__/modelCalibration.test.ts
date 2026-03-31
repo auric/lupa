@@ -15,6 +15,7 @@ describe('modelCalibration', () => {
             expect(profile.includeRevertTest).toBe(false);
             expect(profile.includeAgenticPreamble).toBe(true);
             expect(profile.evidenceThreshold).toBe('low');
+            expect(profile.selfReflectionThreshold).toBe(5);
         });
 
         it('returns GPT-4o profile for gpt-4o family', () => {
@@ -27,6 +28,7 @@ describe('modelCalibration', () => {
             expect(profile.challengeMode).toBe('prosecution');
             expect(profile.includeFalsePositiveGuide).toBe(false);
             expect(profile.includeRevertTest).toBe(false);
+            expect(profile.selfReflectionThreshold).toBe(5);
         });
 
         it('returns GPT-5 mini profile for gpt-5-mini id', () => {
@@ -37,6 +39,7 @@ describe('modelCalibration', () => {
             expect(profile.includeFalsePositiveGuide).toBe(true);
             expect(profile.includeRevertTest).toBe(true);
             expect(profile.evidenceThreshold).toBe('high');
+            expect(profile.selfReflectionThreshold).toBe(8);
         });
 
         it('returns Claude profile for claude family', () => {
@@ -49,6 +52,7 @@ describe('modelCalibration', () => {
             expect(profile.challengeMode).toBe('devils-advocate');
             expect(profile.includeAgenticPreamble).toBe(false);
             expect(profile.evidenceThreshold).toBe('medium');
+            expect(profile.selfReflectionThreshold).toBe(7);
         });
 
         it('returns Raptor mini profile for oswe-vscode-prime id', () => {
@@ -61,6 +65,7 @@ describe('modelCalibration', () => {
             expect(profile.challengeMode).toBe('devils-advocate');
             expect(profile.includeAgenticPreamble).toBe(true);
             expect(profile.evidenceThreshold).toBe('medium');
+            expect(profile.selfReflectionThreshold).toBe(7);
         });
 
         it('returns Raptor mini profile for oswe-vscode id variant', () => {
@@ -87,6 +92,7 @@ describe('modelCalibration', () => {
 
             expect(profile.includeAgenticPreamble).toBe(false);
             expect(profile.evidenceThreshold).toBe('medium');
+            expect(profile.selfReflectionThreshold).toBe(7);
         });
 
         it('matching is case-insensitive', () => {
@@ -172,11 +178,10 @@ describe('modelCalibration', () => {
         it('GPT-4.1 disables cognitive-overload tools', () => {
             const profile = getCalibrationProfile('gpt-4.1', 'gpt-4.1');
             expect(profile.disabledTools).toContain('batch_tools');
-            expect(profile.disabledTools).toContain('list_directory');
             expect(profile.disabledTools).toContain('get_symbols_overview');
             expect(profile.disabledTools).not.toContain('validate_claim');
             expect(profile.disabledTools).not.toContain('retract_finding');
-            expect(profile.disabledTools.length).toBe(4);
+            expect(profile.disabledTools.length).toBe(3);
         });
 
         it('GPT-4.1 has tight finding cap', () => {
@@ -184,7 +189,7 @@ describe('modelCalibration', () => {
             expect(profile.maxFindingsPerReview).toBe(5);
         });
 
-        it('Claude has no disabled tools', () => {
+        it('Claude has empty disabledTools', () => {
             const profile = getCalibrationProfile('claude', 'claude-sonnet');
             expect(profile.disabledTools).toHaveLength(0);
         });

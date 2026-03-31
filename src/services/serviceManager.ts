@@ -29,7 +29,6 @@ import { DEFAULT_PROFILE } from '../models/modelCalibration';
 import { getErrorMessage } from '../utils/errorUtils';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { FindUsagesTool } from '../tools/findUsagesTool';
-import { ListDirTool } from '../tools/listDirTool';
 import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { ReadFileTool } from '../tools/readFileTool';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
@@ -218,6 +217,7 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry,
             utilityContext
         );
+        this.services.toolExecutor.bindToContext();
         utilityContext.toolExecutor = this.services.toolExecutor;
         this.services.conversationManager = new ConversationManager();
         // Note: SubagentSessionManager and SubagentExecutor are created per-analysis
@@ -295,10 +295,6 @@ export class ServiceManager implements vscode.Disposable {
                 this.services.gitOperations!
             );
             this.services.toolRegistry!.registerTool(findUsagesTool);
-
-            // Register the ListDirTool (List Directory functionality)
-            const listDirTool = new ListDirTool(this.services.gitOperations!);
-            this.services.toolRegistry!.registerTool(listDirTool);
 
             // Register the FindFileTool (Find File functionality)
             const findFileTool = new FindFilesByPatternTool(

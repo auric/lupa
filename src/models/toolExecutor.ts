@@ -48,8 +48,10 @@ export interface ToolExecutionResult {
  * multiple concurrent analyses.
  */
 export class ToolExecutor {
-    private toolCallCount = 0;
-    private toolCallCountsByName = new Map<string, number>();
+    private sharedCallCount: { value: number };
+    private toolCallCountsByName: Map<string, number>;
+    private readonly localTools = new Map<string, ITool>();
+    private restrictToLocal = false;
 
     /**
      * @param toolRegistry Registry containing available tools
@@ -71,7 +73,57 @@ export class ToolExecutor {
                 'ToolExecutor requires ExecutionContext with a valid cancellationToken'
             );
         }
+        this.sharedCallCount = { value: 0 };
+        this.toolCallCountsByName = new Map<string, number>();
+        // NOTE: executionContext.toolCallCounts is NOT set here — callers must
+        // call bindToContext() after construction for the primary executor.
+        // This avoids a transient clobber in createScoped() where the constructor
+        // would momentarily overwrite the parent's map with a fresh empty one.
+    }
+
+    /**
+     * The execution context for the current analysis.
+     * Used by ConversationRunner to save/restore toolExecutor across scoped runs.
+     */
+    getExecutionContext(): ExecutionContext {
+        return this.executionContext;
+    }
+
+    /**
+     * Bind this executor's counters to the execution context.
+     * Must be called once after constructing the primary (non-scoped) executor.
+     */
+    bindToContext(): void {
         this.executionContext.toolCallCounts = this.toolCallCountsByName;
+    }
+
+    /**
+     * Create a scoped ToolExecutor that includes additional local tools
+     * beyond those in the shared registry. Local tools take precedence
+     * over registry tools with the same name. The original registry is
+     * never mutated — no cleanup needed.
+     */
+    createScoped(
+        additionalTools: ITool[],
+        options?: { restrictToLocal?: boolean }
+    ): ToolExecutor {
+        const scoped = new ToolExecutor(
+            this.toolRegistry,
+            this.executionContext,
+            this.maxToolCalls
+        );
+        // Share parent's counters so all tool calls (direct and via batch_tools)
+        // are tracked in one place, maintaining consistent rate limiting.
+        scoped.sharedCallCount = this.sharedCallCount;
+        scoped.toolCallCountsByName = this.toolCallCountsByName;
+        scoped.restrictToLocal = options?.restrictToLocal ?? false;
+        for (const tool of additionalTools) {
+            scoped.localTools.set(tool.name, tool);
+        }
+        // Update executionContext so batch_tools dispatches via scoped executor
+        // (which has access to local tools like score_finding).
+        this.executionContext.toolExecutor = scoped;
+        return scoped;
     }
 
     /**
@@ -114,30 +166,35 @@ export class ToolExecutor {
         // Count BEFORE validation intentionally - rate limit protects against attempts,
         // not just successful executions. A model making many invalid calls is broken
         // and should be stopped. Like password lockout, we count all attempts.
-        this.toolCallCount++;
+        this.sharedCallCount.value++;
         this.toolCallCountsByName.set(
             name,
             (this.toolCallCountsByName.get(name) ?? 0) + 1
         );
 
-        Log.debug(`Tool '${name}' starting (call #${this.toolCallCount})`);
+        Log.debug(
+            `Tool '${name}' starting (call #${this.sharedCallCount.value})`
+        );
 
-        if (this.toolCallCount > this.maxToolCalls) {
+        if (this.sharedCallCount.value > this.maxToolCalls) {
             Log.warn(
-                `Tool '${name}' ✗ rate limit exceeded (${this.toolCallCount}/${this.maxToolCalls}) | args: ${this.formatArgsForLog(args)}`
+                `Tool '${name}' ✗ rate limit exceeded (${this.sharedCallCount.value}/${this.maxToolCalls}) | args: ${this.formatArgsForLog(args)}`
             );
             return {
                 name,
                 success: false,
                 error: ToolConstants.ERROR_MESSAGES.RATE_LIMIT_EXCEEDED(
                     this.maxToolCalls,
-                    this.toolCallCount
+                    this.sharedCallCount.value
                 ),
             };
         }
 
         try {
-            const tool = this.toolRegistry.getTool(name);
+            const tool = this.restrictToLocal
+                ? this.localTools.get(name)
+                : (this.localTools.get(name) ??
+                  this.toolRegistry.getTool(name));
 
             if (!tool) {
                 Log.warn(
@@ -345,7 +402,18 @@ export class ToolExecutor {
      * @returns Array of available tool instances
      */
     getAvailableTools(): ITool[] {
-        return this.toolRegistry.getAllTools();
+        const registryTools = this.restrictToLocal
+            ? []
+            : this.toolRegistry.getAllTools();
+        const localToolArray = Array.from(this.localTools.values());
+        if (localToolArray.length === 0) {
+            return registryTools;
+        }
+        const seen = new Set(localToolArray.map((t) => t.name));
+        return [
+            ...localToolArray,
+            ...registryTools.filter((t) => !seen.has(t.name)),
+        ];
     }
 
     getToolCallCountByName(name: string): number {
@@ -358,7 +426,10 @@ export class ToolExecutor {
      * @returns True if the tool is available, false otherwise
      */
     isToolAvailable(name: string): boolean {
-        return this.toolRegistry.hasTool(name);
+        if (this.localTools.has(name)) {
+            return true;
+        }
+        return !this.restrictToLocal && this.toolRegistry.hasTool(name);
     }
 
     /**
@@ -366,7 +437,7 @@ export class ToolExecutor {
      * @returns The number of tools executed so far
      */
     getToolCallCount(): number {
-        return this.toolCallCount;
+        return this.sharedCallCount.value;
     }
 
     /**
@@ -374,7 +445,8 @@ export class ToolExecutor {
      * Should be called at the start of each new analysis to ensure clean rate limiting.
      */
     resetToolCallCount(): void {
-        this.toolCallCount = 0;
+        this.sharedCallCount.value = 0;
+        this.toolCallCountsByName.clear();
     }
 
     /**

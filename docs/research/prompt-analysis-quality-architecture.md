@@ -150,7 +150,6 @@ The `verifiableClaims` field exists in `RecordedFinding` but is **completely dor
 - `find_usages` — Find all references to a symbol (uses LSP)
 - `search_for_pattern` — Ripgrep search
 - `read_file` — Read file content
-- `list_directory` — List directory structure
 - `get_file_diff` — Get diff for a file (RLM approach)
 - `record_finding` — Record a bug finding
 - `retract_finding` — Remove a previously recorded finding

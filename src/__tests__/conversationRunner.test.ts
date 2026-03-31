@@ -43,7 +43,7 @@ const createMockToolExecutor = (
         metadata?: { isCompletion?: boolean };
     }> = []
 ) => {
-    return {
+    const mockExecutor = {
         executeTools: vi
             .fn()
             .mockImplementation((requests: Array<{ name: string }>) => {
@@ -61,7 +61,13 @@ const createMockToolExecutor = (
                 return Promise.resolve(matchedResults);
             }),
         getAvailableTools: vi.fn().mockReturnValue([]),
+        createScoped: vi.fn(),
+        getExecutionContext: vi
+            .fn()
+            .mockReturnValue({ toolExecutor: undefined }),
     } as unknown as ToolExecutor;
+    (mockExecutor as any).createScoped.mockReturnValue(mockExecutor);
+    return mockExecutor;
 };
 
 const createMockTool = (name: string): ITool => ({
@@ -825,7 +831,12 @@ describe('ConversationRunner', () => {
                     ]);
                 }),
                 getAvailableTools: vi.fn().mockReturnValue([]),
+                createScoped: vi.fn(),
+                getExecutionContext: vi
+                    .fn()
+                    .mockReturnValue({ toolExecutor: undefined }),
             } as unknown as ToolExecutor;
+            (toolExecutor as any).createScoped.mockReturnValue(toolExecutor);
 
             const runner = new ConversationRunner(modelManager, toolExecutor);
 
@@ -881,7 +892,12 @@ describe('ConversationRunner', () => {
                     ]);
                 }),
                 getAvailableTools: vi.fn().mockReturnValue([]),
+                createScoped: vi.fn(),
+                getExecutionContext: vi
+                    .fn()
+                    .mockReturnValue({ toolExecutor: undefined }),
             } as unknown as ToolExecutor;
+            (toolExecutor as any).createScoped.mockReturnValue(toolExecutor);
 
             const runner = new ConversationRunner(modelManager, toolExecutor);
 
@@ -3135,6 +3151,99 @@ describe('ConversationRunner', () => {
             // Two retries + one success = 3 calls, but only 1 iteration used
             expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
             expect(runner.iterationsUsed).toBe(1);
+        });
+    });
+
+    describe('Scoped executor cleanup', () => {
+        it('should restore executionContext.toolExecutor after run() completes', async () => {
+            const modelManager = createMockModelManager([
+                { content: 'Done', toolCalls: undefined },
+            ]);
+
+            const executionContext = { toolExecutor: undefined as any };
+            const originalExecutor = {} as ToolExecutor;
+            executionContext.toolExecutor = originalExecutor;
+
+            const scopedExecutor = {
+                executeTools: vi.fn().mockResolvedValue([]),
+                getAvailableTools: vi.fn().mockReturnValue([]),
+                createScoped: vi.fn(),
+                getExecutionContext: vi.fn().mockReturnValue(executionContext),
+            } as unknown as ToolExecutor;
+
+            const mockExecutor = {
+                executeTools: vi.fn().mockResolvedValue([]),
+                getAvailableTools: vi.fn().mockReturnValue([]),
+                createScoped: vi.fn().mockImplementation(() => {
+                    executionContext.toolExecutor = scopedExecutor;
+                    return scopedExecutor;
+                }),
+                getExecutionContext: vi.fn().mockReturnValue(executionContext),
+            } as unknown as ToolExecutor;
+
+            const runner = new ConversationRunner(modelManager, mockExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 5,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            await runner.run(config, conversation, createCancellationToken());
+
+            expect(executionContext.toolExecutor).toBe(originalExecutor);
+        });
+
+        it('should restore executionContext.toolExecutor even when run() throws', async () => {
+            const modelManager = {
+                sendRequest: vi.fn().mockRejectedValue(
+                    Object.assign(new Error('service unavailable'), {
+                        code: 'ServiceUnavailable',
+                    })
+                ),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const executionContext = { toolExecutor: undefined as any };
+            const originalExecutor = {} as ToolExecutor;
+            executionContext.toolExecutor = originalExecutor;
+
+            const scopedExecutor = {
+                executeTools: vi.fn().mockResolvedValue([]),
+                getAvailableTools: vi.fn().mockReturnValue([]),
+                createScoped: vi.fn(),
+                getExecutionContext: vi.fn().mockReturnValue(executionContext),
+            } as unknown as ToolExecutor;
+
+            const mockExecutor = {
+                executeTools: vi.fn().mockResolvedValue([]),
+                getAvailableTools: vi.fn().mockReturnValue([]),
+                createScoped: vi.fn().mockImplementation(() => {
+                    executionContext.toolExecutor = scopedExecutor;
+                    return scopedExecutor;
+                }),
+                getExecutionContext: vi.fn().mockReturnValue(executionContext),
+            } as unknown as ToolExecutor;
+
+            const runner = new ConversationRunner(modelManager, mockExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 5,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            await expect(
+                runner.run(config, conversation, createCancellationToken())
+            ).rejects.toThrow('service unavailable');
+
+            expect(executionContext.toolExecutor).toBe(originalExecutor);
         });
     });
 });

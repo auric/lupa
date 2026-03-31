@@ -56,6 +56,8 @@ export interface SubagentExecuteOptions {
     calibrationProfile: ModelCalibrationProfile;
     /** Additional tools to exclude from this subagent (beyond standard filters). */
     excludeTools?: readonly string[];
+    /** Additional tools to inject into this subagent session. */
+    additionalTools?: readonly ITool[];
     /** Parent's investigated files set — shared so child file tracking propagates back. */
     investigatedFiles?: Set<string>;
 }
@@ -187,6 +189,18 @@ export class SubagentExecutor {
                 );
             }
 
+            if (options?.additionalTools?.length) {
+                const additionalNames = new Set(
+                    options.additionalTools.map((t) => t.name)
+                );
+                filteredTools = [
+                    ...filteredTools.filter(
+                        (t) => !additionalNames.has(t.name)
+                    ),
+                    ...options.additionalTools,
+                ];
+            }
+
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
 
             // Use allocated budget as maxIterations when available (recursive mode),
@@ -222,6 +236,7 @@ export class SubagentExecutor {
                 childContext,
                 maxIterations * ANALYSIS_LIMITS.toolCallMultiplier
             );
+            toolExecutor.bindToContext();
             childContext.toolExecutor = toolExecutor;
             const conversationRunner = new ConversationRunner(
                 this.llmClient,
@@ -261,11 +276,7 @@ export class SubagentExecutor {
             // Track nudge state. Each nudge type fires at most once to avoid infinite loops.
             let shallowInvestigationNudged = false;
             let evidenceDepthNudged = false;
-            const ORIENTATION_ONLY_TOOLS = new Set([
-                'get_file_diff',
-                'list_directory',
-                'think',
-            ]);
+            const ORIENTATION_ONLY_TOOLS = new Set(['get_file_diff', 'think']);
             const protocol =
                 childContext.calibrationProfile.investigationProtocol;
 
@@ -575,8 +586,16 @@ export class SubagentExecutor {
      */
     private createFilteredRegistry(tools: ITool[]): ToolRegistry {
         const registry = new ToolRegistry();
+        const seen = new Set<string>();
         for (const tool of tools) {
-            registry.registerTool(tool);
+            if (!seen.has(tool.name)) {
+                seen.add(tool.name);
+                registry.registerTool(tool);
+            } else {
+                Log.warn(
+                    `Duplicate tool '${tool.name}' skipped during subagent registry creation`
+                );
+            }
         }
         return registry;
     }

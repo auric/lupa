@@ -31,6 +31,7 @@ import { FindingStore } from '../sessions/findingStore';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
+import { formatSelfReflectionScoresMarkdown } from './selfReflectionScorer';
 import { TokenValidator } from '../models/tokenValidator';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
@@ -299,6 +300,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 this.deps.toolRegistry,
                 explorationContext
             );
+            toolExecutor.bindToContext();
             explorationContext.toolExecutor = toolExecutor;
 
             const runner = new ConversationRunner(client, toolExecutor);
@@ -596,6 +598,7 @@ export class ChatParticipantService implements vscode.Disposable {
             this.deps!.toolRegistry,
             executionContext
         );
+        toolExecutor.bindToContext();
         executionContext.toolExecutor = toolExecutor;
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
@@ -815,6 +818,13 @@ export class ChatParticipantService implements vscode.Disposable {
 
             debouncedHandler.flush();
             streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
+
+            if (pipelineResult.selfReflectionScores.length > 0) {
+                const scoreSummary = formatSelfReflectionScoresMarkdown(
+                    pipelineResult.selfReflectionScores
+                );
+                streamMarkdownWithAnchors(stream, scoreSummary, gitRootUri);
+            }
 
             const contentAnalysis = this.analyzeResultContent(analysisResult);
 

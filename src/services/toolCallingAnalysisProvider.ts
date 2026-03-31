@@ -33,6 +33,7 @@ import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
+import { formatSelfReflectionScoresMarkdown } from './selfReflectionScorer';
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -146,6 +147,7 @@ export class ToolCallingAnalysisProvider {
             this.toolRegistry,
             executionContext
         );
+        toolExecutor.bindToContext();
         executionContext.toolExecutor = toolExecutor;
         const conversationRunner = new ConversationRunner(
             this.copilotModelManager,
@@ -377,6 +379,12 @@ export class ToolCallingAnalysisProvider {
                 );
                 if (pipelineResult.rewrittenAnalysis) {
                     analysisText = pipelineResult.rewrittenAnalysis;
+                }
+
+                if (pipelineResult.selfReflectionScores.length > 0) {
+                    analysisText += formatSelfReflectionScoresMarkdown(
+                        pipelineResult.selfReflectionScores
+                    );
                 }
 
                 progressCallback?.(

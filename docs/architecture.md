@@ -151,14 +151,13 @@ Token management, conversation state, and tool execution infrastructure.
 
 LLM-callable tools extending `BaseTool` with Zod schemas.
 
-**Context Tools** (8):
+**Context Tools** (7):
 
 | Tool                     | Purpose                                       |
 | ------------------------ | --------------------------------------------- |
 | `FindSymbolTool`         | Find code symbol definitions with full source |
 | `FindUsagesTool`         | Find all usages of a symbol                   |
 | `ReadFileTool`           | Read file content with pagination             |
-| `ListDirTool`            | List directory contents                       |
 | `FindFilesByPatternTool` | Glob-based file search                        |
 | `GetSymbolsOverviewTool` | Hierarchical symbol structure                 |
 | `SearchForPatternTool`   | Ripgrep-based text search                     |
@@ -570,7 +569,7 @@ VS Code API mocked via `__mocks__/vscode.js`:
 
 ### Gitignore Handling
 
-File discovery tools (`FindFilesByPatternTool`, `ListDirTool`, `GetSymbolsOverviewTool`) respect gitignore patterns via the `ignore` package. Patterns are loaded from three sources:
+File discovery tools (`FindFilesByPatternTool`, `GetSymbolsOverviewTool`) respect gitignore patterns via the `ignore` package. Patterns are loaded from three sources:
 
 1. **Global gitignore**: `core.excludesFile` from git config (e.g., `~/.gitignore_global`)
 2. **Root .gitignore**: The `.gitignore` file at the repository root

@@ -95,21 +95,6 @@ describe('ToolCallStreamAdapter', () => {
             );
         });
 
-        it('should use progress for list_directory (no anchors)', () => {
-            adapter.onToolCallStart(
-                'list_directory',
-                { relative_path: 'src/utils' },
-                0,
-                1
-            );
-
-            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.reading} Listed \`src/utils\``
-            );
-            expect(mockChatHandler.onMarkdown).not.toHaveBeenCalled();
-            expect(mockChatHandler.onFileReference).not.toHaveBeenCalled();
-        });
-
         it('should format find_files_by_pattern message', () => {
             adapter.onToolCallStart(
                 'find_files_by_pattern',

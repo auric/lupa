@@ -23,7 +23,9 @@ Roadmap of research-backed improvements for reducing false positives and improvi
 
 ## 1. Self-Reflection Scoring
 
-**Priority: HIGH** | **Expected FP Reduction: 30-50%** | **Complexity: Medium**
+**Status: ✅ IMPLEMENTED** (v0.2.0) | **Priority: HIGH** | **Expected FP Reduction: 30-50%** | **Complexity: Medium**
+
+> **Implementation**: `src/services/selfReflectionScorer.ts` — Qodo-style 2nd pass integrated into PostAnalysisPipeline Stage 5b. All surviving findings are presented simultaneously with diff context snippets; model scores each 1-10. Per-model thresholds via `ModelCalibrationProfile.selfReflectionThreshold`. Replaces the binary self-critique pass.
 
 ### Rationale
 
@@ -405,7 +407,7 @@ Some tools provide marginal value for code review while adding cognitive load fo
 ### Implementation
 
 ```
-Phase 1: Remove list_directory globally (already disabled for GPT-4.1/4o)
+Phase 1: Remove list_directory globally (already disabled for GPT-4.1/4o) — ✅ DONE (v0.2.0)
 Phase 2: Monitor tool usage metrics across models
 Phase 3: Further pruning based on actual usage data
 ```

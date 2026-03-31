@@ -92,7 +92,6 @@ These components are created fresh for each analysis session, not managed by Ser
 | `FindSymbolTool`         | `findSymbolTool.ts`         | `find_symbol`           | Find symbol definitions with source |
 | `FindUsagesTool`         | `findUsagesTool.ts`         | `find_usages`           | Find all usages of a symbol         |
 | `ReadFileTool`           | `readFileTool.ts`           | `read_file`             | Read file content with pagination   |
-| `ListDirTool`            | `listDirTool.ts`            | `list_directory`        | List directory contents             |
 | `FindFilesByPatternTool` | `findFilesByPatternTool.ts` | `find_files_by_pattern` | Glob-based file search              |
 | `GetSymbolsOverviewTool` | `getSymbolsOverviewTool.ts` | `get_symbols_overview`  | Hierarchical symbol structure       |
 | `SearchForPatternTool`   | `searchForPatternTool.ts`   | `search_for_pattern`    | Text/regex search via ripgrep       |

@@ -182,7 +182,7 @@ The RLM paper describes the REPL as an "operating system" the LLM interacts with
 
 | OS Concept         | Lupa Equivalent                                      |
 | ------------------ | ---------------------------------------------------- |
-| File System        | Git repository (via ReadFileTool, ListDirTool)       |
+| File System        | Git repository (via ReadFileTool, FileDiscoverer)    |
 | Process Spawning   | RunSubagentTool (spawn child review agents)          |
 | Search/Grep        | SearchForPatternTool (ripgrep-based)                 |
 | Symbol Resolution  | FindSymbolTool, FindUsagesTool (LSP-based)           |
@@ -426,7 +426,7 @@ You are the ROOT AGENT in a recursive review system:
 ## Critical Rules
 
 - **Delegate investigations** — Use `run_subagent_batch` for deep code inspection
-- **You may orient yourself** using `list_directory`, `get_symbols_overview`, `read_file` (sparingly)
+- **You may orient yourself** using `get_symbols_overview`, `read_file` (sparingly)
 - **Your primary tool is `run_subagent_batch`** — It does the heavy investigation
 - For each concern, include relevant diff hunks in the `context` field
 - Sub-agents can investigate both current code AND diff changes you provide

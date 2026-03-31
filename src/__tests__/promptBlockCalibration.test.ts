@@ -22,6 +22,7 @@ const DISMISSIVE_PROFILE: ModelCalibrationProfile = {
     },
     disabledTools: [],
     maxFindingsPerReview: 5,
+    selfReflectionThreshold: 5,
 };
 
 const AGGRESSIVE_PROFILE: ModelCalibrationProfile = {
@@ -41,6 +42,7 @@ const AGGRESSIVE_PROFILE: ModelCalibrationProfile = {
     },
     disabledTools: [],
     maxFindingsPerReview: 10,
+    selfReflectionThreshold: 8,
 };
 
 const BALANCED_PROFILE: ModelCalibrationProfile = {
@@ -60,6 +62,7 @@ const BALANCED_PROFILE: ModelCalibrationProfile = {
     },
     disabledTools: [],
     maxFindingsPerReview: 15,
+    selfReflectionThreshold: 7,
 };
 
 describe('Calibration-aware prompt blocks', () => {

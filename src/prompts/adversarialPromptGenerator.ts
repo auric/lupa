@@ -70,11 +70,10 @@ ${categoryChecklist}
 
 ## Response Format
 
-\`\`\`
-Verdict: [CONFIRMED|REFUTED|UNCERTAIN]
-Evidence: [specific tool outputs]
-Summary: [1-2 sentences]
-\`\`\`
+After your investigation, call the \`submit_verdict\` tool with:
+- **verdict**: CONFIRMED, REFUTED, or UNCERTAIN
+- **evidence**: Key evidence from tool output that supports your verdict
+- **summary**: 1-2 sentence explanation
 
 ## Constraints
 - Bias toward REFUTED — actively look for reasons the finding is wrong

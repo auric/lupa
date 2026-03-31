@@ -97,6 +97,16 @@ export interface ModelCalibrationProfile {
      * GPT-4.1 benefits from tight caps (keeps focus on quality over quantity).
      */
     readonly maxFindingsPerReview: number;
+
+    /**
+     * Confidence threshold for self-reflection scoring (1-10).
+     * After analysis, findings are re-scored by the model itself. Findings
+     * scoring below this threshold are dropped as likely false positives.
+     * Dismissive models: 5 (lower bar — they already under-report).
+     * Balanced models: 7 (standard bar).
+     * Aggressive models: 8 (high bar — they over-report).
+     */
+    readonly selfReflectionThreshold: number;
 }
 
 const GPT_41_PROFILE: ModelCalibrationProfile = {
@@ -120,11 +130,11 @@ const GPT_41_PROFILE: ModelCalibrationProfile = {
     },
     disabledTools: [
         'batch_tools',
-        'list_directory',
         'find_files_by_pattern',
         'get_symbols_overview',
     ],
     maxFindingsPerReview: 5,
+    selfReflectionThreshold: 5,
 };
 
 const GPT_4O_PROFILE: ModelCalibrationProfile = {
@@ -148,11 +158,11 @@ const GPT_4O_PROFILE: ModelCalibrationProfile = {
     },
     disabledTools: [
         'batch_tools',
-        'list_directory',
         'find_files_by_pattern',
         'get_symbols_overview',
     ],
     maxFindingsPerReview: 5,
+    selfReflectionThreshold: 5,
 };
 
 const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
@@ -174,6 +184,7 @@ const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
     },
     disabledTools: [],
     maxFindingsPerReview: 10,
+    selfReflectionThreshold: 8,
 };
 
 /**
@@ -200,6 +211,7 @@ const RAPTOR_MINI_PROFILE: ModelCalibrationProfile = {
     },
     disabledTools: [],
     maxFindingsPerReview: 10,
+    selfReflectionThreshold: 7,
 };
 
 const CLAUDE_PROFILE: ModelCalibrationProfile = {
@@ -219,6 +231,7 @@ const CLAUDE_PROFILE: ModelCalibrationProfile = {
     },
     disabledTools: [],
     maxFindingsPerReview: 15,
+    selfReflectionThreshold: 7,
 };
 
 export const DEFAULT_PROFILE: ModelCalibrationProfile = {

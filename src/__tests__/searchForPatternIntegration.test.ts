@@ -31,6 +31,7 @@ describe('SearchForPatternTool Integration Tests', () => {
             toolRegistry,
             createMockExecutionContext()
         );
+        toolExecutor.bindToContext();
 
         mockGetRepository = vi.fn().mockReturnValue({
             rootUri: {

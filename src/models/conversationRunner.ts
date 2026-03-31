@@ -59,6 +59,13 @@ export interface ConversationRunnerConfig {
         iteration: number,
         maxIterations: number
     ) => string | undefined;
+    /**
+     * If true, the scoped ToolExecutor will ONLY resolve tools from the local
+     * tools list — no fallback to the global registry. Use for sandboxed
+     * conversations (e.g., self-reflection scoring) that should never execute
+     * arbitrary tools.
+     */
+    restrictToLocalTools?: boolean;
 }
 
 /**
@@ -113,6 +120,7 @@ interface HandleToolCallsResult {
  */
 export class ConversationRunner {
     private tokenValidator: TokenValidator | null = null;
+    private currentExecutor!: ToolExecutor;
     private _hitMaxIterations = false;
     private _hitRateLimit = false;
     private _hitQuotaExhausted = false;
@@ -203,578 +211,596 @@ export class ConversationRunner {
         this._iterationsUsed = 0;
         const toolNamesCalled = new Set<string>();
 
-        while (iteration < config.maxIterations) {
-            iteration++;
-            this._iterationsUsed = iteration;
-            Log.info(
-                `${logPrefix} Iteration ${iteration}/${config.maxIterations}`
-            );
+        const executionContext = this.toolExecutor.getExecutionContext();
+        const previousToolExecutor = executionContext.toolExecutor;
+        this.currentExecutor = this.toolExecutor.createScoped(config.tools, {
+            restrictToLocal: config.restrictToLocalTools,
+        });
 
-            if (token.isCancellationRequested) {
+        try {
+            while (iteration < config.maxIterations) {
+                iteration++;
+                this._iterationsUsed = iteration;
                 Log.info(
-                    `${logPrefix} Cancelled before iteration ${iteration}`
+                    `${logPrefix} Iteration ${iteration}/${config.maxIterations}`
                 );
-                this._wasCancelled = true;
-                return '';
-            }
 
-            handler?.onIterationStart?.(iteration, config.maxIterations);
-
-            try {
-                const vscodeTools = config.tools
-                    .filter((tool) => !config.disabledToolNames?.has(tool.name))
-                    .map((tool) => tool.getVSCodeTool());
-
-                // Early wind-down nudge at ~85% of budget for subagents.
-                // Prompt-based budget management doesn't work — LLMs can't count
-                // iterations. This code-injected message gives a concrete signal.
-                if (
-                    !config.requiresExplicitCompletion &&
-                    iteration === windDownIteration &&
-                    !windDownNudged
-                ) {
-                    windDownNudged = true;
-                    const remaining = config.maxIterations - iteration;
-                    conversation.addUserMessage(
-                        `Budget check: You have used ${iteration} of ${config.maxIterations} iterations (${remaining} remaining). ` +
-                            `Continue investigating if needed, but begin consolidating your findings soon.`
-                    );
+                if (token.isCancellationRequested) {
                     Log.info(
-                        `${logPrefix} Wind-down nudge injected at iteration ${iteration}/${config.maxIterations}`
+                        `${logPrefix} Cancelled before iteration ${iteration}`
                     );
+                    this._wasCancelled = true;
+                    return '';
                 }
 
-                // Urgent wind-down nudge at ~92% — escalate urgency.
-                // Only fires if not already in the final buffer zone
-                // (where tools are removed anyway).
-                if (
-                    !config.requiresExplicitCompletion &&
-                    iteration === urgentWindDownIteration &&
-                    iteration < finalBufferStart &&
-                    !urgentWindDownNudged
-                ) {
-                    urgentWindDownNudged = true;
-                    const remaining = config.maxIterations - iteration;
-                    conversation.addUserMessage(
-                        `⚠️ URGENT: Only ${remaining} iteration(s) remaining out of ${config.maxIterations}. ` +
-                            `Stop starting new investigations. Wrap up your current analysis and ` +
-                            `produce your complete findings immediately. ` +
-                            `A thorough partial answer is far more valuable than running out of budget with no written findings.`
-                    );
-                    Log.info(
-                        `${logPrefix} Urgent wind-down nudge injected at iteration ${iteration}/${config.maxIterations}`
-                    );
-                }
+                handler?.onIterationStart?.(iteration, config.maxIterations);
 
-                // Final buffer: remove tools and force text response for
-                // the last N iterations of non-explicit-completion conversations
-                // (subagents). Giving 2 iterations instead of 1 provides a
-                // retry opportunity if the first forced-text response is poor.
-                const isInFinalBuffer =
-                    !config.requiresExplicitCompletion &&
-                    iteration >= finalBufferStart;
+                try {
+                    const vscodeTools = config.tools
+                        .filter(
+                            (tool) => !config.disabledToolNames?.has(tool.name)
+                        )
+                        .map((tool) => tool.getVSCodeTool());
 
-                if (isInFinalBuffer && !windDownInjected) {
-                    windDownInjected = true;
-                    conversation.addUserMessage(
-                        'You are in your final iterations — no more tool calls are available. Please provide your complete findings as a text response. ' +
-                            'Summarize everything you have found so far. A partial answer is better than no answer.'
-                    );
-                }
+                    // Early wind-down nudge at ~85% of budget for subagents.
+                    // Prompt-based budget management doesn't work — LLMs can't count
+                    // iterations. This code-injected message gives a concrete signal.
+                    if (
+                        !config.requiresExplicitCompletion &&
+                        iteration === windDownIteration &&
+                        !windDownNudged
+                    ) {
+                        windDownNudged = true;
+                        const remaining = config.maxIterations - iteration;
+                        conversation.addUserMessage(
+                            `Budget check: You have used ${iteration} of ${config.maxIterations} iterations (${remaining} remaining). ` +
+                                `Continue investigating if needed, but begin consolidating your findings soon.`
+                        );
+                        Log.info(
+                            `${logPrefix} Wind-down nudge injected at iteration ${iteration}/${config.maxIterations}`
+                        );
+                    }
 
-                const effectiveTools =
-                    isInFinalBuffer || windDownInjected ? [] : vscodeTools;
+                    // Urgent wind-down nudge at ~92% — escalate urgency.
+                    // Only fires if not already in the final buffer zone
+                    // (where tools are removed anyway).
+                    if (
+                        !config.requiresExplicitCompletion &&
+                        iteration === urgentWindDownIteration &&
+                        iteration < finalBufferStart &&
+                        !urgentWindDownNudged
+                    ) {
+                        urgentWindDownNudged = true;
+                        const remaining = config.maxIterations - iteration;
+                        conversation.addUserMessage(
+                            `⚠️ URGENT: Only ${remaining} iteration(s) remaining out of ${config.maxIterations}. ` +
+                                `Stop starting new investigations. Wrap up your current analysis and ` +
+                                `produce your complete findings immediately. ` +
+                                `A thorough partial answer is far more valuable than running out of budget with no written findings.`
+                        );
+                        Log.info(
+                            `${logPrefix} Urgent wind-down nudge injected at iteration ${iteration}/${config.maxIterations}`
+                        );
+                    }
 
-                let messages = this.prepareMessagesForLLM(
-                    config.systemPrompt,
-                    conversation
-                );
+                    // Final buffer: remove tools and force text response for
+                    // the last N iterations of non-explicit-completion conversations
+                    // (subagents). Giving 2 iterations instead of 1 provides a
+                    // retry opportunity if the first forced-text response is poor.
+                    const isInFinalBuffer =
+                        !config.requiresExplicitCompletion &&
+                        iteration >= finalBufferStart;
 
-                // Initialize token validator if not already done
-                if (!this.tokenValidator) {
-                    const currentModel = await this.client.getCurrentModel();
-                    this.tokenValidator = new TokenValidator(currentModel);
-                }
+                    if (isInFinalBuffer && !windDownInjected) {
+                        windDownInjected = true;
+                        conversation.addUserMessage(
+                            'You are in your final iterations — no more tool calls are available. Please provide your complete findings as a text response. ' +
+                                'Summarize everything you have found so far. A partial answer is better than no answer.'
+                        );
+                    }
 
-                // Validate token count and handle context limits
-                const validation = await this.tokenValidator.validateTokens(
-                    messages.slice(1), // Exclude system prompt from validation
-                    config.systemPrompt
-                );
+                    const effectiveTools =
+                        isInFinalBuffer || windDownInjected ? [] : vscodeTools;
 
-                if (validation.suggestedAction === 'request_final_answer') {
-                    conversation.addUserMessage(
-                        'Context window is full. Please provide your final analysis based on the information you have gathered so far.'
-                    );
-                    messages = this.prepareMessagesForLLM(
+                    let messages = this.prepareMessagesForLLM(
                         config.systemPrompt,
                         conversation
                     );
-                } else if (
-                    validation.suggestedAction === 'remove_old_context'
-                ) {
-                    const cleanup = await this.tokenValidator.cleanupContext(
-                        messages.slice(1),
+
+                    // Initialize token validator if not already done
+                    if (!this.tokenValidator) {
+                        const currentModel =
+                            await this.client.getCurrentModel();
+                        this.tokenValidator = new TokenValidator(currentModel);
+                    }
+
+                    // Validate token count and handle context limits
+                    const validation = await this.tokenValidator.validateTokens(
+                        messages.slice(1), // Exclude system prompt from validation
                         config.systemPrompt
                     );
 
-                    // Rebuild conversation with cleaned messages
-                    conversation.clearHistory();
-                    for (const message of cleanup.cleanedMessages) {
-                        if (message.role === 'user') {
-                            conversation.addUserMessage(message.content || '');
-                        } else if (message.role === 'assistant') {
-                            conversation.addAssistantMessage(
-                                message.content,
-                                message.toolCalls
-                            );
-                        } else if (message.role === 'tool') {
-                            conversation.addToolMessage(
-                                message.toolCallId || '',
-                                message.content || ''
-                            );
-                        }
-                    }
-
-                    messages = this.prepareMessagesForLLM(
-                        config.systemPrompt,
-                        conversation
-                    );
-
-                    if (cleanup.contextFullMessageAdded) {
-                        Log.info(
-                            `${logPrefix} Context cleanup: removed ${cleanup.toolResultsRemoved} tool results and ${cleanup.assistantMessagesRemoved} assistant messages`
+                    if (validation.suggestedAction === 'request_final_answer') {
+                        conversation.addUserMessage(
+                            'Context window is full. Please provide your final analysis based on the information you have gathered so far.'
                         );
-                    }
-                }
-
-                const response = await this.client.sendRequest(
-                    {
-                        messages,
-                        tools: effectiveTools,
-                    },
-                    token
-                );
-
-                // Reset retry counters after successful API call.
-                // Without this, a later error would continue from
-                // the old retry count and prematurely exhaust retries.
-                rateLimitRetries = 0;
-                consecutiveErrors = 0;
-                responseTooLongRetries = 0;
-
-                if (token.isCancellationRequested) {
-                    Log.info(`${logPrefix} Cancelled by user`);
-                    this._wasCancelled = true;
-                    return '';
-                }
-
-                conversation.addAssistantMessage(
-                    response.content || null,
-                    response.toolCalls
-                );
-
-                // Track last substantive response for graceful degradation.
-                // Threshold filters trivial LLM responses like "OK." or "Error." so
-                // the fallback message delivered on rate-limit exhaustion or max-iterations
-                // contains actual review content.
-                const MIN_SUBSTANTIVE_RESPONSE_LENGTH = 50;
-                if (
-                    response.content &&
-                    response.content.trim().length >
-                        MIN_SUBSTANTIVE_RESPONSE_LENGTH
-                ) {
-                    lastSubstantiveResponse = response.content;
-                }
-
-                // Re-check cancellation before processing branching logic —
-                // token may have fired during response processing
-                if (token.isCancellationRequested) {
-                    Log.info(
-                        `${logPrefix} Cancelled during response processing`
-                    );
-                    this._wasCancelled = true;
-                    return '';
-                }
-
-                if (response.toolCalls && response.toolCalls.length > 0) {
-                    // Reset nudge counter - model is cooperating with tool calls
-                    completionNudgeCount = 0;
-
-                    let toolCalls = response.toolCalls;
-
-                    // Defense-in-depth: block tool calls for disabled tools.
-                    // The LLM shouldn't know about disabled tools (they're excluded
-                    // from the tool list), but guard against hallucinated names.
-                    if (config.disabledToolNames?.size) {
-                        const blocked = toolCalls.filter((tc) =>
-                            config.disabledToolNames!.has(tc.function.name)
+                        messages = this.prepareMessagesForLLM(
+                            config.systemPrompt,
+                            conversation
                         );
-                        if (blocked.length > 0) {
-                            const names = blocked
-                                .map((tc) => tc.function.name)
-                                .join(', ');
-                            Log.warn(
-                                `${logPrefix} Blocked ${blocked.length} disabled tool call(s): ${names}`
+                    } else if (
+                        validation.suggestedAction === 'remove_old_context'
+                    ) {
+                        const cleanup =
+                            await this.tokenValidator.cleanupContext(
+                                messages.slice(1),
+                                config.systemPrompt
                             );
-                            for (const tc of blocked) {
+
+                        // Rebuild conversation with cleaned messages
+                        conversation.clearHistory();
+                        for (const message of cleanup.cleanedMessages) {
+                            if (message.role === 'user') {
+                                conversation.addUserMessage(
+                                    message.content || ''
+                                );
+                            } else if (message.role === 'assistant') {
+                                conversation.addAssistantMessage(
+                                    message.content,
+                                    message.toolCalls
+                                );
+                            } else if (message.role === 'tool') {
                                 conversation.addToolMessage(
-                                    tc.id || `blocked_${tc.function.name}`,
-                                    `Error: Tool '${tc.function.name}' is not available.`
+                                    message.toolCallId || '',
+                                    message.content || ''
                                 );
                             }
-                            toolCalls = toolCalls.filter(
-                                (tc) =>
-                                    !config.disabledToolNames!.has(
-                                        tc.function.name
-                                    )
+                        }
+
+                        messages = this.prepareMessagesForLLM(
+                            config.systemPrompt,
+                            conversation
+                        );
+
+                        if (cleanup.contextFullMessageAdded) {
+                            Log.info(
+                                `${logPrefix} Context cleanup: removed ${cleanup.toolResultsRemoved} tool results and ${cleanup.assistantMessagesRemoved} assistant messages`
                             );
-                            if (toolCalls.length === 0) {
-                                continue;
-                            }
                         }
                     }
 
-                    // Track tool names for investigation depth checks
-                    for (const tc of toolCalls) {
-                        toolNamesCalled.add(tc.function.name);
-                    }
-
-                    const result = await this.handleToolCalls(
-                        toolCalls,
-                        conversation,
-                        handler,
-                        logPrefix
+                    const response = await this.client.sendRequest(
+                        {
+                            messages,
+                            tools: effectiveTools,
+                        },
+                        token
                     );
 
-                    // Check cancellation after tool execution completes —
-                    // tools may finish normally even when the token fires mid-execution
+                    // Reset retry counters after successful API call.
+                    // Without this, a later error would continue from
+                    // the old retry count and prematurely exhaust retries.
+                    rateLimitRetries = 0;
+                    consecutiveErrors = 0;
+                    responseTooLongRetries = 0;
+
                     if (token.isCancellationRequested) {
-                        Log.info(`${logPrefix} Cancelled after tool execution`);
+                        Log.info(`${logPrefix} Cancelled by user`);
                         this._wasCancelled = true;
                         return '';
                     }
 
-                    // If submit_review was called, return its content as the final review
-                    if (result.finalReview) {
-                        Log.info(
-                            `${logPrefix} Completed via submit_review tool`
-                        );
-                        return result.finalReview;
-                    }
-
-                    // Post-tool-call hook: inject coverage gaps or other messages
-                    if (config.afterToolCalls) {
-                        const toolNames = toolCalls.map(
-                            (tc) => tc.function.name
-                        );
-                        const injectedMessage =
-                            config.afterToolCalls(toolNames);
-                        if (injectedMessage) {
-                            conversation.addUserMessage(injectedMessage);
-                            Log.info(
-                                `${logPrefix} Injected post-tool-call message (${injectedMessage.length} chars)`
-                            );
-                        }
-                    }
-
-                    continue;
-                }
-
-                // No tool calls - check if explicit completion is required
-                // Main analysis requires submit_review; subagents/exploration can complete directly
-                if (config.requiresExplicitCompletion) {
-                    completionNudgeCount++;
-
-                    // After MAX_COMPLETION_NUDGES attempts, accept the response to prevent infinite loops
-                    if (completionNudgeCount > MAX_COMPLETION_NUDGES) {
-                        Log.warn(
-                            `${logPrefix} Model did not call submit_review after ${MAX_COMPLETION_NUDGES} nudges. Accepting response as final.`
-                        );
-
-                        // Try to extract review content from malformed tool call attempts
-                        const extractedReview =
-                            extractReviewFromMalformedToolCall(
-                                response.content
-                            );
-                        if (extractedReview) {
-                            Log.info(
-                                `${logPrefix} Extracted review content from malformed tool call`
-                            );
-                            return extractedReview;
-                        }
-
-                        return (
-                            response.content ||
-                            'Analysis completed but model did not use submit_review tool.'
-                        );
-                    }
-
-                    const contentPreview =
-                        response.content?.substring(0, 150) || '(empty)';
-                    const contentEnding =
-                        response.content && response.content.length > 100
-                            ? response.content.slice(-100)
-                            : '';
-
-                    if (completionNudgeCount === 1) {
-                        // First no-tool-call response: the LLM may be synthesizing
-                        // subagent results or reasoning before making more tool calls.
-                        // Use a soft message that encourages continuing investigation.
-                        Log.info(
-                            `${logPrefix} No tool calls (${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
-                                `Content preview: "${contentPreview}...". ` +
-                                `Ending: "...${contentEnding}". Soft continue (not nudging submit_review yet).`
-                        );
-                        conversation.addUserMessage(
-                            'Continue investigating. When you have completed a thorough analysis, ' +
-                                'call `submit_review` to deliver your findings.'
-                        );
-                    } else {
-                        Log.info(
-                            `${logPrefix} No tool calls (${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
-                                `Content preview: "${contentPreview}...". ` +
-                                `Ending: "...${contentEnding}". Nudging to use submit_review.`
-                        );
-                        conversation.addUserMessage(
-                            'To complete your review, call the `submit_review` tool with your full review content. ' +
-                                'If you still have analysis to do, continue using the available tools.'
-                        );
-                    }
-                    continue;
-                }
-
-                // For subagents and other contexts, check investigation depth before accepting
-                if (config.beforeAcceptingResponse) {
-                    const nudge = config.beforeAcceptingResponse(
-                        toolNamesCalled,
-                        iteration,
-                        config.maxIterations
+                    conversation.addAssistantMessage(
+                        response.content || null,
+                        response.toolCalls
                     );
-                    if (nudge) {
+
+                    // Track last substantive response for graceful degradation.
+                    // Threshold filters trivial LLM responses like "OK." or "Error." so
+                    // the fallback message delivered on rate-limit exhaustion or max-iterations
+                    // contains actual review content.
+                    const MIN_SUBSTANTIVE_RESPONSE_LENGTH = 50;
+                    if (
+                        response.content &&
+                        response.content.trim().length >
+                            MIN_SUBSTANTIVE_RESPONSE_LENGTH
+                    ) {
+                        lastSubstantiveResponse = response.content;
+                    }
+
+                    // Re-check cancellation before processing branching logic —
+                    // token may have fired during response processing
+                    if (token.isCancellationRequested) {
                         Log.info(
-                            `${logPrefix} Investigation depth check: injecting nudge at iteration ${iteration}`
+                            `${logPrefix} Cancelled during response processing`
                         );
-                        conversation.addUserMessage(nudge);
+                        this._wasCancelled = true;
+                        return '';
+                    }
+
+                    if (response.toolCalls && response.toolCalls.length > 0) {
+                        // Reset nudge counter - model is cooperating with tool calls
+                        completionNudgeCount = 0;
+
+                        let toolCalls = response.toolCalls;
+
+                        // Defense-in-depth: block tool calls for disabled tools.
+                        // The LLM shouldn't know about disabled tools (they're excluded
+                        // from the tool list), but guard against hallucinated names.
+                        if (config.disabledToolNames?.size) {
+                            const blocked = toolCalls.filter((tc) =>
+                                config.disabledToolNames!.has(tc.function.name)
+                            );
+                            if (blocked.length > 0) {
+                                const names = blocked
+                                    .map((tc) => tc.function.name)
+                                    .join(', ');
+                                Log.warn(
+                                    `${logPrefix} Blocked ${blocked.length} disabled tool call(s): ${names}`
+                                );
+                                for (const tc of blocked) {
+                                    conversation.addToolMessage(
+                                        tc.id || `blocked_${tc.function.name}`,
+                                        `Error: Tool '${tc.function.name}' is not available.`
+                                    );
+                                }
+                                toolCalls = toolCalls.filter(
+                                    (tc) =>
+                                        !config.disabledToolNames!.has(
+                                            tc.function.name
+                                        )
+                                );
+                                if (toolCalls.length === 0) {
+                                    continue;
+                                }
+                            }
+                        }
+
+                        // Track tool names for investigation depth checks
+                        for (const tc of toolCalls) {
+                            toolNamesCalled.add(tc.function.name);
+                        }
+
+                        const result = await this.handleToolCalls(
+                            toolCalls,
+                            conversation,
+                            handler,
+                            logPrefix
+                        );
+
+                        // Check cancellation after tool execution completes —
+                        // tools may finish normally even when the token fires mid-execution
+                        if (token.isCancellationRequested) {
+                            Log.info(
+                                `${logPrefix} Cancelled after tool execution`
+                            );
+                            this._wasCancelled = true;
+                            return '';
+                        }
+
+                        // If submit_review was called, return its content as the final review
+                        if (result.finalReview) {
+                            Log.info(
+                                `${logPrefix} Completed via submit_review tool`
+                            );
+                            return result.finalReview;
+                        }
+
+                        // Post-tool-call hook: inject coverage gaps or other messages
+                        if (config.afterToolCalls) {
+                            const toolNames = toolCalls.map(
+                                (tc) => tc.function.name
+                            );
+                            const injectedMessage =
+                                config.afterToolCalls(toolNames);
+                            if (injectedMessage) {
+                                conversation.addUserMessage(injectedMessage);
+                                Log.info(
+                                    `${logPrefix} Injected post-tool-call message (${injectedMessage.length} chars)`
+                                );
+                            }
+                        }
+
                         continue;
                     }
-                }
 
-                Log.info(`${logPrefix} Completed successfully`);
-                return (
-                    response.content ||
-                    'Conversation completed but no content returned.'
-                );
-            } catch (error) {
-                // Explicit CancellationError always treated as cancellation
-                if (isCancellationError(error)) {
-                    Log.info(
-                        `${logPrefix} Cancelled during iteration ${iteration}`
-                    );
-                    this._wasCancelled = true;
-                    return '';
-                }
+                    // No tool calls - check if explicit completion is required
+                    // Main analysis requires submit_review; subagents/exploration can complete directly
+                    if (config.requiresExplicitCompletion) {
+                        completionNudgeCount++;
 
-                // Token cancelled with non-cancellation error: log actual error for diagnostics
-                // (helps identify when errors coincide with or are caused by cancellation)
-                if (token.isCancellationRequested) {
-                    Log.warn(
-                        `${logPrefix} Cancelled during iteration ${iteration} ` +
-                            `(error while token cancelled: ${getErrorMessage(error)})`
-                    );
-                    this._wasCancelled = true;
-                    return '';
-                }
+                        // After MAX_COMPLETION_NUDGES attempts, accept the response to prevent infinite loops
+                        if (completionNudgeCount > MAX_COMPLETION_NUDGES) {
+                            Log.warn(
+                                `${logPrefix} Model did not call submit_review after ${MAX_COMPLETION_NUDGES} nudges. Accepting response as final.`
+                            );
 
-                // True quota exhaustion (HTTP 402, ChatQuotaExceeded):
-                // Free-user monthly quota depleted — no retry will help until reset.
-                if (this.isQuotaExhaustedError(error)) {
-                    Log.error(
-                        `${logPrefix} Monthly quota exhausted (ChatQuotaExceeded) — stopping immediately`
-                    );
-                    this._hitQuotaExhausted = true;
-                    this._hitRateLimit = true;
-                    return (
-                        lastSubstantiveResponse ||
-                        'Copilot monthly quota exhausted. Please wait for your quota to reset.'
-                    );
-                }
+                            // Try to extract review content from malformed tool call attempts
+                            const extractedReview =
+                                extractReviewFromMalformedToolCall(
+                                    response.content
+                                );
+                            if (extractedReview) {
+                                Log.info(
+                                    `${logPrefix} Extracted review content from malformed tool call`
+                                );
+                                return extractedReview;
+                            }
 
-                // Rate limit (HTTP 429): backoff and retry WITHOUT burning an iteration.
-                // VS Code surfaces this as LanguageModelError with name='ChatRateLimited'.
-                // This covers both transient rate limits and quota-flavored throttles
-                // ("exceeded your Copilot token usage") which use the same HTTP 429
-                // and are equally temporary despite the scary wording.
-                if (this.isRateLimitError(error)) {
-                    rateLimitRetries++;
-                    if (
-                        rateLimitRetries >
-                        ConversationRunner.MAX_RATE_LIMIT_RETRIES
-                    ) {
-                        Log.error(
-                            `${logPrefix} Rate limit: exceeded ${ConversationRunner.MAX_RATE_LIMIT_RETRIES} retries, giving up`
+                            return (
+                                response.content ||
+                                'Analysis completed but model did not use submit_review tool.'
+                            );
+                        }
+
+                        const contentPreview =
+                            response.content?.substring(0, 150) || '(empty)';
+                        const contentEnding =
+                            response.content && response.content.length > 100
+                                ? response.content.slice(-100)
+                                : '';
+
+                        if (completionNudgeCount === 1) {
+                            // First no-tool-call response: the LLM may be synthesizing
+                            // subagent results or reasoning before making more tool calls.
+                            // Use a soft message that encourages continuing investigation.
+                            Log.info(
+                                `${logPrefix} No tool calls (${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
+                                    `Content preview: "${contentPreview}...". ` +
+                                    `Ending: "...${contentEnding}". Soft continue (not nudging submit_review yet).`
+                            );
+                            conversation.addUserMessage(
+                                'Continue investigating. When you have completed a thorough analysis, ' +
+                                    'call `submit_review` to deliver your findings.'
+                            );
+                        } else {
+                            Log.info(
+                                `${logPrefix} No tool calls (${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
+                                    `Content preview: "${contentPreview}...". ` +
+                                    `Ending: "...${contentEnding}". Nudging to use submit_review.`
+                            );
+                            conversation.addUserMessage(
+                                'To complete your review, call the `submit_review` tool with your full review content. ' +
+                                    'If you still have analysis to do, continue using the available tools.'
+                            );
+                        }
+                        continue;
+                    }
+
+                    // For subagents and other contexts, check investigation depth before accepting
+                    if (config.beforeAcceptingResponse) {
+                        const nudge = config.beforeAcceptingResponse(
+                            toolNamesCalled,
+                            iteration,
+                            config.maxIterations
                         );
+                        if (nudge) {
+                            Log.info(
+                                `${logPrefix} Investigation depth check: injecting nudge at iteration ${iteration}`
+                            );
+                            conversation.addUserMessage(nudge);
+                            continue;
+                        }
+                    }
+
+                    Log.info(`${logPrefix} Completed successfully`);
+                    return (
+                        response.content ||
+                        'Conversation completed but no content returned.'
+                    );
+                } catch (error) {
+                    // Explicit CancellationError always treated as cancellation
+                    if (isCancellationError(error)) {
+                        Log.info(
+                            `${logPrefix} Cancelled during iteration ${iteration}`
+                        );
+                        this._wasCancelled = true;
+                        return '';
+                    }
+
+                    // Token cancelled with non-cancellation error: log actual error for diagnostics
+                    // (helps identify when errors coincide with or are caused by cancellation)
+                    if (token.isCancellationRequested) {
+                        Log.warn(
+                            `${logPrefix} Cancelled during iteration ${iteration} ` +
+                                `(error while token cancelled: ${getErrorMessage(error)})`
+                        );
+                        this._wasCancelled = true;
+                        return '';
+                    }
+
+                    // True quota exhaustion (HTTP 402, ChatQuotaExceeded):
+                    // Free-user monthly quota depleted — no retry will help until reset.
+                    if (this.isQuotaExhaustedError(error)) {
+                        Log.error(
+                            `${logPrefix} Monthly quota exhausted (ChatQuotaExceeded) — stopping immediately`
+                        );
+                        this._hitQuotaExhausted = true;
                         this._hitRateLimit = true;
                         return (
                             lastSubstantiveResponse ||
-                            'Rate limited by the API after multiple retries. Please try again later.'
+                            'Copilot monthly quota exhausted. Please wait for your quota to reset.'
                         );
                     }
 
-                    const backoffMs = Math.min(
-                        ConversationRunner.INITIAL_BACKOFF_MS *
-                            Math.pow(2, rateLimitRetries - 1),
-                        ConversationRunner.MAX_BACKOFF_MS
-                    );
-                    Log.warn(
-                        `${logPrefix} Rate limited (attempt ${rateLimitRetries}/${ConversationRunner.MAX_RATE_LIMIT_RETRIES}), ` +
-                            `waiting ${backoffMs}ms before retry`
-                    );
+                    // Rate limit (HTTP 429): backoff and retry WITHOUT burning an iteration.
+                    // VS Code surfaces this as LanguageModelError with name='ChatRateLimited'.
+                    // This covers both transient rate limits and quota-flavored throttles
+                    // ("exceeded your Copilot token usage") which use the same HTTP 429
+                    // and are equally temporary despite the scary wording.
+                    if (this.isRateLimitError(error)) {
+                        rateLimitRetries++;
+                        if (
+                            rateLimitRetries >
+                            ConversationRunner.MAX_RATE_LIMIT_RETRIES
+                        ) {
+                            Log.error(
+                                `${logPrefix} Rate limit: exceeded ${ConversationRunner.MAX_RATE_LIMIT_RETRIES} retries, giving up`
+                            );
+                            this._hitRateLimit = true;
+                            return (
+                                lastSubstantiveResponse ||
+                                'Rate limited by the API after multiple retries. Please try again later.'
+                            );
+                        }
 
-                    // Don't count rate-limit retries as iterations
-                    iteration--;
-                    this._iterationsUsed = iteration;
+                        const backoffMs = Math.min(
+                            ConversationRunner.INITIAL_BACKOFF_MS *
+                                Math.pow(2, rateLimitRetries - 1),
+                            ConversationRunner.MAX_BACKOFF_MS
+                        );
+                        Log.warn(
+                            `${logPrefix} Rate limited (attempt ${rateLimitRetries}/${ConversationRunner.MAX_RATE_LIMIT_RETRIES}), ` +
+                                `waiting ${backoffMs}ms before retry`
+                        );
 
-                    await this.sleepWithCancellation(backoffMs, token);
-                    if (token.isCancellationRequested) {
-                        this._wasCancelled = true;
-                        return '';
+                        // Don't count rate-limit retries as iterations
+                        iteration--;
+                        this._iterationsUsed = iteration;
+
+                        await this.sleepWithCancellation(backoffMs, token);
+                        if (token.isCancellationRequested) {
+                            this._wasCancelled = true;
+                            return '';
+                        }
+                        continue;
                     }
-                    continue;
-                }
 
-                // Reset rate limit counter on non-rate-limit errors
-                rateLimitRetries = 0;
+                    // Reset rate limit counter on non-rate-limit errors
+                    rateLimitRetries = 0;
 
-                // "Response too long" — model output exceeded the API's
-                // output-token limit.  Retrying blindly just burns iterations
-                // because the model tends to produce the same long response.
-                // Give it up to MAX_RESPONSE_TOO_LONG_RETRIES chances with
-                // explicit guidance to shorten output, then give up.
-                if (this.isResponseTooLongError(error)) {
-                    responseTooLongRetries++;
-                    if (
-                        responseTooLongRetries >
-                        ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES
-                    ) {
+                    // "Response too long" — model output exceeded the API's
+                    // output-token limit.  Retrying blindly just burns iterations
+                    // because the model tends to produce the same long response.
+                    // Give it up to MAX_RESPONSE_TOO_LONG_RETRIES chances with
+                    // explicit guidance to shorten output, then give up.
+                    if (this.isResponseTooLongError(error)) {
+                        responseTooLongRetries++;
+                        if (
+                            responseTooLongRetries >
+                            ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES
+                        ) {
+                            Log.error(
+                                `${logPrefix} Response too long: exceeded ${ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES} retries, giving up`
+                            );
+                            return (
+                                lastSubstantiveResponse ||
+                                'The model consistently generated responses that exceeded the maximum length. ' +
+                                    'Please try with a simpler query or a model with a larger output window.'
+                            );
+                        }
+
+                        Log.warn(
+                            `${logPrefix} Response too long (attempt ${responseTooLongRetries}/${ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES}), ` +
+                                `adding conciseness guidance`
+                        );
+
+                        // Don't count as iteration — the model never finished
+                        iteration--;
+                        this._iterationsUsed = iteration;
+
+                        conversation.addAssistantMessage(
+                            'My previous response was too long and was rejected by the API. ' +
+                                'I must be much more concise. I will use tool calls for individual actions ' +
+                                'instead of generating long text output.'
+                        );
+                        continue;
+                    }
+
+                    // Reset response-too-long counter on unrelated errors
+                    responseTooLongRetries = 0;
+
+                    // Context overflow: the conversation exceeded the model's max tokens.
+                    // Each retry adds more tokens, making it progressively worse — break immediately.
+                    if (this.isContextOverflowError(error)) {
                         Log.error(
-                            `${logPrefix} Response too long: exceeded ${ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES} retries, giving up`
+                            `${logPrefix} Context overflow at iteration ${iteration} — stopping to prevent token spiral`
                         );
                         return (
                             lastSubstantiveResponse ||
-                            'The model consistently generated responses that exceeded the maximum length. ' +
-                                'Please try with a simpler query or a model with a larger output window.'
+                            "The conversation exceeded the model's context limit. Partial results may be available."
                         );
                     }
 
-                    Log.warn(
-                        `${logPrefix} Response too long (attempt ${responseTooLongRetries}/${ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES}), ` +
-                            `adding conciseness guidance`
-                    );
+                    // Conversation history corruption: orphaned tool messages without
+                    // a preceding assistant message with tool_calls. This is unrecoverable
+                    // for this conversation — every subsequent request will fail identically.
+                    if (this.isConversationCorruptionError(error)) {
+                        Log.error(
+                            `${logPrefix} Conversation history corrupted (orphaned tool messages) — stopping`
+                        );
+                        return (
+                            lastSubstantiveResponse ||
+                            'The conversation history became corrupted. Partial results may be available.'
+                        );
+                    }
 
-                    // Don't count as iteration — the model never finished
-                    iteration--;
-                    this._iterationsUsed = iteration;
+                    const fatalError = this.detectFatalError(error);
+                    if (fatalError) {
+                        Log.error(
+                            `${logPrefix} Fatal API error [${fatalError.code}]: ${fatalError.message}`,
+                            error
+                        );
+                        vscode.window.showErrorMessage(fatalError.message);
+                        throw new CopilotApiError(
+                            fatalError.message,
+                            fatalError.code
+                        );
+                    }
+
+                    const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${getErrorMessage(error)}`;
+                    Log.error(errorMessage, error);
+
+                    // Re-throw service unavailable errors to be handled by caller
+                    if (
+                        error instanceof Error &&
+                        error.message.includes('service unavailable')
+                    ) {
+                        throw error;
+                    }
+
+                    // Track consecutive errors to prevent infinite error loops.
+                    // Some API errors (e.g., malformed conversation state) repeat
+                    // identically every iteration, burning budget without progress.
+                    consecutiveErrors++;
+                    if (
+                        consecutiveErrors >=
+                        ConversationRunner.MAX_CONSECUTIVE_ERRORS
+                    ) {
+                        Log.error(
+                            `${logPrefix} ${consecutiveErrors} consecutive errors — stopping to prevent infinite error loop`
+                        );
+                        return (
+                            lastSubstantiveResponse ||
+                            `Stopped after ${consecutiveErrors} consecutive errors. Last error: ${getErrorMessage(error)}`
+                        );
+                    }
 
                     conversation.addAssistantMessage(
-                        'My previous response was too long and was rejected by the API. ' +
-                            'I must be much more concise. I will use tool calls for individual actions ' +
-                            'instead of generating long text output.'
+                        `I encountered an error: ${errorMessage}. Let me try to continue.`
                     );
-                    continue;
-                }
 
-                // Reset response-too-long counter on unrelated errors
-                responseTooLongRetries = 0;
-
-                // Context overflow: the conversation exceeded the model's max tokens.
-                // Each retry adds more tokens, making it progressively worse — break immediately.
-                if (this.isContextOverflowError(error)) {
-                    Log.error(
-                        `${logPrefix} Context overflow at iteration ${iteration} — stopping to prevent token spiral`
-                    );
-                    return (
-                        lastSubstantiveResponse ||
-                        "The conversation exceeded the model's context limit. Partial results may be available."
-                    );
-                }
-
-                // Conversation history corruption: orphaned tool messages without
-                // a preceding assistant message with tool_calls. This is unrecoverable
-                // for this conversation — every subsequent request will fail identically.
-                if (this.isConversationCorruptionError(error)) {
-                    Log.error(
-                        `${logPrefix} Conversation history corrupted (orphaned tool messages) — stopping`
-                    );
-                    return (
-                        lastSubstantiveResponse ||
-                        'The conversation history became corrupted. Partial results may be available.'
-                    );
-                }
-
-                const fatalError = this.detectFatalError(error);
-                if (fatalError) {
-                    Log.error(
-                        `${logPrefix} Fatal API error [${fatalError.code}]: ${fatalError.message}`,
-                        error
-                    );
-                    vscode.window.showErrorMessage(fatalError.message);
-                    throw new CopilotApiError(
-                        fatalError.message,
-                        fatalError.code
-                    );
-                }
-
-                const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${getErrorMessage(error)}`;
-                Log.error(errorMessage, error);
-
-                // Re-throw service unavailable errors to be handled by caller
-                if (
-                    error instanceof Error &&
-                    error.message.includes('service unavailable')
-                ) {
-                    throw error;
-                }
-
-                // Track consecutive errors to prevent infinite error loops.
-                // Some API errors (e.g., malformed conversation state) repeat
-                // identically every iteration, burning budget without progress.
-                consecutiveErrors++;
-                if (
-                    consecutiveErrors >=
-                    ConversationRunner.MAX_CONSECUTIVE_ERRORS
-                ) {
-                    Log.error(
-                        `${logPrefix} ${consecutiveErrors} consecutive errors — stopping to prevent infinite error loop`
-                    );
-                    return (
-                        lastSubstantiveResponse ||
-                        `Stopped after ${consecutiveErrors} consecutive errors. Last error: ${getErrorMessage(error)}`
-                    );
-                }
-
-                conversation.addAssistantMessage(
-                    `I encountered an error: ${errorMessage}. Let me try to continue.`
-                );
-
-                // An error on the final iteration is intentionally treated as max-iterations:
-                // the subagent can't retry regardless, so the parent LLM gets the same signal
-                // (with partial findings included via the error message).
-                if (iteration >= config.maxIterations) {
-                    this._hitMaxIterations = true;
-                    return errorMessage;
+                    // An error on the final iteration is intentionally treated as max-iterations:
+                    // the subagent can't retry regardless, so the parent LLM gets the same signal
+                    // (with partial findings included via the error message).
+                    if (iteration >= config.maxIterations) {
+                        this._hitMaxIterations = true;
+                        return errorMessage;
+                    }
                 }
             }
-        }
 
-        Log.warn(
-            `${logPrefix} Reached maximum iterations (${config.maxIterations})`
-        );
-        this._hitMaxIterations = true;
-        return (
-            lastSubstantiveResponse ||
-            'Conversation reached maximum iterations with no findings.'
-        );
+            Log.warn(
+                `${logPrefix} Reached maximum iterations (${config.maxIterations})`
+            );
+            this._hitMaxIterations = true;
+            return (
+                lastSubstantiveResponse ||
+                'Conversation reached maximum iterations with no findings.'
+            );
+        } finally {
+            executionContext.toolExecutor = previousToolExecutor;
+        }
     }
 
     private isFatalModelError(error: unknown): boolean {
@@ -1051,7 +1077,7 @@ export class ConversationRunner {
         }
 
         const startTime = Date.now();
-        const results = await this.toolExecutor.executeTools(toolRequests);
+        const results = await this.currentExecutor.executeTools(toolRequests);
         const endTime = Date.now();
         const avgDuration =
             results.length > 0

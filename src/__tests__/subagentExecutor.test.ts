@@ -366,6 +366,24 @@ describe('SubagentExecutor', () => {
             const toolsPassedToPrompt = promptCall[1] as ITool[];
             expect(toolsPassedToPrompt.map((t) => t.name)).toContain('think');
         });
+
+        it('should deduplicate additionalTools that overlap with base tools', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+
+            const readFileTool = createMockTool('read_file');
+            const duplicateTool = createMockTool('read_file');
+            const executor = createExecutor(modelManager, [readFileTool]);
+
+            // Passing a tool with the same name as one already in registry should not throw
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1,
+                { additionalTools: [duplicateTool] }
+            );
+
+            expect(result.success).toBe(true);
+        });
     });
 
     describe('Progress Reporting', () => {
