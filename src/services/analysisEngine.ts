@@ -79,13 +79,13 @@ export interface AnalysisEngineResult {
  * This class is designed to be concurrent-safe. All per-analysis state is created
  * locally within the analyze() method, allowing multiple concurrent analyses.
  */
-export class AnalysisEngine {
+export class AnalysisEngine implements vscode.Disposable {
     constructor(
-        private toolRegistry: ToolRegistry,
-        private promptGenerator: PromptGenerator,
-        private workspaceSettings: WorkspaceSettingsService,
-        private diffEnricher: DiffEnricher,
-        private findingValidator: FindingValidator
+        private readonly toolRegistry: ToolRegistry,
+        private readonly promptGenerator: PromptGenerator,
+        private readonly workspaceSettings: WorkspaceSettingsService,
+        private readonly diffEnricher: DiffEnricher,
+        private readonly findingValidator: FindingValidator
     ) {}
 
     private get maxIterations(): number {
@@ -187,7 +187,6 @@ export class AnalysisEngine {
         let analysisCompleted = false;
         let analysisError: string | undefined;
         let analysisText = '';
-        let toolCallCount = 0;
         let selfReflectionScores: SelfReflectionScore[] = [];
 
         try {
@@ -336,7 +335,6 @@ export class AnalysisEngine {
                     durationMs,
                     metadata
                 ) => {
-                    toolCallCount++;
                     const record: ToolCallRecord = {
                         id: toolCallId,
                         toolName,
@@ -420,7 +418,7 @@ export class AnalysisEngine {
                 selfReflectionScores = pipelineResult.selfReflectionScores;
 
                 output.onProgress(
-                    `Analysis complete (${toolCallCount} tool calls)`,
+                    `Analysis complete (${toolCallRecords.length} tool calls)`,
                     2
                 );
                 Log.info('Analysis completed successfully');
@@ -489,7 +487,9 @@ export class AnalysisEngine {
 
             // After first subagent round, disable investigation tools for the root.
             // The root is a controller — it delegates, not investigates.
-            if (disabledToolNames.size === 0) {
+            // Check for specific investigation tools rather than set size, since
+            // calibration profiles may pre-populate disabledToolNames.
+            if (!disabledToolNames.has(INVESTIGATION_TOOLS[0])) {
                 for (const tool of INVESTIGATION_TOOLS) {
                     disabledToolNames.add(tool);
                 }
@@ -506,5 +506,3 @@ export class AnalysisEngine {
         // No resources to dispose of currently
     }
 }
-
-export { AnalysisEngine as ToolCallingAnalysisProvider };
