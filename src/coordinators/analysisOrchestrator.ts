@@ -4,6 +4,7 @@ import { IServiceRegistry } from '../services/serviceManager';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { Log } from '../services/loggingService';
+import { formatSelfReflectionScoresMarkdown } from '../services/selfReflectionScorer';
 
 /**
  * AnalysisOrchestrator handles the core PR analysis workflow.
@@ -161,6 +162,12 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                         },
                         {
                             onProgress: updateProgress,
+                            onIterationStart: (current, max) => {
+                                updateProgress(
+                                    `Turn ${current}/${max}: Analyzing...`,
+                                    0.2
+                                );
+                            },
                         }
                     );
 
@@ -168,12 +175,19 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                         throw new vscode.CancellationError();
                     }
 
+                    let analysisText = result.analysisText;
+                    if (result.selfReflectionScores.length > 0) {
+                        analysisText += formatSelfReflectionScoresMarkdown(
+                            result.selfReflectionScores
+                        );
+                    }
+
                     // Display results in webview
                     const title = `PR Analysis: ${refName}`;
                     this.services.uiManager.displayAnalysisResults(
                         title,
                         diffText,
-                        result.analysisText,
+                        analysisText,
                         {
                             calls: result.toolCallRecords,
                             totalCalls: result.toolCallRecords.length,

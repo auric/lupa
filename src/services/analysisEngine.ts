@@ -30,10 +30,7 @@ import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
-import {
-    formatSelfReflectionScoresMarkdown,
-    type SelfReflectionScore,
-} from './selfReflectionScorer';
+import { type SelfReflectionScore } from './selfReflectionScorer';
 import type { ILLMClient } from '../models/ILLMClient';
 import type { ChatToolCallHandler } from '../types/chatTypes';
 
@@ -56,9 +53,10 @@ export interface AnalysisEngineInput {
 export interface AnalysisEngineOutput {
     onProgress(message: string, increment?: number): void;
     onToolCallStart?(
-        id: string,
         name: string,
-        args: Record<string, unknown>
+        args: Record<string, unknown>,
+        toolIndex: number,
+        totalTools: number
     ): void;
     onToolCallComplete?(record: ToolCallRecord): void;
     onIterationStart?(current: number, max: number): void;
@@ -99,11 +97,6 @@ export class AnalysisEngine {
      *
      * This method is concurrent-safe: all per-analysis state is created locally,
      * allowing multiple analyses to run in parallel without interference.
-     *
-     * @param diff The diff content to analyze
-     * @param token Cancellation token
-     * @param progressCallback Optional callback for reporting progress to UI
-     * @returns Promise resolving to the analysis result with tool call history
      */
     async analyze(
         input: AnalysisEngineInput,
@@ -323,11 +316,15 @@ export class AnalysisEngine {
                 onIterationStart: (current, max) => {
                     currentIteration = current;
                     currentMaxIterations = max;
-                    output.onProgress(
-                        `Turn ${current}/${max}: Analyzing...`,
-                        0.2
-                    );
                     output.onIterationStart?.(current, max);
+                },
+                onToolCallStart: (toolName, args, toolIndex, totalTools) => {
+                    output.onToolCallStart?.(
+                        toolName,
+                        args,
+                        toolIndex,
+                        totalTools
+                    );
                 },
                 onToolCallComplete: (
                     toolCallId,
@@ -354,7 +351,6 @@ export class AnalysisEngine {
                         iterationsUsed: metadata?.iterationsUsed,
                     };
                     toolCallRecords.push(record);
-                    output.onToolCallStart?.(toolCallId, toolName, args);
                     output.onToolCallComplete?.(record);
                 },
                 getContextStatusSuffix,
@@ -422,12 +418,6 @@ export class AnalysisEngine {
                 }
 
                 selfReflectionScores = pipelineResult.selfReflectionScores;
-                if (selfReflectionScores.length > 0) {
-                    analysisText +=
-                        formatSelfReflectionScoresMarkdown(
-                            selfReflectionScores
-                        );
-                }
 
                 output.onProgress(
                     `Analysis complete (${toolCallCount} tool calls)`,
