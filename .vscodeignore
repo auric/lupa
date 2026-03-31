@@ -19,6 +19,8 @@ __mocks__/**
 # Configuration and build files (not needed at runtime)
 # -----------------------------------------------------------------------------
 .oxlintrc.json
+.prettierignore
+.prettierrc.json
 tsconfig.json
 tsconfig.tsbuildinfo
 vite.config.mts
