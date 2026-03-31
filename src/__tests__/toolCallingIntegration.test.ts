@@ -10,6 +10,8 @@ import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
+    createMockAnalysisEngineInput,
+    createMockAnalysisEngineOutput,
 } from './testUtils/mockFactories';
 import { PromptGenerator } from '../models/promptGenerator';
 
@@ -138,22 +140,12 @@ describe('Tool-Calling Integration Tests', () => {
             const diff =
                 'diff --git a/test.js b/test.js\n+console.log("hello");';
             const result = await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -235,22 +227,12 @@ describe('Tool-Calling Integration Tests', () => {
             const diff =
                 'diff --git a/test.js b/test.js\n+const obj = new MyClass();';
             const result = await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toContain(
@@ -358,22 +340,12 @@ describe('Tool-Calling Integration Tests', () => {
             const diff =
                 'diff --git a/test.js b/test.js\n+MyClass and myFunction usage';
             const result = await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toContain(
@@ -432,22 +404,12 @@ describe('Tool-Calling Integration Tests', () => {
 
             const diff = 'diff --git a/test.js b/test.js\n+// some change';
             const result = await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toContain(
@@ -474,22 +436,12 @@ describe('Tool-Calling Integration Tests', () => {
             const diff =
                 'diff --git a/test.js b/test.js\n+console.log("test");';
             const result = await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toContain('Error during analysis');
@@ -521,22 +473,12 @@ describe('Tool-Calling Integration Tests', () => {
 
             const diff = 'diff --git a/test.js b/test.js\n+// change';
             const result = await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toContain('maximum iterations');
@@ -571,22 +513,12 @@ describe('Tool-Calling Integration Tests', () => {
             });
 
             await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: 'test diff',
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             const sendRequestCall =
@@ -636,22 +568,12 @@ describe('Tool-Calling Integration Tests', () => {
 
             const diff = 'diff --git a/test.js b/test.js\n+// test';
             const result = await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toContain(

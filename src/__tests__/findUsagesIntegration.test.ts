@@ -9,6 +9,8 @@ import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
     createMockGitOperationsManager,
+    createMockAnalysisEngineInput,
+    createMockAnalysisEngineOutput,
 } from './testUtils/mockFactories';
 import { PromptGenerator } from '../models/promptGenerator';
 
@@ -215,22 +217,12 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
             const result = await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -306,22 +298,12 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class UnusedClass {}';
             const result = await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -428,22 +410,12 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class ClassA {}\n+class ClassB {}';
             const result = await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -492,22 +464,12 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+// some change';
             const result = await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -575,22 +537,12 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
             await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(capturedContext?.includeDeclaration).toBe(true);
@@ -671,22 +623,12 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
             await toolCallingAnalyzer.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             // The context_line_count parameter is passed to the tool - verification is done

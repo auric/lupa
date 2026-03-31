@@ -7,6 +7,8 @@ import { SubmitReviewTool } from '../tools/submitReviewTool';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
+    createMockAnalysisEngineInput,
+    createMockAnalysisEngineOutput,
 } from './testUtils/mockFactories';
 
 // Mock VS Code
@@ -174,22 +176,12 @@ describe('AnalysisEngine Enhanced Integration', () => {
             });
 
             const result = await analysisProvider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: smallDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -238,22 +230,12 @@ describe('AnalysisEngine Enhanced Integration', () => {
             });
 
             const result = await analysisProvider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: smallDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -330,22 +312,12 @@ describe('AnalysisEngine Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: smallDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -423,22 +395,12 @@ describe('AnalysisEngine Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -481,22 +443,12 @@ describe('AnalysisEngine Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -540,22 +492,12 @@ describe('AnalysisEngine Enhanced Integration', () => {
             });
 
             const result = await analysisProvider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -624,22 +566,12 @@ describe('AnalysisEngine Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -710,22 +642,12 @@ describe('AnalysisEngine Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: diff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(

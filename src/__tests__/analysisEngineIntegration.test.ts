@@ -11,6 +11,8 @@ import { SubmitReviewTool } from '../tools/submitReviewTool';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
+    createMockAnalysisEngineInput,
+    createMockAnalysisEngineOutput,
 } from './testUtils/mockFactories';
 import type { ExecutionContext } from '../types/executionContext';
 
@@ -185,22 +187,12 @@ index 1234567..abcdefg 100644
             );
 
             await provider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: sampleDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             // Verify tool-aware system prompt was generated
@@ -223,22 +215,12 @@ index 1234567..abcdefg 100644
             const parseDiffSpy = vi.spyOn(DiffUtils, 'parseDiff');
 
             await provider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: sampleDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(parseDiffSpy).toHaveBeenCalledWith(sampleDiff);
@@ -301,22 +283,12 @@ index 1234567..abcdefg 100644
                 });
 
             const result = await provider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: sampleDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             // Verify tool execute was called with parsed arguments
@@ -346,22 +318,12 @@ index 1234567..abcdefg 100644
             );
 
             await provider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: sampleDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             // System prompt generation no longer receives tools directly (sent via VS Code API)
@@ -383,22 +345,12 @@ index 1234567..abcdefg 100644
             );
 
             await provider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: sampleDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             const userPromptCall = generateUserPromptSpy.mock.calls[0];
@@ -478,22 +430,12 @@ index 1234567..abcdefg 100644
                 });
 
             const result = await provider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: sampleDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toBe(
@@ -565,22 +507,12 @@ index 1234567..abcdefg 100644
                 });
 
             const result = await provider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: sampleDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             // Should still complete despite malformed arguments
@@ -606,22 +538,12 @@ index 1234567..abcdefg 100644
             );
 
             const result = await provider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: sampleDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(result.analysisText).toContain('Error during analysis');
@@ -657,22 +579,12 @@ index 0000000..3333333
             );
 
             await provider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: complexDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             const parsedDiff = generateUserPromptSpy.mock
@@ -762,40 +674,20 @@ index 3333333..4444444 100644
             // Run both analyses concurrently
             const [result1, result2] = await Promise.all([
                 provider.analyze(
-                    {
+                    createMockAnalysisEngineInput({
                         diff: diff1,
                         llmClient: mockCopilotModelManager as any,
-                        model: {
-                            family: 'gpt-4o',
-                            id: 'gpt-4o',
-                            name: 'GPT-4o',
-                            maxInputTokens: 8000,
-                        },
                         token: tokenSource1.token,
-                        userPromptSuffix: undefined,
-                        chatHandler: undefined,
-                    },
-                    {
-                        onProgress: vi.fn(),
-                    }
+                    }),
+                    createMockAnalysisEngineOutput()
                 ),
                 provider.analyze(
-                    {
+                    createMockAnalysisEngineInput({
                         diff: diff2,
                         llmClient: mockCopilotModelManager as any,
-                        model: {
-                            family: 'gpt-4o',
-                            id: 'gpt-4o',
-                            name: 'GPT-4o',
-                            maxInputTokens: 8000,
-                        },
                         token: tokenSource2.token,
-                        userPromptSuffix: undefined,
-                        chatHandler: undefined,
-                    },
-                    {
-                        onProgress: vi.fn(),
-                    }
+                    }),
+                    createMockAnalysisEngineOutput()
                 ),
             ]);
 
@@ -906,40 +798,20 @@ index 3333333..4444444 100644
 
             const [simpleResult, complexResult] = await Promise.all([
                 provider.analyze(
-                    {
+                    createMockAnalysisEngineInput({
                         diff: simpleDiff,
                         llmClient: mockCopilotModelManager as any,
-                        model: {
-                            family: 'gpt-4o',
-                            id: 'gpt-4o',
-                            name: 'GPT-4o',
-                            maxInputTokens: 8000,
-                        },
                         token: tokenSource1.token,
-                        userPromptSuffix: undefined,
-                        chatHandler: undefined,
-                    },
-                    {
-                        onProgress: vi.fn(),
-                    }
+                    }),
+                    createMockAnalysisEngineOutput()
                 ),
                 provider.analyze(
-                    {
+                    createMockAnalysisEngineInput({
                         diff: complexDiff,
                         llmClient: mockCopilotModelManager as any,
-                        model: {
-                            family: 'gpt-4o',
-                            id: 'gpt-4o',
-                            name: 'GPT-4o',
-                            maxInputTokens: 8000,
-                        },
                         token: tokenSource2.token,
-                        userPromptSuffix: undefined,
-                        chatHandler: undefined,
-                    },
-                    {
-                        onProgress: vi.fn(),
-                    }
+                    }),
+                    createMockAnalysisEngineOutput()
                 ),
             ]);
 
@@ -1030,40 +902,20 @@ index 3333333..4444444 100644
             // Run both analyses concurrently
             const [result1, result2] = await Promise.all([
                 provider.analyze(
-                    {
+                    createMockAnalysisEngineInput({
                         diff: diff1,
                         llmClient: mockCopilotModelManager as any,
-                        model: {
-                            family: 'gpt-4o',
-                            id: 'gpt-4o',
-                            name: 'GPT-4o',
-                            maxInputTokens: 8000,
-                        },
                         token: tokenSource1.token,
-                        userPromptSuffix: undefined,
-                        chatHandler: undefined,
-                    },
-                    {
-                        onProgress: vi.fn(),
-                    }
+                    }),
+                    createMockAnalysisEngineOutput()
                 ),
                 provider.analyze(
-                    {
+                    createMockAnalysisEngineInput({
                         diff: diff2,
                         llmClient: mockCopilotModelManager as any,
-                        model: {
-                            family: 'gpt-4o',
-                            id: 'gpt-4o',
-                            name: 'GPT-4o',
-                            maxInputTokens: 8000,
-                        },
                         token: tokenSource2.token,
-                        userPromptSuffix: undefined,
-                        chatHandler: undefined,
-                    },
-                    {
-                        onProgress: vi.fn(),
-                    }
+                    }),
+                    createMockAnalysisEngineOutput()
                 ),
             ]);
 
@@ -1110,22 +962,12 @@ index 3333333..4444444 100644
             );
 
             await rlmProvider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: sampleDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(generateRecursiveSpy).toHaveBeenCalled();
@@ -1155,22 +997,12 @@ index 3333333..4444444 100644
             );
 
             await noRecursionProvider.analyze(
-                {
+                createMockAnalysisEngineInput({
                     diff: sampleDiff,
                     llmClient: mockCopilotModelManager as any,
-                    model: {
-                        family: 'gpt-4o',
-                        id: 'gpt-4o',
-                        name: 'GPT-4o',
-                        maxInputTokens: 8000,
-                    },
                     token: tokenSource.token,
-                    userPromptSuffix: undefined,
-                    chatHandler: undefined,
-                },
-                {
-                    onProgress: vi.fn(),
-                }
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             expect(generateToolAwareSpy).toHaveBeenCalled();
