@@ -82,7 +82,12 @@ export class SubagentExecutor {
         private readonly promptGenerator: SubagentPromptGenerator,
         private readonly workspaceSettings: WorkspaceSettingsService,
         private readonly chatHandler?: ChatToolCallHandler,
-        private readonly progressCallback?: AnalysisProgressCallback
+        private readonly progressCallback?: AnalysisProgressCallback,
+        private readonly onAgentProgress?: (
+            completed: number,
+            total: number,
+            running: number
+        ) => void
     ) {}
 
     /**
@@ -94,29 +99,24 @@ export class SubagentExecutor {
     }
 
     /**
-     * Report progress with main analysis context prefix.
+     * Report progress to the parent analysis.
+     * Regular messages go through progressCallback.
+     * Aggregate agent status goes through onAgentProgress (if provided).
      */
     private reportProgress(message: string, increment?: number): void {
-        if (!this.progressCallback) {
-            return;
-        }
-
-        // When recursive state is available, show aggregate agent progress
+        // When recursive state is available, report aggregate agent progress
         // Skip when all agents are done (e.g., during post-analysis adversarial phase)
         // to avoid overwriting adversarial progress with stale "Agents: N/N done"
         if (this.recursiveState) {
             const { running, completed, total } =
                 this.recursiveState.getAgentProgress();
             if (total > 0 && (running > 0 || completed < total)) {
-                this.progressCallback(
-                    `Agents: ${completed}/${total} done${running > 0 ? `, ${running} analyzing` : ''}`,
-                    increment
-                );
+                this.onAgentProgress?.(completed, total, running);
                 return;
             }
         }
 
-        this.progressCallback(message, increment);
+        this.progressCallback?.(message, increment);
     }
 
     /**

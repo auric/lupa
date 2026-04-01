@@ -967,6 +967,49 @@ index 3333333..4444444 100644
         });
     });
 
+    describe('result metadata', () => {
+        it('should set filesAnalyzed to the number of files in the diff', async () => {
+            const multiFileDiff = `diff --git a/src/auth.ts b/src/auth.ts
+index 1234567..abcdefg 100644
+--- a/src/auth.ts
++++ b/src/auth.ts
+@@ -1,3 +1,4 @@
++import { validate } from './validate';
+ export function auth() {}
+
+diff --git a/src/utils.ts b/src/utils.ts
+index 1234567..abcdefg 100644
+--- a/src/utils.ts
++++ b/src/utils.ts
+@@ -1,3 +1,4 @@
++export const helper = true;
+ export function utils() {}
+
+diff --git a/src/config.ts b/src/config.ts
+index 1234567..abcdefg 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -1,3 +1,4 @@
++export const setting = 42;
+ export function config() {}`;
+
+            const parsedDiff = DiffUtils.parseDiff(multiFileDiff);
+            expect(parsedDiff).toHaveLength(3);
+
+            const result = await provider.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
+
+            expect(result.filesAnalyzed).toBe(3);
+            expect(Array.isArray(result.selfReflectionScores)).toBe(true);
+        });
+    });
+
     describe('recursive mode integration', () => {
         it('should use recursive system prompt when analysisApproach is rlm with depth >= 1', async () => {
             const rlmSettings = createMockWorkspaceSettings({

@@ -48,6 +48,13 @@ export interface AnalysisEngineInput {
 
 export interface AnalysisEngineOutput {
     onProgress(message: string, increment?: number): void;
+    onAgentProgress?(
+        completed: number,
+        total: number,
+        running: number,
+        turn: number,
+        maxTurns: number
+    ): void;
     onToolCallStart?(
         name: string,
         args: Record<string, unknown>,
@@ -116,7 +123,17 @@ export class AnalysisEngine implements vscode.Disposable {
             new SubagentPromptGenerator(),
             this.workspaceSettings,
             input.chatHandler,
-            (msg, inc) => output.onProgress(msg, inc)
+            (msg, inc) => output.onProgress(msg, inc),
+            output.onAgentProgress
+                ? (completed, total, running) =>
+                      output.onAgentProgress!(
+                          completed,
+                          total,
+                          running,
+                          currentIteration,
+                          currentMaxIterations
+                      )
+                : undefined
         );
 
         // Determine analysis approach and recursive mode.

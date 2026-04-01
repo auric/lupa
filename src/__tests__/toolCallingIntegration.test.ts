@@ -142,7 +142,7 @@ describe('Tool-Calling Integration Tests', () => {
                 'diff --git a/test.js b/test.js\n+console.log("hello");';
             const result = await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -229,7 +229,7 @@ describe('Tool-Calling Integration Tests', () => {
                 'diff --git a/test.js b/test.js\n+const obj = new MyClass();';
             const result = await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -342,7 +342,7 @@ describe('Tool-Calling Integration Tests', () => {
                 'diff --git a/test.js b/test.js\n+MyClass and myFunction usage';
             const result = await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -406,7 +406,7 @@ describe('Tool-Calling Integration Tests', () => {
             const diff = 'diff --git a/test.js b/test.js\n+// some change';
             const result = await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -438,7 +438,7 @@ describe('Tool-Calling Integration Tests', () => {
                 'diff --git a/test.js b/test.js\n+console.log("test");';
             const result = await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -475,7 +475,7 @@ describe('Tool-Calling Integration Tests', () => {
             const diff = 'diff --git a/test.js b/test.js\n+// change';
             const result = await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -570,7 +570,7 @@ describe('Tool-Calling Integration Tests', () => {
             const diff = 'diff --git a/test.js b/test.js\n+// test';
             const result = await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),

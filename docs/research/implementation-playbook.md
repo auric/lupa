@@ -59,7 +59,7 @@ Both paths duplicate ~200 lines: ConversationManager, ToolExecutor, FindingStore
 - `src/models/copilotModelManager.ts` — webview-specific LLM client
 - `src/types/executionContext.ts` — ExecutionContext interface
 - `src/types/toolCallTypes.ts` — ToolCallRecord, ToolCallsData
-- `src/services/serviceManager.ts` — where ToolCallingAnalysisProvider is registered
+- `src/services/serviceManager.ts` — where AnalysisEngine is registered
 
 ## Implementation Steps (each is a commit)
 

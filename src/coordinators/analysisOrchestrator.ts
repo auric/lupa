@@ -163,6 +163,21 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                         },
                         {
                             onProgress: updateProgress,
+                            onAgentProgress: (
+                                completed,
+                                total,
+                                running,
+                                turn,
+                                maxTurns
+                            ) => {
+                                const turnPrefix =
+                                    turn > 0
+                                        ? `Turn ${turn}/${maxTurns} · `
+                                        : '';
+                                updateProgress(
+                                    `${turnPrefix}Agents: ${completed}/${total} done${running > 0 ? `, ${running} analyzing` : ''}`
+                                );
+                            },
                             onIterationStart: (current, max) => {
                                 updateProgress(
                                     `Turn ${current}/${max}: Analyzing...`,
