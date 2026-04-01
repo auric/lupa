@@ -211,19 +211,29 @@ index 1234567..abcdefg 100644
             );
         });
 
-        it('should parse diff using DiffUtils', async () => {
-            const parseDiffSpy = vi.spyOn(DiffUtils, 'parseDiff');
+        it('should pass pre-parsed diff to prompt generator', async () => {
+            const parsedDiff = DiffUtils.parseDiff(sampleDiff);
+            const generateUserPromptSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateUserPrompt'
+            );
 
             await provider.analyze(
                 createMockAnalysisEngineInput({
-                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    parsedDiff,
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
                 createMockAnalysisEngineOutput()
             );
 
-            expect(parseDiffSpy).toHaveBeenCalledWith(sampleDiff);
+            expect(generateUserPromptSpy).toHaveBeenCalledWith(
+                parsedDiff,
+                expect.toSatisfy(() => true),
+                expect.toSatisfy(() => true),
+                expect.toSatisfy(() => true),
+                expect.toSatisfy(() => true)
+            );
         });
 
         // Note: conversation history clearing and message adding are now internal

@@ -53,18 +53,6 @@ export interface ToolCallsData {
 }
 
 /**
- * Result from tool-calling analysis including both analysis text and tool call history
- */
-export interface ToolCallingAnalysisResult {
-    /** The analysis text produced by the LLM */
-    analysis: string;
-    /** History of tool calls made during analysis */
-    toolCalls: ToolCallsData;
-    /** Whether the analysis was cancelled by the user */
-    wasCancelled: boolean;
-}
-
-/**
  * Callback for reporting analysis progress to the UI.
  * @param message - Human-readable status message
  * @param incrementPercent - Optional percentage increment (small values like 0.1-1 work best for smooth progress)

@@ -558,7 +558,9 @@ export class ChatParticipantService implements vscode.Disposable {
 
         const output: AnalysisEngineOutput = {
             onProgress: (msg) =>
-                stream.progress(`${ACTIVITY.analyzing} ${msg}`),
+                stream.progress(
+                    `${ACTIVITY.analyzing} ${msg.replace(/^Turn \d+\/\d+ [·→] /, '')}`
+                ),
             onToolCallStart: adapter.onToolCallStart?.bind(adapter),
             onToolCallComplete: (record) => {
                 adapter.onToolCallComplete?.(
