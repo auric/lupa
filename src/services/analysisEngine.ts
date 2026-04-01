@@ -8,10 +8,7 @@ import {
     ConversationRunner,
     type ToolCallHandler,
 } from '../models/conversationRunner';
-import type {
-    ToolCallRecord,
-    SubagentProgressContext,
-} from '../types/toolCallTypes';
+import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { DiffHunk } from '../types/contextTypes';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
@@ -107,12 +104,6 @@ export class AnalysisEngine implements vscode.Disposable {
         let currentIteration = 0;
         let currentMaxIterations = this.maxIterations;
 
-        // Create progress context that captures local variables
-        const progressContext: SubagentProgressContext = {
-            getCurrentIteration: () => currentIteration,
-            getMaxIterations: () => currentMaxIterations,
-        };
-
         // Create per-analysis instances for complete isolation
         const conversationManager = new ConversationManager();
         const planManager = new PlanSessionManager();
@@ -125,8 +116,7 @@ export class AnalysisEngine implements vscode.Disposable {
             new SubagentPromptGenerator(),
             this.workspaceSettings,
             input.chatHandler,
-            (msg, inc) => output.onProgress(msg, inc),
-            progressContext
+            (msg, inc) => output.onProgress(msg, inc)
         );
 
         // Determine analysis approach and recursive mode.

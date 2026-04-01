@@ -441,7 +441,7 @@ index 1234567..abcdefg 100644
 
             const result = await provider.analyze(
                 createMockAnalysisEngineInput({
-                    diff: sampleDiff,
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),

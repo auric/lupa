@@ -15,7 +15,6 @@ import type { SubagentTask, SubagentResult } from '../types/modelTypes';
 import type {
     ToolCallRecord,
     AnalysisProgressCallback,
-    SubagentProgressContext,
 } from '../types/toolCallTypes';
 import type { ChatToolCallHandler } from '../types/chatTypes';
 import type { ITool } from '../tools/ITool';
@@ -83,8 +82,7 @@ export class SubagentExecutor {
         private readonly promptGenerator: SubagentPromptGenerator,
         private readonly workspaceSettings: WorkspaceSettingsService,
         private readonly chatHandler?: ChatToolCallHandler,
-        private readonly progressCallback?: AnalysisProgressCallback,
-        private readonly progressContext?: SubagentProgressContext
+        private readonly progressCallback?: AnalysisProgressCallback
     ) {}
 
     /**
@@ -110,28 +108,15 @@ export class SubagentExecutor {
             const { running, completed, total } =
                 this.recursiveState.getAgentProgress();
             if (total > 0 && (running > 0 || completed < total)) {
-                const mainIter = this.progressContext?.getCurrentIteration();
-                const mainMax = this.progressContext?.getMaxIterations();
-                const turnPrefix =
-                    mainIter && mainMax ? `Turn ${mainIter}/${mainMax} · ` : '';
                 this.progressCallback(
-                    `${turnPrefix}Agents: ${completed}/${total} done${running > 0 ? `, ${running} analyzing` : ''}`,
+                    `Agents: ${completed}/${total} done${running > 0 ? `, ${running} analyzing` : ''}`,
                     increment
                 );
                 return;
             }
         }
 
-        if (this.progressContext) {
-            const mainIter = this.progressContext.getCurrentIteration();
-            const mainMax = this.progressContext.getMaxIterations();
-            this.progressCallback(
-                `Turn ${mainIter}/${mainMax} → ${message}`,
-                increment
-            );
-        } else {
-            this.progressCallback(message, increment);
-        }
+        this.progressCallback(message, increment);
     }
 
     /**

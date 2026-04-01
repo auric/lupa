@@ -387,13 +387,9 @@ describe('SubagentExecutor', () => {
     });
 
     describe('Progress Reporting', () => {
-        it('should call progress callback with context prefix', async () => {
+        it('should call progress callback with message', async () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
             const progressCallback = vi.fn();
-            const progressContext = {
-                getCurrentIteration: vi.fn().mockReturnValue(3),
-                getMaxIterations: vi.fn().mockReturnValue(10),
-            };
 
             const registry = new ToolRegistry();
             registry.registerTool(createMockTool('read_file'));
@@ -404,14 +400,13 @@ describe('SubagentExecutor', () => {
                 promptGenerator,
                 workspaceSettings,
                 undefined, // chatHandler
-                progressCallback,
-                progressContext
+                progressCallback
             );
 
             await executor.execute(defaultTask, tokenSource.token, 1);
 
             expect(progressCallback).toHaveBeenCalledWith(
-                expect.stringContaining('Turn 3/10'),
+                expect.any(String),
                 expect.any(Number)
             );
         });

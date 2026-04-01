@@ -61,12 +61,3 @@ export type AnalysisProgressCallback = (
     message: string,
     incrementPercent?: number
 ) => void;
-
-/**
- * Context provider for subagent progress reporting.
- * Returns the current main analysis iteration info for context-aware messages.
- */
-export interface SubagentProgressContext {
-    getCurrentIteration: () => number;
-    getMaxIterations: () => number;
-}

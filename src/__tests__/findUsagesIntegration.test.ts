@@ -13,6 +13,7 @@ import {
     createMockAnalysisEngineOutput,
 } from './testUtils/mockFactories';
 import { PromptGenerator } from '../models/promptGenerator';
+import { DiffUtils } from '../utils/diffUtils';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -218,7 +219,7 @@ describe('FindUsages Integration Tests', () => {
                 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
             const result = await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -299,7 +300,7 @@ describe('FindUsages Integration Tests', () => {
                 'diff --git a/src/test.ts b/src/test.ts\n+class UnusedClass {}';
             const result = await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -411,7 +412,7 @@ describe('FindUsages Integration Tests', () => {
                 'diff --git a/src/test.ts b/src/test.ts\n+class ClassA {}\n+class ClassB {}';
             const result = await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -465,7 +466,7 @@ describe('FindUsages Integration Tests', () => {
                 'diff --git a/src/test.ts b/src/test.ts\n+// some change';
             const result = await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -538,7 +539,7 @@ describe('FindUsages Integration Tests', () => {
                 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
             await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
@@ -624,7 +625,7 @@ describe('FindUsages Integration Tests', () => {
                 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
             await toolCallingAnalyzer.analyze(
                 createMockAnalysisEngineInput({
-                    diff,
+                    parsedDiff: DiffUtils.parseDiff(diff),
                     llmClient: mockCopilotModelManager as any,
                     token: tokenSource.token,
                 }),
