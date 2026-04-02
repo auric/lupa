@@ -92,8 +92,16 @@ describe('runPipeline', () => {
         };
         context = createMockContext({ token: token as any });
 
-        const stepA = createMockStep({ name: 'a', label: 'A' });
-        const stepB = createMockStep({ name: 'b', label: 'B' });
+        const stepA = createMockStep({
+            name: 'a',
+            label: 'A',
+            kind: 'llm-conversation',
+        });
+        const stepB = createMockStep({
+            name: 'b',
+            label: 'B',
+            kind: 'llm-conversation',
+        });
 
         const records = await runPipeline([stepA, stepB], context);
 
@@ -120,6 +128,7 @@ describe('runPipeline', () => {
         const stepA = createMockStep({
             name: 'step-a',
             label: 'Step A',
+            kind: 'llm-conversation',
             execute: vi.fn().mockImplementation(async () => {
                 cancelled = true;
                 return {
@@ -129,13 +138,46 @@ describe('runPipeline', () => {
                 };
             }),
         });
-        const stepB = createMockStep({ name: 'step-b', label: 'Step B' });
+        const stepB = createMockStep({
+            name: 'step-b',
+            label: 'Step B',
+            kind: 'llm-conversation',
+        });
 
         const records = await runPipeline([stepA, stepB], context);
 
         expect(records[0].status).toBe('executed');
         expect(records[1].status).toBe('cancelled');
         expect(stepB.execute).not.toHaveBeenCalled();
+    });
+
+    it('executes programmatic steps even when token is cancelled', async () => {
+        const programmaticStep = createMockStep({
+            name: 'programmatic-step',
+            label: 'Programmatic',
+            kind: 'programmatic',
+        });
+        const llmStep = createMockStep({
+            name: 'llm-step',
+            label: 'LLM Step',
+            kind: 'llm-conversation',
+        });
+
+        // Pre-cancel the token
+        let cancelled = true;
+        const token = { onCancellationRequested: vi.fn() };
+        Object.defineProperty(token, 'isCancellationRequested', {
+            get: () => cancelled,
+        });
+
+        const context = createMockContext({ token: token as any });
+
+        const records = await runPipeline([programmaticStep, llmStep], context);
+
+        expect(records[0].status).toBe('executed'); // programmatic runs even when cancelled
+        expect(records[1].status).toBe('cancelled'); // LLM is cancelled
+        expect(programmaticStep.execute).toHaveBeenCalled();
+        expect(llmStep.execute).not.toHaveBeenCalled();
     });
 
     it('accumulates dropped titles from step results', async () => {

@@ -17,7 +17,10 @@ export async function runPipeline(
     const records: StepRecord[] = [];
 
     for (const step of steps) {
-        if (context.token.isCancellationRequested) {
+        if (
+            context.token.isCancellationRequested &&
+            step.kind !== 'programmatic'
+        ) {
             records.push({
                 name: step.name,
                 label: step.label,
