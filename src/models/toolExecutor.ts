@@ -297,6 +297,9 @@ export class ToolExecutor {
                 }
             }
 
+            // Record tool call in reasoning chain for evidence-aware gating
+            this.executionContext.reasoningChain?.recordToolCall(name);
+
             return {
                 name,
                 success: toolResult.success,

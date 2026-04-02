@@ -130,7 +130,20 @@ export class ThinkAboutCompletionTool extends BaseTool {
             `✅ Reflection recorded. ${files_analyzed.length}/${files_in_diff} files (${coveragePercent}%), ` +
                 `${issues_count} issue(s), recommendation: ${recommendation}.${coverageNote}${investigationNote} ` +
                 `Pre-submit: for each finding, verify it's MECHANICAL (not intent-based), name the confirming tool call, ` +
-                `confirm disproof was attempted. Drop anything "by design." Now call submit_review.${findingStoreNote}`
+                `confirm disproof was attempted. Drop anything "by design." Now call submit_review.${findingStoreNote}${this.generateHypothesisTrailNote(context)}`
         );
+    }
+
+    /**
+     * Generate hypothesis trail from reasoning chain for CoVe integration.
+     * Shows which hypotheses were investigated, which were abandoned.
+     */
+    private generateHypothesisTrailNote(context: ExecutionContext): string {
+        const chain = context.reasoningChain;
+        if (!chain || chain.getAllHypotheses().length === 0) {
+            return '';
+        }
+
+        return `\n\n🔗 HYPOTHESIS TRAIL:\n${chain.generateHypothesisTrailSummary()}`;
     }
 }

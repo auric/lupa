@@ -8,12 +8,10 @@ import { flexibleStringArray } from './schemaHelpers';
 /**
  * Structured thinking tool for the LLM to organize reasoning during analysis.
  *
- * Covers context reflection, code change reasoning, investigation
- * progress, or task alignment.
+ * Integrates with ReasoningChain to track hypotheses across checkpoints,
+ * detect uninvestigated risks, and enforce evidence-aware gating.
  *
  * Uses a flat schema with 2 required + 2 optional fields to maximize adoption by all models.
- * Replaces: think_about_context, think_about_investigation,
- * think_about_task, and think_about_code_change.
  */
 export class ThinkTool extends BaseTool {
     name = 'think';
@@ -57,14 +55,8 @@ export class ThinkTool extends BaseTool {
         }
 
         const { topic, identified_risks, next_action } = args;
-
         const riskCount = identified_risks?.length ?? 0;
 
-        // Use call count instead of topic-name matching to determine early vs late checkpoints.
-        // Topic-name matching is gameable: dismissive models learned to name early topics
-        // "evidence synthesis" or "final assessment" to match the bypass regex.
-        // Call count is objective — the first few think calls are always hypothesis-generation
-        // checkpoints; later calls are naturally synthesis/devil's-advocate.
         const MAX_EARLY_CHECKPOINT_CALLS = 2;
         const thinkCallCount = context.toolCallCounts.get('think') ?? 0;
         const isEarlyCheckpoint = thinkCallCount <= MAX_EARLY_CHECKPOINT_CALLS;
@@ -72,34 +64,91 @@ export class ThinkTool extends BaseTool {
         const profile = context.calibrationProfile;
         const isDismissive = profile.findingBias === 'dismissive';
 
-        // Hard gate for dismissive models: reject empty identified_risks at early checkpoints.
-        // Dismissive models tend to generate empty risks and proceed without investigating.
-        // This forces them to generate hypotheses before moving on.
+        // Record checkpoint in reasoning chain
+        const chain = context.reasoningChain;
+        const checkpoint = chain?.addCheckpoint(topic, identified_risks ?? []);
+
+        // Build response parts
+        const parts: string[] = [];
+
+        // --- Evidence-aware gating ---
+        // Warn if next_action mentions recording but no investigation since last checkpoint
+        const wantsToRecord = next_action
+            ? /record.?finding|record_finding/i.test(next_action)
+            : false;
+        const investigationCount =
+            chain?.getInvestigationToolCountSinceLastCheckpoint() ?? 0;
+
+        if (wantsToRecord && checkpoint && investigationCount === 0) {
+            parts.push(
+                `⚠️ EVIDENCE GAP: You plan to record a finding but have NOT called any investigation tools (find_usages, find_symbol, read_file, validate_claim, etc.) since your last checkpoint. Investigate FIRST — call at least one investigation tool, then call think again before recording.`
+            );
+        }
+
+        // --- Uninvestigated hypothesis warning ---
+        const uninvestigated = chain?.getUninvestigatedHypotheses() ?? [];
+        const staleHypotheses = uninvestigated.filter(
+            (h) =>
+                checkpoint &&
+                h.generatedAtCheckpoint < checkpoint.number &&
+                checkpoint.number - h.generatedAtCheckpoint >= 2
+        );
+
+        if (staleHypotheses.length > 0 && !isEarlyCheckpoint) {
+            const staleList = staleHypotheses
+                .map((h) => `[H${h.id}] "${h.text}"`)
+                .join(', ');
+            parts.push(
+                `⚠️ STALE HYPOTHESES: ${staleHypotheses.length} hypothesis(es) from earlier checkpoints were never investigated: ${staleList}. Investigate these with tools or explicitly dismiss them.`
+            );
+        }
+
+        // --- Hard gate for dismissive models: reject empty identified_risks at early checkpoints ---
         if (isDismissive && isEarlyCheckpoint && riskCount === 0) {
-            return toolSuccess(
+            parts.push(
                 `Checkpoint noted: 0 risks identified for "${topic}". ` +
                     'This may be valid for clean code. However, double-check: have you read the diff for this file? ' +
                     'Have you looked for null handling, error propagation, and logic issues?'
             );
+            return toolSuccess(parts.join('\n\n'));
         }
 
         const findingStore = context.findingStore;
         const currentFindingsCount = findingStore?.size ?? 0;
 
-        const riskNote =
-            riskCount > 0
-                ? isDismissive
-                    ? `${riskCount} risk(s) identified. Investigate each with tools — call find_usages, validate_claim, or search_for_pattern. Do NOT dismiss any hypothesis without concrete tool output proving it safe.`
-                    : `${riskCount} risk(s) to verify with tools.`
-                : isEarlyCheckpoint
-                  ? isDismissive
-                      ? 'No risks identified yet. This is almost certainly wrong — real code changes have edge cases. Generate at least 2-3 hypotheses: error handling gaps, type safety issues, missing validation, caller inconsistencies, off-by-one errors. Hypotheses are free — investigate them with tools.'
-                      : 'No risks identified yet. Before moving on — consider: edge cases in error handling, type safety gaps, missing validation on inputs, inconsistency with callers, or concurrency issues. Generate at least 2 hypotheses to investigate, even if they turn out to be fine.'
-                  : isDismissive && currentFindingsCount === 0
-                    ? `No risks identified after ${thinkCallCount} checkpoints, and you have recorded ZERO findings so far. If you investigated real hypotheses and all were disproved with concrete tool output, that is fine. But if any hypothesis was dismissed without tool evidence, revisit it — record it as LOW severity and let the post-analysis pipeline decide.`
-                    : 'No risks identified.';
-        const actionNote = next_action ? ` Next: ${next_action}.` : '';
+        // --- Risk note (calibrated by model bias) ---
+        let riskNote: string;
+        if (riskCount > 0) {
+            riskNote = isDismissive
+                ? `${riskCount} risk(s) identified. Investigate each with tools — call find_usages, validate_claim, or search_for_pattern. Do NOT dismiss any hypothesis without concrete tool output proving it safe.`
+                : `${riskCount} risk(s) to verify with tools.`;
+        } else if (isEarlyCheckpoint) {
+            riskNote = isDismissive
+                ? 'No risks identified yet. This is almost certainly wrong — real code changes have edge cases. Generate at least 2-3 hypotheses: error handling gaps, type safety issues, missing validation, caller inconsistencies, off-by-one errors. Hypotheses are free — investigate them with tools.'
+                : 'No risks identified yet. Before moving on — consider: edge cases in error handling, type safety gaps, missing validation on inputs, inconsistency with callers, or concurrency issues. Generate at least 2 hypotheses to investigate, even if they turn out to be fine.';
+        } else if (isDismissive && currentFindingsCount === 0) {
+            riskNote = `No risks identified after ${thinkCallCount} checkpoints, and you have recorded ZERO findings so far. If you investigated real hypotheses and all were disproved with concrete tool output, that is fine. But if any hypothesis was dismissed without tool evidence, revisit it — record it as LOW severity and let the post-analysis pipeline decide.`;
+        } else {
+            riskNote = 'No risks identified.';
+        }
 
-        return toolSuccess(`Checkpoint "${topic}": ${riskNote}${actionNote}`);
+        const actionNote = next_action ? ` Next: ${next_action}.` : '';
+        parts.push(`Checkpoint "${topic}": ${riskNote}${actionNote}`);
+
+        // --- Dismissive model structured hypothesis status ---
+        if (isDismissive && chain && !isEarlyCheckpoint) {
+            const open = chain.getOpenHypotheses();
+            if (open.length > 0) {
+                const statusLines = open.map(
+                    (h) =>
+                        `  [H${h.id}] ${h.status.toUpperCase()}: "${h.text}" (checkpoint ${h.generatedAtCheckpoint}, tools: ${h.investigationTools.length})`
+                );
+                parts.push(
+                    `📋 Open hypotheses requiring resolution:\n${statusLines.join('\n')}\nFor each: investigate with tools → then either record_finding or dismiss with evidence.`
+                );
+            }
+        }
+
+        return toolSuccess(parts.join('\n\n'));
     }
 }

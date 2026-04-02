@@ -227,6 +227,25 @@ export class RecordFindingTool extends BaseTool {
             })),
         });
 
+        // Evidence-aware gating: warn (don't block) if no investigation tools
+        // were called since the last think checkpoint. This catches models that
+        // skip the think→investigate→record workflow.
+        let evidenceGapWarning = '';
+        const chain = context.reasoningChain;
+        if (chain) {
+            const investigationSinceCheckpoint =
+                chain.getInvestigationToolCountSinceLastCheckpoint();
+            if (
+                investigationSinceCheckpoint === 0 &&
+                chain.getCheckpointCount() > 0
+            ) {
+                evidenceGapWarning =
+                    '\n\n⚠️ EVIDENCE GAP: No investigation tools were called since your last think checkpoint. ' +
+                    'The think→investigate→record workflow produces higher quality findings. ' +
+                    'If this finding is based on earlier investigation, continue. Otherwise, consider retracting and investigating first.';
+            }
+        }
+
         const softLimitWarning = overSoftLimit
             ? `\n\n⚠️ You have now recorded ${store.size} finding(s), which exceeds the recommended limit of ${softLimit}. ` +
               'Focus only on HIGH/CRITICAL issues from here. The post-analysis pipeline will filter weaker findings.'
@@ -242,7 +261,8 @@ export class RecordFindingTool extends BaseTool {
                 `2. Could this be INTENTIONAL design? Did you search for comments, docs, or commit history explaining the rationale?\n` +
                 `3. Is this MECHANICAL (provable by tools) or INTENT-BASED (requires knowing author's rationale)? Intent-based findings have the highest FP rate.\n` +
                 `If the answer to #1 is NO, call retract_finding immediately.` +
-                softLimitWarning
+                softLimitWarning +
+                evidenceGapWarning
         );
     }
 }
