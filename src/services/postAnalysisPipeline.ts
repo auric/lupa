@@ -25,7 +25,7 @@ import {
     createFindingScoringStep,
     createSelfReflectionStep,
     createRewriteStep,
-} from './pipeline';
+} from './pipeline/pipeline';
 
 export interface PostAnalysisPipelineOptions {
     findingStore: FindingStore;
