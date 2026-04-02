@@ -111,8 +111,11 @@ export class SubagentExecutor {
             const { running, completed, total } =
                 this.recursiveState.getAgentProgress();
             if (total > 0 && (running > 0 || completed < total)) {
-                this.onAgentProgress?.(completed, total, running);
-                return;
+                if (this.onAgentProgress) {
+                    this.onAgentProgress(completed, total, running);
+                    return;
+                }
+                // Fall through to progressCallback if no agent progress handler
             }
         }
 

@@ -684,6 +684,7 @@ export function createMockAnalysisEngineOutput(
 ): AnalysisEngineOutput {
     return {
         onProgress: overrides.onProgress ?? vi.fn(),
+        onAgentProgress: overrides.onAgentProgress,
         onToolCallStart: overrides.onToolCallStart,
         onToolCallComplete: overrides.onToolCallComplete,
         onIterationStart: overrides.onIterationStart,

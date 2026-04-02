@@ -447,6 +447,42 @@ describe('SubagentExecutor', () => {
             // progressCallback should NOT be called since agent progress uses the separate callback
             expect(progressCallback).not.toHaveBeenCalled();
         });
+
+        it('should fall through to progressCallback when recursiveState has active agents but onAgentProgress is not provided', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+            const progressCallback = vi.fn();
+
+            const registry = new ToolRegistry();
+            registry.registerTool(createMockTool('read_file'));
+
+            const executor = new SubagentExecutor(
+                modelManager,
+                registry,
+                promptGenerator,
+                workspaceSettings,
+                undefined, // chatHandler
+                progressCallback
+                // no onAgentProgress
+            );
+
+            // Set up recursiveState with active agents
+            const mockRecursiveState = {
+                getAgentProgress: vi.fn().mockReturnValue({
+                    running: 2,
+                    completed: 1,
+                    total: 3,
+                }),
+            };
+            executor.setRecursiveState(mockRecursiveState as any);
+
+            await executor.execute(defaultTask, tokenSource.token, 1);
+
+            // progressCallback should be called as fallback since onAgentProgress is not provided
+            expect(progressCallback).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.any(Number)
+            );
+        });
     });
 
     describe('Recursive Tool Filtering', () => {
