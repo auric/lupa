@@ -1,11 +1,10 @@
 import { EvidenceAuditor } from '../../evidenceAuditor';
+import { downgradeSeverity } from '../pipelineUtils';
 import type {
     PipelineContext,
     PipelineStep,
     PipelineStepResult,
 } from '../types';
-
-const SEVERITY_ORDER = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
 
 export function createEvidenceAuditStep(): PipelineStep {
     return {
@@ -38,11 +37,13 @@ export function createEvidenceAuditStep(): PipelineStep {
                     context.findingStore.remove(entry.finding.id);
                 } else if (entry.verdict === 'downgrade') {
                     findingsDowngraded.push(entry.finding.title);
-                    const idx = SEVERITY_ORDER.indexOf(entry.finding.severity);
-                    if (idx > 0) {
+                    const newSeverity = downgradeSeverity(
+                        entry.finding.severity
+                    );
+                    if (newSeverity) {
                         context.findingStore.updateSeverity(
                             entry.finding.id,
-                            SEVERITY_ORDER[idx - 1]!
+                            newSeverity
                         );
                     }
                 }

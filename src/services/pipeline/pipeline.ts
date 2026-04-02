@@ -8,6 +8,14 @@ export type {
     StepStatus,
 } from './types';
 
+// Pipeline utilities
+export {
+    SEVERITY_ORDER,
+    downgradeSeverity,
+    filterTools,
+} from './pipelineUtils';
+export type { FindingSeverity } from './pipelineUtils';
+
 // Pipeline runner
 export { runPipeline } from './pipelineRunner';
 

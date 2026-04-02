@@ -6,7 +6,11 @@ import type {
 } from '../types';
 
 const REWRITE_BUDGET = 10;
-const REWRITE_ALLOWED_TOOLS = new Set(['think', 'submit_review']);
+const REWRITE_ALLOWED_TOOLS = new Set([
+    'think',
+    'submit_review',
+    'retract_finding',
+]);
 
 export function createRewriteStep(): PipelineStep {
     return {
@@ -14,7 +18,7 @@ export function createRewriteStep(): PipelineStep {
         label: 'Rewrite Review',
         description:
             'Re-enters conversation to rewrite review without dropped findings. ' +
-            'Only think and submit_review tools are available.',
+            'think, submit_review, and retract_finding tools are available.',
         kind: 'llm-conversation',
 
         shouldRun(context: PipelineContext): boolean {

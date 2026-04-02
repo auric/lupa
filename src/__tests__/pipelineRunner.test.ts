@@ -197,4 +197,23 @@ describe('runPipeline', () => {
         expect(records[1].status).toBe('skipped');
         expect(records[1].durationMs).toBe(0);
     });
+
+    it('records failed status and rethrows when step.execute rejects', async () => {
+        const error = new Error('step blew up');
+        const failingStep = createMockStep({
+            name: 'failing-step',
+            label: 'Failing Step',
+            execute: vi.fn().mockRejectedValue(error),
+        });
+        const nextStep = createMockStep({
+            name: 'next-step',
+            label: 'Next Step',
+        });
+
+        await expect(
+            runPipeline([failingStep, nextStep], context)
+        ).rejects.toThrow('step blew up');
+
+        expect(nextStep.execute).not.toHaveBeenCalled();
+    });
 });

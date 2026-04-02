@@ -1,19 +1,14 @@
 import { Log } from '../../loggingService';
 import { INVESTIGATION_TOOLS } from '../../../models/toolConstants';
+import { filterTools } from '../pipelineUtils';
 import type {
     PipelineContext,
     PipelineStep,
     PipelineStepResult,
 } from '../types';
-import type { ITool } from '../../../tools/ITool';
 
 const CHALLENGE_BUDGET = 15;
 const MIN_FILES_FOR_NONTRIVIAL_PR = 5;
-
-function filterTools(tools: ITool[], excludeNames: string[]): ITool[] {
-    const excluded = new Set(excludeNames);
-    return tools.filter((t) => !excluded.has(t.name));
-}
 
 export function createZeroFindingChallengeStep(): PipelineStep {
     return {

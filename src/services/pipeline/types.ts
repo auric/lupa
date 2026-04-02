@@ -39,7 +39,7 @@ export interface PipelineStepResult {
 // Record of a single step's execution (for telemetry / webview Phase UI)
 // ---------------------------------------------------------------------------
 
-export type StepStatus = 'skipped' | 'executed' | 'cancelled';
+export type StepStatus = 'skipped' | 'executed' | 'cancelled' | 'failed';
 
 export interface StepRecord {
     name: string;

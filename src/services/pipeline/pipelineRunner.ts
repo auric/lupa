@@ -1,4 +1,9 @@
-import type { PipelineStep, PipelineContext, StepRecord } from './types';
+import type {
+    PipelineStep,
+    PipelineContext,
+    PipelineStepResult,
+    StepRecord,
+} from './types';
 import { Log } from '../loggingService';
 
 /**
@@ -38,7 +43,21 @@ export async function runPipeline(
         Log.info(`Pipeline: starting "${step.label}"`);
         const start = performance.now();
 
-        const result = await step.execute(context);
+        let result: PipelineStepResult;
+        try {
+            result = await step.execute(context);
+        } catch (error) {
+            const durationMs = Math.round(performance.now() - start);
+            records.push({
+                name: step.name,
+                label: step.label,
+                kind: step.kind,
+                status: 'failed',
+                durationMs,
+            });
+            Log.warn(`Pipeline: "${step.label}" failed after ${durationMs}ms`);
+            throw error;
+        }
         const durationMs = Math.round(performance.now() - start);
 
         // Accumulate dropped titles into shared context

@@ -1,13 +1,12 @@
 import { Log } from '../../loggingService';
 import { scoreFinding } from '../../findingScorer';
 import type { ScoringContext } from '../../findingScorer';
+import { downgradeSeverity } from '../pipelineUtils';
 import type {
     PipelineContext,
     PipelineStep,
     PipelineStepResult,
 } from '../types';
-
-const SEVERITY_ORDER = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
 
 export function createFindingScoringStep(): PipelineStep {
     return {
@@ -72,17 +71,15 @@ export function createFindingScoringStep(): PipelineStep {
                         score.findingId
                     );
                     if (finding) {
-                        const idx = SEVERITY_ORDER.indexOf(finding.severity);
-                        if (idx > 0) {
-                            const oldSeverity = finding.severity;
-                            const newSeverity = SEVERITY_ORDER[idx - 1]!;
+                        const newSeverity = downgradeSeverity(finding.severity);
+                        if (newSeverity) {
                             findingsDowngraded.push(finding.title);
                             context.findingStore.updateSeverity(
                                 score.findingId,
                                 newSeverity
                             );
                             Log.info(
-                                `FindingScorer: downgraded "${finding.title}" ${oldSeverity} → ${newSeverity} (score: ${score.overallScore})`
+                                `FindingScorer: downgraded "${finding.title}" ${finding.severity} → ${newSeverity} (score: ${score.overallScore})`
                             );
                         }
                     }
