@@ -115,8 +115,13 @@ export class SubagentExecutor {
                     this.onAgentProgress(completed, total, running);
                     return;
                 }
-                // Fall through to progressCallback if no agent progress handler
             }
+        }
+
+        // When a structured progress handler is provided, suppress text-based
+        // subagent lifecycle messages — callers handle progress via onAgentProgress.
+        if (this.onAgentProgress) {
+            return;
         }
 
         this.progressCallback?.(message, increment);

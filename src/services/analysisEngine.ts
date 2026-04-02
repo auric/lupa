@@ -27,6 +27,7 @@ import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
 import { type SelfReflectionScore } from './selfReflectionScorer';
+import type { StepRecord } from './pipeline/pipelineTypes';
 import type { ILLMClient } from '../models/ILLMClient';
 import type { ChatToolCallHandler } from '../types/chatTypes';
 
@@ -74,6 +75,7 @@ export interface AnalysisEngineResult {
     iterationsUsed: number | undefined;
     selfReflectionScores: SelfReflectionScore[];
     filesAnalyzed: number;
+    stepRecords: StepRecord[];
 }
 
 /**
@@ -117,6 +119,14 @@ export class AnalysisEngine implements vscode.Disposable {
         const subagentSessionManager = new SubagentSessionManager(
             this.workspaceSettings
         );
+
+        // Determine analysis approach and recursive mode early — needed for SubagentExecutor setup.
+        const maxRecursionDepth = this.workspaceSettings.getMaxRecursionDepth();
+        const isRecursiveMode = maxRecursionDepth >= 1;
+
+        // Only pass onAgentProgress in recursive mode — it signals SubagentExecutor
+        // to suppress text-based progress in favor of structured agent progress.
+        // In non-recursive mode, text progress via progressCallback is the only channel.
         const subagentExecutor = new SubagentExecutor(
             input.llmClient,
             this.toolRegistry,
@@ -124,7 +134,7 @@ export class AnalysisEngine implements vscode.Disposable {
             this.workspaceSettings,
             input.chatHandler,
             (msg, inc) => output.onProgress(msg, inc),
-            output.onAgentProgress
+            isRecursiveMode && output.onAgentProgress
                 ? (completed, total, running) =>
                       output.onAgentProgress!(
                           completed,
@@ -135,10 +145,6 @@ export class AnalysisEngine implements vscode.Disposable {
                       )
                 : undefined
         );
-
-        // Determine analysis approach and recursive mode.
-        const maxRecursionDepth = this.workspaceSettings.getMaxRecursionDepth();
-        const isRecursiveMode = maxRecursionDepth >= 1;
 
         // Create RecursiveStateManager when in recursive mode
         const recursiveState = isRecursiveMode
@@ -196,6 +202,7 @@ export class AnalysisEngine implements vscode.Disposable {
         let analysisText = '';
         let filesAnalyzed = 0;
         let selfReflectionScores: SelfReflectionScore[] = [];
+        let stepRecords: StepRecord[] = [];
 
         try {
             Log.info('Starting analysis with tool-calling support');
@@ -420,7 +427,6 @@ export class AnalysisEngine implements vscode.Disposable {
                     systemPrompt,
                     availableTools: availableTools,
                     disabledToolNames,
-                    token: input.token,
                     handler,
                     progressCallback: (msg, inc) => output.onProgress(msg, inc),
                 });
@@ -433,6 +439,7 @@ export class AnalysisEngine implements vscode.Disposable {
                 }
 
                 selfReflectionScores = pipelineResult.selfReflectionScores;
+                stepRecords = pipelineResult.stepRecords;
 
                 output.onProgress(
                     `Analysis complete (${toolCallRecords.length} tool calls)`,
@@ -474,6 +481,7 @@ export class AnalysisEngine implements vscode.Disposable {
             iterationsUsed: conversationRunner.iterationsUsed,
             selfReflectionScores,
             filesAnalyzed,
+            stepRecords,
         };
     }
 
