@@ -13,7 +13,6 @@ import type { ITool } from '../../tools/ITool';
 import type { SelfReflectionScore } from '../selfReflectionScorer';
 import type { FindingValidator } from '../findingValidator';
 import type { FeedbackStore } from '../feedbackStore';
-import type * as vscode from 'vscode';
 
 // ---------------------------------------------------------------------------
 // Step kind — determines UI treatment and execution expectations
@@ -72,7 +71,6 @@ export interface PipelineContext {
     systemPrompt: string;
     availableTools: ITool[];
     disabledToolNames?: Set<string>;
-    token: vscode.CancellationToken;
     handler: ToolCallHandler;
     findingValidator: FindingValidator;
     feedbackStore?: FeedbackStore;

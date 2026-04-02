@@ -31,7 +31,7 @@ export function createSelfReflectionStep(): PipelineStep {
                 conversationManager: context.conversationManager,
                 conversationRunner: context.conversationRunner,
                 systemPrompt: context.systemPrompt,
-                token: context.token,
+                token: context.executionContext.cancellationToken,
                 handler: context.handler,
             });
 

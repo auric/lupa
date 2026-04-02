@@ -26,14 +26,15 @@ function createMockContext(
     overrides: Partial<PipelineContext> = {}
 ): PipelineContext {
     return {
-        token: createMockCancellationToken(),
         droppedTitles: [],
         additionalToolCallRecords: [],
         selfReflectionScores: [],
         rewrittenAnalysis: undefined,
         findingStore: {} as any,
         toolCallRecords: [],
-        executionContext: {} as any,
+        executionContext: {
+            cancellationToken: createMockCancellationToken(),
+        } as any,
         parsedDiff: [],
         calibrationProfile: {} as any,
         subagentExecutor: {} as any,
@@ -90,7 +91,9 @@ describe('runPipeline', () => {
             onCancellationRequested: vi.fn(),
             isCancellationRequested: true,
         };
-        context = createMockContext({ token: token as any });
+        context = createMockContext({
+            executionContext: { cancellationToken: token } as any,
+        });
 
         const stepA = createMockStep({
             name: 'a',
@@ -123,7 +126,9 @@ describe('runPipeline', () => {
             get: () => cancelled,
         });
 
-        context = createMockContext({ token: token as any });
+        context = createMockContext({
+            executionContext: { cancellationToken: token } as any,
+        });
 
         const stepA = createMockStep({
             name: 'step-a',
@@ -170,7 +175,9 @@ describe('runPipeline', () => {
             get: () => cancelled,
         });
 
-        const context = createMockContext({ token: token as any });
+        const context = createMockContext({
+            executionContext: { cancellationToken: token } as any,
+        });
 
         const records = await runPipeline([programmaticStep, llmStep], context);
 

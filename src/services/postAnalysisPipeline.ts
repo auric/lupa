@@ -13,7 +13,6 @@ import type { ITool } from '../tools/ITool';
 import type { FindingValidator } from './findingValidator';
 import type { SelfReflectionScore } from './selfReflectionScorer';
 import type { FeedbackStore as FeedbackStoreType } from './feedbackStore';
-import type * as vscode from 'vscode';
 import type { StepRecord } from './pipeline/pipelineTypes';
 import {
     runPipeline,
@@ -39,7 +38,6 @@ export interface PostAnalysisPipelineOptions {
     systemPrompt: string;
     availableTools: ITool[];
     disabledToolNames?: Set<string>;
-    token: vscode.CancellationToken;
     handler: ToolCallHandler;
     feedbackStore?: FeedbackStoreType;
     progressCallback?: (message: string, increment?: number) => void;

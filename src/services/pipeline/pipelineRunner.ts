@@ -20,7 +20,8 @@ export async function runPipeline(
 
     for (const step of steps) {
         if (
-            context.token.isCancellationRequested &&
+            context.executionContext.cancellationToken
+                .isCancellationRequested &&
             step.kind !== 'programmatic'
         ) {
             records.push({

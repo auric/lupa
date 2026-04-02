@@ -54,7 +54,7 @@ export function createRewriteStep(): PipelineStep {
                     requiresExplicitCompletion: true,
                 },
                 context.conversationManager,
-                context.token,
+                context.executionContext.cancellationToken,
                 context.handler
             );
 

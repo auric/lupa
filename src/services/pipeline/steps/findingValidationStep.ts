@@ -29,7 +29,7 @@ export function createFindingValidationStep(): PipelineStep {
             const validation = await context.findingValidator.validate(
                 survivingFindings,
                 context.parsedDiff,
-                context.token
+                context.executionContext.cancellationToken
             );
 
             for (const v of validation.validated) {

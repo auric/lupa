@@ -24,7 +24,7 @@ export function createAdversarialVerificationStep(): PipelineStep {
                 context.calibrationProfile,
                 context.subagentExecutor,
                 context.parsedDiff,
-                context.token,
+                context.executionContext.cancellationToken,
                 context.progressCallback
                     ? (msg) => context.progressCallback!(msg, 0.5)
                     : undefined
