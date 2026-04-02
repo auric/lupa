@@ -78,10 +78,10 @@ describe('Calibration-aware prompt blocks', () => {
             expect(role).not.toContain('autonomous agent');
         });
 
-        it('should emphasize persistence for dismissive models', () => {
+        it('should emphasize procedural investigation for dismissive models', () => {
             const role = generatePRReviewerRole(DISMISSIVE_PROFILE);
-            expect(role).toContain('Persistence');
-            expect(role).toContain('disciplined investigator');
+            expect(role).toContain('systematically investigate');
+            expect(role).toContain('trace callers with find_usages');
         });
 
         it('should not mention "zero findings" for dismissive models', () => {
@@ -111,7 +111,9 @@ describe('Calibration-aware prompt blocks', () => {
         it('should remove kill ratio for dismissive models', () => {
             const methodology = generateAnalysisMethodology(DISMISSIVE_PROFILE);
             expect(methodology).not.toContain('Target kill ratio');
-            expect(methodology).toContain('Evidence ambiguity');
+            expect(methodology).toContain(
+                'Verification procedure for dismissive models'
+            );
         });
 
         it('should include stricter kill ratio for aggressive models', () => {
@@ -128,8 +130,8 @@ describe('Calibration-aware prompt blocks', () => {
 
         it('should strengthen skepticism for dismissive models', () => {
             const methodology = generateAnalysisMethodology(DISMISSIVE_PROFILE);
-            expect(methodology).toContain('submit_review will reject');
-            expect(methodology).toContain('revisit your strongest hypothesis');
+            expect(methodology).toContain('Investigation Algorithm');
+            expect(methodology).toContain('Zero-finding safety check');
         });
 
         it('should produce balanced output with balanced profile', () => {
@@ -144,9 +146,7 @@ describe('Calibration-aware prompt blocks', () => {
             const reflection =
                 generateSelfReflectionGuidance(DISMISSIVE_PROFILE);
             expect(reflection).toContain('evidence review');
-            expect(reflection).toContain(
-                'What did the tool output actually show'
-            );
+            expect(reflection).toContain('which tool call investigated it');
         });
 
         it("should use devil's advocate for balanced models", () => {
