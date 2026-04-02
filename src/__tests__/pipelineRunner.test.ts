@@ -243,7 +243,7 @@ describe('runPipeline', () => {
         expect(records[1].durationMs).toBe(0);
     });
 
-    it('records failed status and rethrows when step.execute rejects', async () => {
+    it('records failed status and returns partial records when step.execute rejects', async () => {
         const error = new Error('step blew up');
         const failingStep = createMockStep({
             name: 'failing-step',
@@ -255,10 +255,23 @@ describe('runPipeline', () => {
             label: 'Next Step',
         });
 
-        await expect(
-            runPipeline([failingStep, nextStep], context)
-        ).rejects.toThrow('step blew up');
+        const records = await runPipeline([failingStep, nextStep], context);
 
+        expect(records).toHaveLength(1);
+        expect(records[0].name).toBe('failing-step');
+        expect(records[0].status).toBe('failed');
+        expect(records[0].durationMs).toBeGreaterThanOrEqual(0);
         expect(nextStep.execute).not.toHaveBeenCalled();
+    });
+
+    it('rethrows CancellationError from step.execute', async () => {
+        const { CancellationError } = await import('vscode');
+        const failingStep = createMockStep({
+            name: 'failing-step',
+            label: 'Failing Step',
+            execute: vi.fn().mockRejectedValue(new CancellationError()),
+        });
+
+        await expect(runPipeline([failingStep], context)).rejects.toThrow();
     });
 });

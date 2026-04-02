@@ -5,6 +5,7 @@ import type {
     StepRecord,
 } from './pipelineTypes';
 import { Log } from '../loggingService';
+import { isCancellationError } from '../../utils/asyncUtils';
 
 /**
  * Generic pipeline runner. Iterates steps in order:
@@ -50,6 +51,9 @@ export async function runPipeline(
         try {
             result = await step.execute(context);
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
             const durationMs = Math.round(performance.now() - start);
             records.push({
                 name: step.name,
@@ -59,7 +63,7 @@ export async function runPipeline(
                 durationMs,
             });
             Log.warn(`Pipeline: "${step.label}" failed after ${durationMs}ms`);
-            throw error;
+            break;
         }
         const durationMs = Math.round(performance.now() - start);
 
