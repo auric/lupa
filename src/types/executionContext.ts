@@ -4,6 +4,7 @@ import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubagentExecutor } from '../services/subagentExecutor';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { FindingStore } from '../sessions/findingStore';
+import type { ReasoningChain } from '../sessions/reasoningChain';
 import type { DiffHunk } from './contextTypes';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
 import type { ToolExecutor } from '../models/toolExecutor';
@@ -101,6 +102,14 @@ export interface ExecutionContext {
      * Paths are normalized with forward slashes.
      */
     investigatedFiles?: Set<string>;
+
+    /**
+     * Reasoning chain tracking hypotheses across think tool calls.
+     * Accumulates hypotheses generated, investigated, and resolved across
+     * the entire analysis session. Used by think tool for continuity
+     * and by think_about_completion for CoVe hypothesis trail.
+     */
+    reasoningChain?: ReasoningChain;
 
     /**
      * Completion readiness signal from think_about_completion.

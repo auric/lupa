@@ -20,6 +20,7 @@ import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { FindingStore } from '../sessions/findingStore';
+import { ReasoningChain } from '../sessions/reasoningChain';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
@@ -182,6 +183,7 @@ export class AnalysisEngine implements vscode.Disposable {
             currentDepth: 0,
             currentAgentId: 'root',
             findingStore,
+            reasoningChain: new ReasoningChain(),
             toolCallCounts: new Map<string, number>(),
             investigatedFiles: new Set<string>(),
         } as ExecutionContext;
