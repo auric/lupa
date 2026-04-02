@@ -36,11 +36,11 @@ export function createEvidenceAuditStep(): PipelineStep {
                     findingsDropped.push(entry.finding.title);
                     context.findingStore.remove(entry.finding.id);
                 } else if (entry.verdict === 'downgrade') {
-                    findingsDowngraded.push(entry.finding.title);
                     const newSeverity = downgradeSeverity(
                         entry.finding.severity
                     );
                     if (newSeverity) {
+                        findingsDowngraded.push(entry.finding.title);
                         context.findingStore.updateSeverity(
                             entry.finding.id,
                             newSeverity
