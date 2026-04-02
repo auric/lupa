@@ -88,6 +88,13 @@ export class RecordFindingTool extends BaseTool {
                     '"Missing validation" or "missing logging" are NOT failure mechanisms — ' +
                     'name what actually goes WRONG when code executes.'
             ),
+        hypothesis_id: z.coerce
+            .number()
+            .optional()
+            .describe(
+                'ID of the hypothesis this finding confirms (e.g., 1 for [H1]). ' +
+                    'Reference the hypothesis ID from think tool output. Helps track reasoning chain.'
+            ),
         verifiable_claims: z
             .array(
                 z.object({
@@ -227,31 +234,37 @@ export class RecordFindingTool extends BaseTool {
             })),
         });
 
-        // Mark best-matching hypothesis as confirmed in reasoning chain
+        // Mark linked hypothesis as confirmed in reasoning chain
         if (context.reasoningChain) {
-            const open = context.reasoningChain.getOpenHypotheses();
-            if (open.length > 0) {
-                const titleLower = args.title.toLowerCase();
-                const descLower = (args.description ?? '').toLowerCase();
-                // Try substring match: hypothesis text appears in title/description or vice versa
-                const match = open.find((h) => {
-                    const hLower = h.text.toLowerCase();
-                    return (
-                        titleLower.includes(hLower) ||
-                        hLower.includes(titleLower) ||
-                        descLower.includes(hLower)
+            const chain = context.reasoningChain;
+            let target: { id: number } | undefined;
+
+            if (args.hypothesis_id != null) {
+                // Explicit link: model referenced the hypothesis ID from think output
+                const byId = chain
+                    .getAllHypotheses()
+                    .find(
+                        (h) =>
+                            h.id === args.hypothesis_id &&
+                            (h.status === 'generated' ||
+                                h.status === 'investigating')
                     );
-                });
-                // Fall back to most recent investigating hypothesis
-                const target =
-                    match ??
-                    open.filter((h) => h.status === 'investigating').at(-1);
-                if (target) {
-                    context.reasoningChain.markConfirmed(
-                        target.id,
-                        `Recorded as finding ${finding.id}: ${args.title}`
-                    );
-                }
+                target = byId;
+            }
+
+            // Fallback: most recent investigating hypothesis
+            if (!target) {
+                target = chain
+                    .getOpenHypotheses()
+                    .filter((h) => h.status === 'investigating')
+                    .at(-1);
+            }
+
+            if (target) {
+                chain.markConfirmed(
+                    target.id,
+                    `Recorded as finding ${finding.id}: ${args.title}`
+                );
             }
         }
 

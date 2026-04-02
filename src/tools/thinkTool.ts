@@ -22,6 +22,8 @@ export class ThinkTool extends BaseTool {
         '(3) before recording a finding — verify your conclusion holds under scrutiny. ' +
         'Skipping checkpoints causes false positives and missed issues.';
 
+    override managesOwnChainRecording = true;
+
     schema = z.object({
         topic: z
             .string()

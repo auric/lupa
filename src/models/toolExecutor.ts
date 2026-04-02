@@ -243,8 +243,7 @@ export class ToolExecutor {
             const elapsed = Date.now() - startTime;
 
             // Record tool call in reasoning chain for evidence-aware gating
-            // Skip 'think' — it manages its own checkpoint via addCheckpoint()
-            if (name !== 'think') {
+            if (!tool.managesOwnChainRecording) {
                 this.executionContext.reasoningChain?.recordToolCall(name);
             }
 

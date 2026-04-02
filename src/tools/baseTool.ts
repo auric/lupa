@@ -11,6 +11,7 @@ export abstract class BaseTool implements ITool {
     abstract description: string;
     abstract schema: z.ZodType;
     maxResponseChars: number = TokenConstants.MAX_TOOL_RESPONSE_CHARS;
+    managesOwnChainRecording = false;
 
     getVSCodeTool(): vscode.LanguageModelChatTool {
         return {

@@ -880,35 +880,34 @@ describe('ToolExecutor', () => {
             );
         });
 
-        it('think tool is excluded from recordToolCall', async () => {
+        it('tools with managesOwnChainRecording=true are excluded from recordToolCall', async () => {
             const chain = new ReasoningChain();
             const ctx = createMockExecutionContext({ reasoningChain: chain });
             const executor = new ToolExecutor(toolRegistry, ctx);
             executor.bindToContext();
 
-            // Register a mock think tool
-            const thinkTool: ITool = {
-                name: 'think',
-                description: 'Think tool',
-                schema: z.object({ topic: z.string(), analysis: z.string() }),
+            // Register a tool that manages its own chain recording
+            const selfManagingTool: ITool = {
+                name: 'self_managing_tool',
+                description: 'Manages own chain recording',
+                schema: z.object({ input: z.string() }),
+                managesOwnChainRecording: true,
                 getVSCodeTool: () => ({
-                    name: 'think',
+                    name: 'self_managing_tool',
                     description: 'test',
                     inputSchema: {},
                 }),
-                execute: async (): Promise<ToolResult> =>
-                    toolSuccess('Thinking done'),
+                execute: async (): Promise<ToolResult> => toolSuccess('Done'),
             };
-            toolRegistry.registerTool(thinkTool);
+            toolRegistry.registerTool(selfManagingTool);
 
-            await executor.executeTool('think', {
-                topic: 'test',
-                analysis: 'test',
+            await executor.executeTool('self_managing_tool', {
+                input: 'test',
             });
 
-            // 'think' should NOT appear in tool calls since it manages its own checkpoint
+            // Tool should NOT appear in chain since it manages its own recording
             expect(chain.getToolCallsSinceLastCheckpoint()).not.toContain(
-                'think'
+                'self_managing_tool'
             );
             expect(chain.getToolCallsSinceLastCheckpoint()).toHaveLength(0);
         });

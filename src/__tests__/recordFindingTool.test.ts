@@ -567,7 +567,7 @@ describe('RecordFindingTool', () => {
     });
 
     describe('hypothesis confirmation via ReasoningChain', () => {
-        it('marks matching hypothesis as confirmed when title matches', async () => {
+        it('marks hypothesis as confirmed when hypothesis_id is provided', async () => {
             const store = new FindingStore();
             const chain = new ReasoningChain();
             chain.addCheckpoint('auth review', ['Missing error handler']);
@@ -581,7 +581,7 @@ describe('RecordFindingTool', () => {
                 investigatedFiles: new Set(['src/api.ts']),
             });
 
-            await tool.execute(BASE_FINDING_ARGS, ctx);
+            await tool.execute({ ...BASE_FINDING_ARGS, hypothesis_id: 1 }, ctx);
 
             const hypothesis = chain.getAllHypotheses()[0];
             expect(hypothesis.status).toBe('confirmed');
@@ -590,7 +590,7 @@ describe('RecordFindingTool', () => {
             );
         });
 
-        it('falls back to most recent investigating hypothesis when no text match', async () => {
+        it('falls back to most recent investigating hypothesis when no hypothesis_id provided', async () => {
             const store = new FindingStore();
             const chain = new ReasoningChain();
             chain.addCheckpoint('review', [
