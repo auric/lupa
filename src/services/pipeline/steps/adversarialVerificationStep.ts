@@ -18,8 +18,6 @@ export function createAdversarialVerificationStep(): PipelineStep {
         },
 
         async execute(context: PipelineContext): Promise<PipelineStepResult> {
-            const findingsDropped: string[] = [];
-
             const adversarialVerifier = new AdversarialVerifier();
             const adversarialResult = await adversarialVerifier.verify(
                 context.findingStore,
@@ -32,12 +30,8 @@ export function createAdversarialVerificationStep(): PipelineStep {
                     : undefined
             );
 
-            if (adversarialResult.refuted.length > 0) {
-                findingsDropped.push(...adversarialResult.refuted);
-            }
-
             return {
-                findingsDropped,
+                findingsDropped: adversarialResult.refuted,
                 findingsDowngraded: [],
                 toolCallRecords: adversarialResult.toolCallRecords,
             };
