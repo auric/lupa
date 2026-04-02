@@ -51,6 +51,25 @@ export class SubmitReviewTool extends BaseTool {
         }
 
         const store = context.findingStore;
+
+        // Gate: Hypothesis enforcement — confirmed hypotheses must have corresponding findings
+        const chain = context.reasoningChain;
+        if (chain && store) {
+            const confirmed = chain
+                .getAllHypotheses()
+                .filter((h) => h.status === 'confirmed');
+            if (confirmed.length > 0 && store.size === 0) {
+                const hypothesisList = confirmed
+                    .map((h) => `[H${h.id}] "${h.text}"`)
+                    .join('\n  ');
+                return toolError(
+                    `Review rejected: your reasoning chain has ${confirmed.length} CONFIRMED hypothesis(es) but ZERO recorded findings:\n  ${hypothesisList}\n\n` +
+                        'Confirmed hypotheses must be recorded with record_finding before submitting. ' +
+                        'Either record each confirmed hypothesis as a finding, or call think to re-evaluate and dismiss them.'
+                );
+            }
+        }
+
         const subagentsRecordedFindings = store && store.size > 0;
 
         // Gate 4: FindingStore gate — if subagents recorded findings, the review must address them

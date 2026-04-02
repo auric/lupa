@@ -181,4 +181,55 @@ describe('ReasoningChain', () => {
             expect(summary).toContain('timing attack');
         });
     });
+
+    describe('isolation', () => {
+        it('should not share state between separate instances', () => {
+            const chain1 = new ReasoningChain();
+            const chain2 = new ReasoningChain();
+
+            chain1.addCheckpoint('agent1 topic', ['risk from agent 1']);
+            chain1.recordToolCall('find_usages');
+            chain1.recordToolCall('read_file');
+
+            chain2.addCheckpoint('agent2 topic', ['risk from agent 2']);
+            chain2.recordToolCall('validate_claim');
+
+            // Chain1 should not see chain2's tool calls or hypotheses
+            expect(chain1.getAllHypotheses()).toHaveLength(1);
+            expect(chain1.getAllHypotheses()[0].text).toBe('risk from agent 1');
+            expect(chain1.getToolCallsSinceLastCheckpoint()).toEqual([
+                'find_usages',
+                'read_file',
+            ]);
+
+            // Chain2 should not see chain1's tool calls or hypotheses
+            expect(chain2.getAllHypotheses()).toHaveLength(1);
+            expect(chain2.getAllHypotheses()[0].text).toBe('risk from agent 2');
+            expect(chain2.getToolCallsSinceLastCheckpoint()).toEqual([
+                'validate_claim',
+            ]);
+        });
+
+        it('should not have checkpoint reset affect other instances', () => {
+            const chain1 = new ReasoningChain();
+            const chain2 = new ReasoningChain();
+
+            chain1.recordToolCall('find_usages');
+            chain2.recordToolCall('read_file');
+
+            // Chain1 adds checkpoint, which resets its tool calls
+            chain1.addCheckpoint('reset test', []);
+
+            // Chain2's tool calls should be unaffected
+            expect(chain2.getToolCallsSinceLastCheckpoint()).toEqual([
+                'read_file',
+            ]);
+            expect(chain2.getInvestigationToolCountSinceLastCheckpoint()).toBe(
+                1
+            );
+
+            // Chain1's tool calls should be reset
+            expect(chain1.getToolCallsSinceLastCheckpoint()).toEqual([]);
+        });
+    });
 });

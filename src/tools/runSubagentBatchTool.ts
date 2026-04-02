@@ -422,7 +422,6 @@ RULES:
                     subagentSessionManager: sessionManager,
                     childBudget: alloc.childBudget,
                     findingStore: context.findingStore,
-                    reasoningChain: context.reasoningChain,
                     calibrationProfile: context.calibrationProfile,
                     investigatedFiles: context.investigatedFiles,
                 }

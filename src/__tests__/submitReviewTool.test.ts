@@ -320,4 +320,114 @@ const x = 1;
             expect(result.success).toBe(true);
         });
     });
+
+    describe('Hypothesis enforcement gate', () => {
+        it('rejects review when confirmed hypotheses exist but zero findings recorded', async () => {
+            const { ReasoningChain } =
+                await import('../sessions/reasoningChain');
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth review', ['timing attack on login']);
+            chain.markConfirmed(1, 'found via find_usages');
+
+            const store = new FindingStore();
+            const ctx = ctxWithReflection({
+                reasoningChain: chain,
+                findingStore: store,
+            });
+
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'This PR looks good. No significant issues found in the auth module.',
+                },
+                ctx
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('CONFIRMED');
+            expect(result.error).toContain('timing attack on login');
+            expect(result.error).toContain('record_finding');
+        });
+
+        it('allows review when confirmed hypotheses have corresponding findings', async () => {
+            const { ReasoningChain } =
+                await import('../sessions/reasoningChain');
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth review', ['timing attack on login']);
+            chain.markConfirmed(1, 'found it');
+
+            const store = new FindingStore();
+            store.record({
+                agentId: 'root',
+                severity: 'HIGH',
+                category: 'security_vulnerability',
+                title: 'Timing attack on login',
+                file: 'src/auth.ts',
+                lineRange: [10, 15],
+                description: 'Password comparison using ===',
+                affectedComponent: 'login()',
+                failureMechanism: 'wrong_return_value',
+                supportingToolCalls: ['find_usages'],
+                disproof: {
+                    attempted: true,
+                    method: 'checked callers',
+                    result: 'confirmed',
+                },
+                verifiableClaims: [],
+            });
+
+            const ctx = ctxWithReflection({
+                reasoningChain: chain,
+                findingStore: store,
+            });
+
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'Found a timing attack vulnerability in the login auth module at src/auth.ts.',
+                },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+        });
+
+        it('allows review when no hypotheses were confirmed', async () => {
+            const { ReasoningChain } =
+                await import('../sessions/reasoningChain');
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth review', ['timing attack']);
+            chain.markDismissed(1, 'all callers handle it');
+
+            const store = new FindingStore();
+            const ctx = ctxWithReflection({
+                reasoningChain: chain,
+                findingStore: store,
+            });
+
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'This PR looks good. All hypotheses were investigated and dismissed.',
+                },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+        });
+
+        it('allows review when no reasoning chain present', async () => {
+            const ctx = ctxWithReflection();
+
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'Simple review without reasoning chain tracking.',
+                },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+        });
+    });
 });
