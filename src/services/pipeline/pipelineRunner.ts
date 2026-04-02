@@ -1,0 +1,73 @@
+import type { PipelineStep, PipelineContext, StepRecord } from './types';
+import { Log } from '../loggingService';
+
+/**
+ * Generic pipeline runner. Iterates steps in order:
+ * check shouldRun → time → execute → record.
+ */
+export async function runPipeline(
+    steps: PipelineStep[],
+    context: PipelineContext
+): Promise<StepRecord[]> {
+    const records: StepRecord[] = [];
+
+    for (const step of steps) {
+        if (context.token.isCancellationRequested) {
+            records.push({
+                name: step.name,
+                label: step.label,
+                kind: step.kind,
+                status: 'cancelled',
+                durationMs: 0,
+            });
+            continue;
+        }
+
+        if (!step.shouldRun(context)) {
+            records.push({
+                name: step.name,
+                label: step.label,
+                kind: step.kind,
+                status: 'skipped',
+                durationMs: 0,
+            });
+            Log.info(`Pipeline: skipping "${step.label}"`);
+            continue;
+        }
+
+        Log.info(`Pipeline: starting "${step.label}"`);
+        const start = performance.now();
+
+        const result = await step.execute(context);
+        const durationMs = Math.round(performance.now() - start);
+
+        // Accumulate dropped titles into shared context
+        if (result.findingsDropped.length > 0) {
+            context.droppedTitles.push(...result.findingsDropped);
+        }
+
+        // Accumulate tool call records
+        if (result.toolCallRecords.length > 0) {
+            context.additionalToolCallRecords.push(...result.toolCallRecords);
+        }
+
+        records.push({
+            name: step.name,
+            label: step.label,
+            kind: step.kind,
+            status: 'executed',
+            durationMs,
+            result,
+        });
+
+        Log.info(
+            `Pipeline: "${step.label}" completed in ${durationMs}ms` +
+                (result.findingsDropped.length > 0
+                    ? ` (dropped ${result.findingsDropped.length})`
+                    : '') +
+                (result.summary ? ` — ${result.summary}` : '')
+        );
+    }
+
+    return records;
+}

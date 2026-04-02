@@ -27,6 +27,7 @@ import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
 import { type SelfReflectionScore } from './selfReflectionScorer';
+import type { StepRecord } from './pipeline/types';
 import type { ILLMClient } from '../models/ILLMClient';
 import type { ChatToolCallHandler } from '../types/chatTypes';
 
@@ -74,6 +75,7 @@ export interface AnalysisEngineResult {
     iterationsUsed: number | undefined;
     selfReflectionScores: SelfReflectionScore[];
     filesAnalyzed: number;
+    stepRecords: StepRecord[];
 }
 
 /**
@@ -196,6 +198,7 @@ export class AnalysisEngine implements vscode.Disposable {
         let analysisText = '';
         let filesAnalyzed = 0;
         let selfReflectionScores: SelfReflectionScore[] = [];
+        let stepRecords: StepRecord[] = [];
 
         try {
             Log.info('Starting analysis with tool-calling support');
@@ -433,6 +436,7 @@ export class AnalysisEngine implements vscode.Disposable {
                 }
 
                 selfReflectionScores = pipelineResult.selfReflectionScores;
+                stepRecords = pipelineResult.stepRecords;
 
                 output.onProgress(
                     `Analysis complete (${toolCallRecords.length} tool calls)`,
@@ -474,6 +478,7 @@ export class AnalysisEngine implements vscode.Disposable {
             iterationsUsed: conversationRunner.iterationsUsed,
             selfReflectionScores,
             filesAnalyzed,
+            stepRecords,
         };
     }
 

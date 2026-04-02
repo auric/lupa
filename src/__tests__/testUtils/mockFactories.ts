@@ -706,5 +706,6 @@ export function createMockAnalysisEngineResult(
         iterationsUsed: overrides.iterationsUsed ?? 5,
         selfReflectionScores: overrides.selfReflectionScores ?? [],
         filesAnalyzed: overrides.filesAnalyzed ?? 0,
+        stepRecords: overrides.stepRecords ?? [],
     };
 }
