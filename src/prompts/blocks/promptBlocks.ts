@@ -28,3 +28,5 @@ export {
     generateExplorationReflectionGuidance,
 } from './selfReflection';
 export { generateFindingQualityGuidance } from './findingQualityGuidance';
+export { generateFewShotExamples } from './fewShotExamples';
+export { generateVerificationChecklist } from './verificationChecklist';
