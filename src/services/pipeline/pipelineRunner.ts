@@ -66,6 +66,19 @@ export async function runPipeline(
             Log.warn(
                 `Pipeline: "${step.label}" failed after ${durationMs}ms — ${getErrorMessage(error)}`
             );
+
+            // Record remaining steps as not-reached for telemetry/Phase UI
+            const failedIdx = steps.indexOf(step);
+            for (let i = failedIdx + 1; i < steps.length; i++) {
+                const remaining = steps[i]!;
+                records.push({
+                    name: remaining.name,
+                    label: remaining.label,
+                    kind: remaining.kind,
+                    status: 'not-reached',
+                    durationMs: 0,
+                });
+            }
             break;
         }
         const durationMs = Math.round(performance.now() - start);

@@ -243,7 +243,7 @@ describe('runPipeline', () => {
         expect(records[1].durationMs).toBe(0);
     });
 
-    it('records failed status and returns partial records when step.execute rejects', async () => {
+    it('records failed status and marks remaining steps as not-reached', async () => {
         const error = new Error('step blew up');
         const failingStep = createMockStep({
             name: 'failing-step',
@@ -257,10 +257,13 @@ describe('runPipeline', () => {
 
         const records = await runPipeline([failingStep, nextStep], context);
 
-        expect(records).toHaveLength(1);
+        expect(records).toHaveLength(2);
         expect(records[0].name).toBe('failing-step');
         expect(records[0].status).toBe('failed');
         expect(records[0].durationMs).toBeGreaterThanOrEqual(0);
+        expect(records[1].name).toBe('next-step');
+        expect(records[1].status).toBe('not-reached');
+        expect(records[1].durationMs).toBe(0);
         expect(nextStep.execute).not.toHaveBeenCalled();
     });
 
