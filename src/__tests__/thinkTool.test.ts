@@ -163,4 +163,162 @@ describe('ThinkTool', () => {
         const parsed = tool.schema.safeParse({});
         expect(parsed.success).toBe(false);
     });
+
+    describe('ReasoningChain integration', () => {
+        it('should record checkpoint in reasoning chain', async () => {
+            const { ReasoningChain } =
+                await import('../sessions/reasoningChain');
+            const chain = new ReasoningChain();
+            const context = createMockExecutionContext({
+                reasoningChain: chain,
+            });
+
+            await tool.execute(
+                {
+                    topic: 'auth changes',
+                    analysis: 'Reviewing auth module',
+                    identified_risks: ['timing attack', 'null check'],
+                    next_action: 'investigate with find_usages',
+                },
+                context
+            );
+
+            expect(chain.getCheckpointCount()).toBe(1);
+            expect(chain.getAllHypotheses()).toHaveLength(2);
+        });
+
+        it('should warn about evidence gap when recording without investigation', async () => {
+            const { ReasoningChain } =
+                await import('../sessions/reasoningChain');
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('previous', ['risk1']); // simulate a prior checkpoint
+            const context = createMockExecutionContext({
+                reasoningChain: chain,
+                toolCallCounts: new Map([['think', 2]]),
+            });
+
+            const result = await tool.execute(
+                {
+                    topic: 'ready to record',
+                    analysis: 'I found an issue',
+                    identified_risks: [],
+                    next_action: 'record_finding for the issue',
+                },
+                context
+            );
+
+            expect(result.data).toContain('EVIDENCE GAP');
+        });
+
+        it('should NOT warn about evidence gap when investigation tools were called', async () => {
+            const { ReasoningChain } =
+                await import('../sessions/reasoningChain');
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('previous', []);
+            chain.recordToolCall('find_usages');
+            chain.recordToolCall('read_file');
+            const context = createMockExecutionContext({
+                reasoningChain: chain,
+                toolCallCounts: new Map([['think', 2]]),
+            });
+
+            const result = await tool.execute(
+                {
+                    topic: 'ready to record',
+                    analysis: 'Confirmed the issue with tools',
+                    identified_risks: [],
+                    next_action: 'record_finding for the issue',
+                },
+                context
+            );
+
+            expect(result.data).not.toContain('EVIDENCE GAP');
+        });
+
+        it('should warn about stale hypotheses from earlier checkpoints', async () => {
+            const { ReasoningChain } =
+                await import('../sessions/reasoningChain');
+            const chain = new ReasoningChain();
+            // Checkpoint 1: generate hypothesis
+            chain.addCheckpoint('file1', ['forgotten risk']);
+            // Checkpoint 2: no investigation
+            chain.addCheckpoint('file2', []);
+
+            const toolCallCounts = new Map<string, number>([['think', 3]]);
+            const context = createMockExecutionContext({
+                reasoningChain: chain,
+                toolCallCounts,
+            });
+
+            // Checkpoint 3: should warn about stale hypothesis from checkpoint 1
+            const result = await tool.execute(
+                {
+                    topic: 'synthesis',
+                    analysis: 'Everything looks fine',
+                    identified_risks: [],
+                    next_action: 'submit review',
+                },
+                context
+            );
+
+            expect(result.data).toContain('STALE HYPOTHESES');
+            expect(result.data).toContain('forgotten risk');
+        });
+
+        it('should show open hypothesis status for dismissive models', async () => {
+            const { ReasoningChain } =
+                await import('../sessions/reasoningChain');
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack', 'null check']);
+
+            const toolCallCounts = new Map<string, number>([['think', 3]]);
+            const context = createMockExecutionContext({
+                reasoningChain: chain,
+                toolCallCounts,
+                calibrationProfile: {
+                    ...createMockExecutionContext().calibrationProfile,
+                    findingBias: 'dismissive' as const,
+                    challengeMode: 'prosecution' as const,
+                },
+            });
+
+            const result = await tool.execute(
+                {
+                    topic: 'progress check',
+                    analysis: 'Some progress made',
+                    identified_risks: [],
+                    next_action: 'continue investigating',
+                },
+                context
+            );
+
+            expect(result.data).toContain('Open hypotheses');
+            expect(result.data).toContain('timing attack');
+        });
+
+        it('should NOT show hypothesis status for balanced models', async () => {
+            const { ReasoningChain } =
+                await import('../sessions/reasoningChain');
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack']);
+
+            const toolCallCounts = new Map<string, number>([['think', 3]]);
+            const context = createMockExecutionContext({
+                reasoningChain: chain,
+                toolCallCounts,
+            });
+
+            const result = await tool.execute(
+                {
+                    topic: 'progress check',
+                    analysis: 'Some progress',
+                    identified_risks: [],
+                    next_action: 'continue',
+                },
+                context
+            );
+
+            expect(result.data).not.toContain('Open hypotheses');
+        });
+    });
 });

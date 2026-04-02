@@ -76,8 +76,8 @@ export class ThinkTool extends BaseTool {
         const wantsToRecord = next_action
             ? /record.?finding|record_finding/i.test(next_action)
             : false;
-        const investigationCount =
-            chain?.getInvestigationToolCountSinceLastCheckpoint() ?? 0;
+        // Use checkpoint's captured count — addCheckpoint already reset the running counter
+        const investigationCount = checkpoint?.investigationToolCount ?? 0;
 
         if (wantsToRecord && checkpoint && investigationCount === 0) {
             parts.push(
