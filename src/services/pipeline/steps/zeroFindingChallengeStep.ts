@@ -19,9 +19,6 @@ export function createZeroFindingChallengeStep(): PipelineStep {
         kind: 'llm-conversation',
 
         shouldRun(context: PipelineContext): boolean {
-            if (context.token.isCancellationRequested) {
-                return false;
-            }
             return (
                 context.findingStore.size === 0 &&
                 context.parsedDiff.length >= MIN_FILES_FOR_NONTRIVIAL_PR &&

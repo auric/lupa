@@ -17,8 +17,8 @@ export function createWorkflowEnforcementStep(): PipelineStep {
             'Detects workflow gaps (think tool not called, required tools not used, uninvestigated files) and re-enters conversation to complete them',
         kind: 'llm-conversation',
 
-        shouldRun(context: PipelineContext): boolean {
-            return !context.token.isCancellationRequested;
+        shouldRun(): boolean {
+            return true;
         },
 
         async execute(context: PipelineContext): Promise<PipelineStepResult> {
