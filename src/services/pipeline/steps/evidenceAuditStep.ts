@@ -4,7 +4,7 @@ import type {
     PipelineContext,
     PipelineStep,
     PipelineStepResult,
-} from '../types';
+} from '../pipelineTypes';
 
 export function createEvidenceAuditStep(): PipelineStep {
     return {

@@ -3,7 +3,7 @@ import type {
     PipelineContext,
     PipelineStepResult,
     StepRecord,
-} from './types';
+} from './pipelineTypes';
 import { Log } from '../loggingService';
 
 /**

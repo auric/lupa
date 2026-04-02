@@ -6,7 +6,7 @@ export type {
     PipelineContext,
     StepRecord,
     StepStatus,
-} from './types';
+} from './pipelineTypes';
 
 // Pipeline utilities
 export {

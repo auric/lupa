@@ -2,7 +2,7 @@ import type {
     PipelineStep,
     PipelineContext,
     PipelineStepResult,
-} from '../types';
+} from '../pipelineTypes';
 import { runSelfReflection } from '../../selfReflectionScorer';
 
 export function createSelfReflectionStep(): PipelineStep {

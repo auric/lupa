@@ -14,7 +14,7 @@ import type { FindingValidator } from './findingValidator';
 import type { SelfReflectionScore } from './selfReflectionScorer';
 import type { FeedbackStore as FeedbackStoreType } from './feedbackStore';
 import type * as vscode from 'vscode';
-import type { StepRecord } from './pipeline/types';
+import type { StepRecord } from './pipeline/pipelineTypes';
 import {
     runPipeline,
     createWorkflowEnforcementStep,

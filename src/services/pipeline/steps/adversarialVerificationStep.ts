@@ -3,7 +3,7 @@ import type {
     PipelineContext,
     PipelineStep,
     PipelineStepResult,
-} from '../types';
+} from '../pipelineTypes';
 
 export function createAdversarialVerificationStep(): PipelineStep {
     return {

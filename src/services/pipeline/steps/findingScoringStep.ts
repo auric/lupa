@@ -6,7 +6,7 @@ import type {
     PipelineContext,
     PipelineStep,
     PipelineStepResult,
-} from '../types';
+} from '../pipelineTypes';
 
 export function createFindingScoringStep(): PipelineStep {
     return {

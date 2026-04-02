@@ -5,7 +5,7 @@ import type {
     PipelineContext,
     PipelineStep,
     PipelineStepResult,
-} from '../types';
+} from '../pipelineTypes';
 
 const WORKFLOW_BUDGET = 30;
 

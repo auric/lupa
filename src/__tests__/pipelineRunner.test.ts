@@ -1,6 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { runPipeline } from '../services/pipeline/pipelineRunner';
-import type { PipelineStep, PipelineContext } from '../services/pipeline/types';
+import type {
+    PipelineStep,
+    PipelineContext,
+} from '../services/pipeline/pipelineTypes';
 import { createMockCancellationToken } from './testUtils/mockFactories';
 
 function createMockStep(overrides: Partial<PipelineStep> = {}): PipelineStep {

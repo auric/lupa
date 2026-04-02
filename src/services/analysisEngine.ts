@@ -27,7 +27,7 @@ import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
 import { type SelfReflectionScore } from './selfReflectionScorer';
-import type { StepRecord } from './pipeline/types';
+import type { StepRecord } from './pipeline/pipelineTypes';
 import type { ILLMClient } from '../models/ILLMClient';
 import type { ChatToolCallHandler } from '../types/chatTypes';
 

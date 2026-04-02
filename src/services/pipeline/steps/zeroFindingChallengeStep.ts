@@ -5,7 +5,7 @@ import type {
     PipelineContext,
     PipelineStep,
     PipelineStepResult,
-} from '../types';
+} from '../pipelineTypes';
 
 const CHALLENGE_BUDGET = 15;
 const MIN_FILES_FOR_NONTRIVIAL_PR = 5;

@@ -3,7 +3,7 @@ import type {
     PipelineStep,
     PipelineContext,
     PipelineStepResult,
-} from '../types';
+} from '../pipelineTypes';
 
 const REWRITE_BUDGET = 10;
 const REWRITE_ALLOWED_TOOLS = new Set([
