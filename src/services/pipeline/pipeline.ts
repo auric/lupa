@@ -9,12 +9,7 @@ export type {
 } from './pipelineTypes';
 
 // Pipeline utilities
-export {
-    SEVERITY_ORDER,
-    downgradeSeverity,
-    filterTools,
-} from './pipelineUtils';
-export type { FindingSeverity } from './pipelineUtils';
+export { downgradeSeverity, filterTools } from './pipelineUtils';
 
 // Pipeline runner
 export { runPipeline } from './pipelineRunner';

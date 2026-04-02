@@ -1,7 +1,12 @@
 import type { ITool } from '../../tools/ITool';
+import type { FindingSeverity } from '../../types/findingTypes';
 
-export const SEVERITY_ORDER = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
-export type FindingSeverity = (typeof SEVERITY_ORDER)[number];
+const SEVERITY_ORDER: readonly FindingSeverity[] = [
+    'LOW',
+    'MEDIUM',
+    'HIGH',
+    'CRITICAL',
+] as const;
 
 export function downgradeSeverity(
     severity: string
