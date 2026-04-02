@@ -77,14 +77,11 @@ index 1234567..abcdefg 100644
 --- a/src/services/analysisProvider.ts
 +++ b/src/services/analysisProvider.ts
 @@ -45,6 +45,10 @@ export class AnalysisProvider {
-         const result = await this.analysisEngine.analyze(
-             diffText,
-+            undefined, // options
-+            mode,
-+            undefined, // systemPrompt
-+            progressCallback,
-             token
-         );`;
+-        const result = await this.analysisEngine.analyze(
+-            diffText,
+-            token
+-        );
++        const result = await this.analysisEngine.analyze(input, output);`;
 
         const analysis = `# PR Analysis Results
 

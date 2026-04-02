@@ -56,7 +56,7 @@ export interface AnalysisEngineOutput {
         maxTurns: number
     ): void;
     onToolCallStart?(
-        name: string,
+        toolName: string,
         args: Record<string, unknown>,
         toolIndex: number,
         totalTools: number
