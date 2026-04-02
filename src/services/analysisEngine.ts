@@ -119,6 +119,14 @@ export class AnalysisEngine implements vscode.Disposable {
         const subagentSessionManager = new SubagentSessionManager(
             this.workspaceSettings
         );
+
+        // Determine analysis approach and recursive mode early — needed for SubagentExecutor setup.
+        const maxRecursionDepth = this.workspaceSettings.getMaxRecursionDepth();
+        const isRecursiveMode = maxRecursionDepth >= 1;
+
+        // Only pass onAgentProgress in recursive mode — it signals SubagentExecutor
+        // to suppress text-based progress in favor of structured agent progress.
+        // In non-recursive mode, text progress via progressCallback is the only channel.
         const subagentExecutor = new SubagentExecutor(
             input.llmClient,
             this.toolRegistry,
@@ -126,7 +134,7 @@ export class AnalysisEngine implements vscode.Disposable {
             this.workspaceSettings,
             input.chatHandler,
             (msg, inc) => output.onProgress(msg, inc),
-            output.onAgentProgress
+            isRecursiveMode && output.onAgentProgress
                 ? (completed, total, running) =>
                       output.onAgentProgress!(
                           completed,
@@ -137,10 +145,6 @@ export class AnalysisEngine implements vscode.Disposable {
                       )
                 : undefined
         );
-
-        // Determine analysis approach and recursive mode.
-        const maxRecursionDepth = this.workspaceSettings.getMaxRecursionDepth();
-        const isRecursiveMode = maxRecursionDepth >= 1;
 
         // Create RecursiveStateManager when in recursive mode
         const recursiveState = isRecursiveMode
