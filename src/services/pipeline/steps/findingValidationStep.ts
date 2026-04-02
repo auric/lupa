@@ -15,7 +15,7 @@ export function createFindingValidationStep(): PipelineStep {
 
         shouldRun(context: PipelineContext): boolean {
             return (
-                context.findingStore.size > 0 && context.parsedDiff?.length > 0
+                context.findingStore.size > 0 && context.parsedDiff.length > 0
             );
         },
 

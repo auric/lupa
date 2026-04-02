@@ -9,9 +9,9 @@ const SEVERITY_ORDER: readonly FindingSeverity[] = [
 ] as const;
 
 export function downgradeSeverity(
-    severity: string
+    severity: FindingSeverity
 ): FindingSeverity | undefined {
-    const idx = SEVERITY_ORDER.indexOf(severity as FindingSeverity);
+    const idx = SEVERITY_ORDER.indexOf(severity);
     if (idx > 0) {
         return SEVERITY_ORDER[idx - 1];
     }
