@@ -73,13 +73,14 @@ export function createFindingScoringStep(): PipelineStep {
                     if (finding) {
                         const newSeverity = downgradeSeverity(finding.severity);
                         if (newSeverity) {
+                            const oldSeverity = finding.severity;
                             findingsDowngraded.push(finding.title);
                             context.findingStore.updateSeverity(
                                 score.findingId,
                                 newSeverity
                             );
                             Log.info(
-                                `FindingScorer: downgraded "${finding.title}" ${finding.severity} → ${newSeverity} (score: ${score.overallScore})`
+                                `FindingScorer: downgraded "${finding.title}" ${oldSeverity} → ${newSeverity} (score: ${score.overallScore})`
                             );
                         }
                     }

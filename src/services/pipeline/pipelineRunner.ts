@@ -6,6 +6,7 @@ import type {
 } from './pipelineTypes';
 import { Log } from '../loggingService';
 import { isCancellationError } from '../../utils/asyncUtils';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 /**
  * Generic pipeline runner. Iterates steps in order:
@@ -62,7 +63,9 @@ export async function runPipeline(
                 status: 'failed',
                 durationMs,
             });
-            Log.warn(`Pipeline: "${step.label}" failed after ${durationMs}ms`);
+            Log.warn(
+                `Pipeline: "${step.label}" failed after ${durationMs}ms — ${getErrorMessage(error)}`
+            );
             break;
         }
         const durationMs = Math.round(performance.now() - start);
