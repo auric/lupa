@@ -557,8 +557,13 @@ export class ChatParticipantService implements vscode.Disposable {
         };
 
         const output: AnalysisEngineOutput = {
-            onProgress: (msg) =>
-                stream.progress(`${ACTIVITY.analyzing} ${msg}`),
+            onProgress: (msg) => {
+                if (msg.startsWith('Sub-analysis')) {
+                    return;
+                }
+                stream.progress(`${ACTIVITY.analyzing} ${msg}`);
+            },
+            onAgentProgress: () => {},
             onToolCallStart: adapter.onToolCallStart?.bind(adapter),
             onToolCallComplete: (record) => {
                 adapter.onToolCallComplete?.(
