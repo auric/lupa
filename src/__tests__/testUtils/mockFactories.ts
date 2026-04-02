@@ -9,6 +9,12 @@ import {
     RECURSION_LIMITS,
 } from '../../models/workspaceSettingsSchema';
 import type { WorkspaceSettingsService } from '../../services/workspaceSettingsService';
+import type {
+    AnalysisEngineInput,
+    AnalysisEngineOutput,
+    AnalysisEngineResult,
+} from '../../services/analysisEngine';
+import type { ILLMClient } from '../../models/ILLMClient';
 import type { ExecutionContext } from '../../types/executionContext';
 import { RecursiveStateManager } from '../../sessions/recursiveStateManager';
 import { DEFAULT_PROFILE } from '../../models/modelCalibration';
@@ -563,19 +569,6 @@ export function createMockWorkspaceSettings(
 }
 
 /**
- * Standard mock for CopilotModelManager.
- */
-export function createMockCopilotModelManager() {
-    return {
-        sendRequest: vi.fn(),
-        getCurrentModel: vi.fn().mockResolvedValue({
-            countTokens: vi.fn().mockResolvedValue(100),
-            maxInputTokens: 8000,
-        }),
-    };
-}
-
-/**
  * Creates a mock CancellationToken for simple use cases where a full
  * CancellationTokenSource is not needed.
  *
@@ -660,4 +653,58 @@ export function createTestRecursiveState(
     );
     recursiveState.startAgent(rootId);
     return { recursiveState, rootId };
+}
+
+/**
+ * Creates a mock AnalysisEngineInput with sensible defaults.
+ */
+export function createMockAnalysisEngineInput(
+    overrides: Partial<AnalysisEngineInput> = {}
+): AnalysisEngineInput {
+    return {
+        parsedDiff: overrides.parsedDiff ?? [],
+        llmClient: overrides.llmClient ?? ({} as ILLMClient),
+        model: overrides.model ?? {
+            family: 'gpt-4o',
+            id: 'gpt-4o',
+            name: 'GPT-4o',
+            maxInputTokens: 8000,
+        },
+        token: overrides.token ?? createMockCancellationTokenSource().token,
+        userPromptSuffix: overrides.userPromptSuffix ?? undefined,
+        chatHandler: overrides.chatHandler ?? undefined,
+    };
+}
+
+/**
+ * Creates a mock AnalysisEngineOutput with no-op callbacks.
+ */
+export function createMockAnalysisEngineOutput(
+    overrides: Partial<AnalysisEngineOutput> = {}
+): AnalysisEngineOutput {
+    return {
+        onProgress: overrides.onProgress ?? vi.fn(),
+        onAgentProgress: overrides.onAgentProgress,
+        onToolCallStart: overrides.onToolCallStart,
+        onToolCallComplete: overrides.onToolCallComplete,
+        onIterationStart: overrides.onIterationStart,
+    };
+}
+
+/**
+ * Creates a mock AnalysisEngineResult representing a successful analysis.
+ */
+export function createMockAnalysisEngineResult(
+    overrides: Partial<AnalysisEngineResult> = {}
+): AnalysisEngineResult {
+    return {
+        analysisText: overrides.analysisText ?? 'Mock analysis result',
+        toolCallRecords: overrides.toolCallRecords ?? [],
+        completed: overrides.completed ?? true,
+        wasCancelled: overrides.wasCancelled ?? false,
+        error: overrides.error ?? undefined,
+        iterationsUsed: overrides.iterationsUsed ?? 5,
+        selfReflectionScores: overrides.selfReflectionScores ?? [],
+        filesAnalyzed: overrides.filesAnalyzed ?? 0,
+    };
 }

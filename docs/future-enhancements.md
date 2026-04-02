@@ -176,7 +176,7 @@ LangChain research shows that with many tools, LLMs select wrong tools 3x more o
 ### Implementation Sketch
 
 ```
-Location: src/services/toolCallingAnalysisProvider.ts
+Location: src/services/analysisEngine.ts
 
 Per-turn tool filtering:
   1. Before each LLM call, analyze the LLM's last message

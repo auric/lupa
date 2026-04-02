@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as z from 'zod';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
+import { AnalysisEngine } from '../services/analysisEngine';
 import { ToolResult } from '../types/toolResultTypes';
 import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
@@ -11,6 +11,8 @@ import { SubmitReviewTool } from '../tools/submitReviewTool';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
+    createMockAnalysisEngineInput,
+    createMockAnalysisEngineOutput,
 } from './testUtils/mockFactories';
 import type { ExecutionContext } from '../types/executionContext';
 
@@ -53,8 +55,8 @@ class MockAnalysisTool implements ITool {
     }
 }
 
-describe('ToolCallingAnalysisProvider Integration', () => {
-    let provider: ToolCallingAnalysisProvider;
+describe('AnalysisEngine Integration', () => {
+    let provider: AnalysisEngine;
     let mockToolRegistry: any;
     let mockCopilotModelManager: any;
     let mockPromptGenerator: PromptGenerator;
@@ -153,9 +155,8 @@ index 1234567..abcdefg 100644
             }),
         } as any;
 
-        provider = new ToolCallingAnalysisProvider(
+        provider = new AnalysisEngine(
             mockToolRegistry,
-            mockCopilotModelManager,
             mockPromptGenerator,
             mockWorkspaceSettings,
             mockDiffEnricher,
@@ -185,7 +186,14 @@ index 1234567..abcdefg 100644
                 'generateUserPrompt'
             );
 
-            await provider.analyze(sampleDiff, tokenSource.token);
+            await provider.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
 
             // Verify tool-aware system prompt was generated
             expect(generateToolAwareSystemPromptSpy).toHaveBeenCalled();
@@ -203,12 +211,29 @@ index 1234567..abcdefg 100644
             );
         });
 
-        it('should parse diff using DiffUtils', async () => {
-            const parseDiffSpy = vi.spyOn(DiffUtils, 'parseDiff');
+        it('should pass pre-parsed diff to prompt generator', async () => {
+            const parsedDiff = DiffUtils.parseDiff(sampleDiff);
+            const generateUserPromptSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateUserPrompt'
+            );
 
-            await provider.analyze(sampleDiff, tokenSource.token);
+            await provider.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
 
-            expect(parseDiffSpy).toHaveBeenCalledWith(sampleDiff);
+            expect(generateUserPromptSpy).toHaveBeenCalledWith(
+                parsedDiff,
+                expect.toSatisfy(() => true),
+                expect.toSatisfy(() => true),
+                expect.toSatisfy(() => true),
+                expect.toSatisfy(() => true)
+            );
         });
 
         // Note: conversation history clearing and message adding are now internal
@@ -268,8 +293,12 @@ index 1234567..abcdefg 100644
                 });
 
             const result = await provider.analyze(
-                sampleDiff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             // Verify tool execute was called with parsed arguments
@@ -287,7 +316,7 @@ index 1234567..abcdefg 100644
             );
 
             // Verify final result
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Final analysis based on tool results. This review includes comprehensive findings about the validateToken function and its usage patterns.'
             );
         });
@@ -298,7 +327,14 @@ index 1234567..abcdefg 100644
                 'generateToolAwareSystemPrompt'
             );
 
-            await provider.analyze(sampleDiff, tokenSource.token);
+            await provider.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
 
             // System prompt generation no longer receives tools directly (sent via VS Code API)
             expect(generateToolAwareSystemPromptSpy).toHaveBeenCalled();
@@ -318,7 +354,14 @@ index 1234567..abcdefg 100644
                 'generateUserPrompt'
             );
 
-            await provider.analyze(sampleDiff, tokenSource.token);
+            await provider.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
 
             const userPromptCall = generateUserPromptSpy.mock.calls[0];
             const [parsedDiffParam] = userPromptCall;
@@ -397,11 +440,15 @@ index 1234567..abcdefg 100644
                 });
 
             const result = await provider.analyze(
-                sampleDiff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Analysis despite tool error. The review continues with available information and provides recommendations based on the code changes.'
             );
             // Tool messages are now added to internal ConversationManager
@@ -470,12 +517,16 @@ index 1234567..abcdefg 100644
                 });
 
             const result = await provider.analyze(
-                sampleDiff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
             // Should still complete despite malformed arguments
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Final result. Despite the malformed tool arguments, the analysis completed successfully with comprehensive findings and recommendations.'
             );
             // Verify tool was called with empty object for malformed JSON
@@ -497,12 +548,16 @@ index 1234567..abcdefg 100644
             );
 
             const result = await provider.analyze(
-                sampleDiff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toContain('Error during analysis');
-            expect(result.analysis).toContain('LLM service unavailable');
+            expect(result.analysisText).toContain('Error during analysis');
+            expect(result.analysisText).toContain('LLM service unavailable');
         });
     });
 
@@ -533,7 +588,14 @@ index 0000000..3333333
                 'generateUserPrompt'
             );
 
-            await provider.analyze(complexDiff, tokenSource.token);
+            await provider.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(complexDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
 
             const parsedDiff = generateUserPromptSpy.mock
                 .calls[0][0] as DiffHunk[];
@@ -621,25 +683,39 @@ index 3333333..4444444 100644
 
             // Run both analyses concurrently
             const [result1, result2] = await Promise.all([
-                provider.analyze(diff1, tokenSource1.token),
-                provider.analyze(diff2, tokenSource2.token),
+                provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(diff1),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource1.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                ),
+                provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(diff2),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource2.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                ),
             ]);
 
             // Verify each analysis got its own distinct result
-            expect(result1.analysis).toContain('Concurrent analysis 1');
-            expect(result1.analysis).toContain('file1');
-            expect(result2.analysis).toContain('Concurrent analysis 2');
-            expect(result2.analysis).toContain('file2');
+            expect(result1.analysisText).toContain('Concurrent analysis 1');
+            expect(result1.analysisText).toContain('file1');
+            expect(result2.analysisText).toContain('Concurrent analysis 2');
+            expect(result2.analysisText).toContain('file2');
 
             // Verify tool call records are separate for each analysis
-            expect(result1.toolCalls.calls).toHaveLength(1);
-            expect(result1.toolCalls.calls[0].id).toBe('call_analysis_1');
-            expect(result2.toolCalls.calls).toHaveLength(1);
-            expect(result2.toolCalls.calls[0].id).toBe('call_analysis_2');
+            expect(result1.toolCallRecords).toHaveLength(1);
+            expect(result1.toolCallRecords[0].id).toBe('call_analysis_1');
+            expect(result2.toolCallRecords).toHaveLength(1);
+            expect(result2.toolCallRecords[0].id).toBe('call_analysis_2');
 
             // Verify both completed successfully
-            expect(result1.toolCalls.analysisCompleted).toBe(true);
-            expect(result2.toolCalls.analysisCompleted).toBe(true);
+            expect(result1.completed).toBe(true);
+            expect(result2.completed).toBe(true);
 
             // Cleanup
             tokenSource1.dispose();
@@ -731,21 +807,35 @@ index 3333333..4444444 100644
             const tokenSource2 = new vscode.CancellationTokenSource();
 
             const [simpleResult, complexResult] = await Promise.all([
-                provider.analyze(simpleDiff, tokenSource1.token),
-                provider.analyze(complexDiff, tokenSource2.token),
+                provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(simpleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource1.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                ),
+                provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(complexDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource2.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                ),
             ]);
 
             // Simple analysis: 1 iteration (immediate submit)
-            expect(simpleResult.toolCalls.totalCalls).toBe(1);
-            expect(simpleResult.analysis).toContain('Single iteration');
+            expect(simpleResult.toolCallRecords.length).toBe(1);
+            expect(simpleResult.analysisText).toContain('Single iteration');
 
             // Complex analysis: 2 iterations (tool call + submit)
-            expect(complexResult.toolCalls.totalCalls).toBe(2);
-            expect(complexResult.analysis).toContain('Two iterations');
+            expect(complexResult.toolCallRecords.length).toBe(2);
+            expect(complexResult.analysisText).toContain('Two iterations');
 
             // Both completed independently
-            expect(simpleResult.toolCalls.analysisCompleted).toBe(true);
-            expect(complexResult.toolCalls.analysisCompleted).toBe(true);
+            expect(simpleResult.completed).toBe(true);
+            expect(complexResult.completed).toBe(true);
 
             tokenSource1.dispose();
             tokenSource2.dispose();
@@ -821,26 +911,102 @@ index 3333333..4444444 100644
 
             // Run both analyses concurrently
             const [result1, result2] = await Promise.all([
-                provider.analyze(diff1, tokenSource1.token),
-                provider.analyze(diff2, tokenSource2.token),
+                provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(diff1),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource1.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                ),
+                provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(diff2),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource2.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                ),
             ]);
 
             // Both should complete successfully without interfering
-            expect(result1.toolCalls.analysisCompleted).toBe(true);
-            expect(result2.toolCalls.analysisCompleted).toBe(true);
-            expect(result1.analysis).toContain(
+            expect(result1.completed).toBe(true);
+            expect(result2.completed).toBe(true);
+            expect(result1.analysisText).toContain(
                 'SubagentSessionManager isolated'
             );
-            expect(result2.analysis).toContain(
+            expect(result2.analysisText).toContain(
                 'SubagentSessionManager isolated'
             );
 
             // Each analysis should have independent tool call records
-            expect(result1.toolCalls.calls[0].id).toContain('call_1_');
-            expect(result2.toolCalls.calls[0].id).toContain('call_2_');
+            expect(result1.toolCallRecords[0].id).toContain('call_1_');
+            expect(result2.toolCallRecords[0].id).toContain('call_2_');
 
             tokenSource1.dispose();
             tokenSource2.dispose();
+        });
+    });
+
+    describe('cancellation handling', () => {
+        it('should return wasCancelled=true and completed=false with pre-cancelled token', async () => {
+            const cancelledSource = createMockCancellationTokenSource();
+            cancelledSource.cancel();
+
+            const result = await provider.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: cancelledSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
+
+            expect(result.wasCancelled).toBe(true);
+            expect(result.completed).toBe(false);
+        });
+    });
+
+    describe('result metadata', () => {
+        it('should set filesAnalyzed to the number of files in the diff', async () => {
+            const multiFileDiff = `diff --git a/src/auth.ts b/src/auth.ts
+index 1234567..abcdefg 100644
+--- a/src/auth.ts
++++ b/src/auth.ts
+@@ -1,3 +1,4 @@
++import { validate } from './validate';
+ export function auth() {}
+
+diff --git a/src/utils.ts b/src/utils.ts
+index 1234567..abcdefg 100644
+--- a/src/utils.ts
++++ b/src/utils.ts
+@@ -1,3 +1,4 @@
++export const helper = true;
+ export function utils() {}
+
+diff --git a/src/config.ts b/src/config.ts
+index 1234567..abcdefg 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -1,3 +1,4 @@
++export const setting = 42;
+ export function config() {}`;
+
+            const parsedDiff = DiffUtils.parseDiff(multiFileDiff);
+            expect(parsedDiff).toHaveLength(3);
+
+            const result = await provider.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff,
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
+
+            expect(result.filesAnalyzed).toBe(3);
+            expect(Array.isArray(result.selfReflectionScores)).toBe(true);
         });
     });
 
@@ -850,9 +1016,8 @@ index 3333333..4444444 100644
                 maxRecursionDepth: 2,
             });
 
-            const rlmProvider = new ToolCallingAnalysisProvider(
+            const rlmProvider = new AnalysisEngine(
                 mockToolRegistry,
-                mockCopilotModelManager,
                 mockPromptGenerator,
                 rlmSettings,
                 mockDiffEnricher,
@@ -868,7 +1033,14 @@ index 3333333..4444444 100644
                 'generateToolAwareSystemPrompt'
             );
 
-            await rlmProvider.analyze(sampleDiff, tokenSource.token);
+            await rlmProvider.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
 
             expect(generateRecursiveSpy).toHaveBeenCalled();
             expect(generateToolAwareSpy).not.toHaveBeenCalled();
@@ -879,9 +1051,8 @@ index 3333333..4444444 100644
                 maxRecursionDepth: 0,
             });
 
-            const noRecursionProvider = new ToolCallingAnalysisProvider(
+            const noRecursionProvider = new AnalysisEngine(
                 mockToolRegistry,
-                mockCopilotModelManager,
                 mockPromptGenerator,
                 noRecursionSettings,
                 mockDiffEnricher,
@@ -897,7 +1068,14 @@ index 3333333..4444444 100644
                 'generateToolAwareSystemPrompt'
             );
 
-            await noRecursionProvider.analyze(sampleDiff, tokenSource.token);
+            await noRecursionProvider.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
 
             expect(generateToolAwareSpy).toHaveBeenCalled();
             expect(generateRecursiveSpy).not.toHaveBeenCalled();

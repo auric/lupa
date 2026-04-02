@@ -124,13 +124,13 @@ Coordinators → Services → Models → Tools
 
 ## Entry Points
 
-| File                                          | Purpose            |
-| --------------------------------------------- | ------------------ |
-| `src/extension.ts`                            | VS Code activation |
-| `src/services/prAnalysisCoordinator.ts`       | Main coordinator   |
-| `src/services/serviceManager.ts`              | DI container       |
-| `src/services/toolCallingAnalysisProvider.ts` | Analysis engine    |
-| `src/webview/main.tsx`                        | Webview entry      |
+| File                                    | Purpose            |
+| --------------------------------------- | ------------------ |
+| `src/extension.ts`                      | VS Code activation |
+| `src/services/prAnalysisCoordinator.ts` | Main coordinator   |
+| `src/services/serviceManager.ts`        | DI container       |
+| `src/services/analysisEngine.ts`        | Analysis engine    |
+| `src/webview/main.tsx`                  | Webview entry      |
 
 ## Related Documentation
 

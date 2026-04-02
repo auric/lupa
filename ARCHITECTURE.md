@@ -30,9 +30,9 @@ The `ServiceManager` initializes services in strict order to resolve dependencie
 
 1. **Foundation**: Settings, Logging, StatusBar, Git, UI
 2. **Core**: CopilotModelManager, PromptGenerator, SymbolExtractor
-3. **High-Level**: ToolRegistry, ToolExecutor, ConversationManager, ToolCallingAnalysisProvider, Tools
+3. **High-Level**: ToolRegistry, ToolExecutor, ConversationManager, AnalysisEngine, Tools
 
-**Per-analysis components** (created in `ToolCallingAnalysisProvider.analyze()`, not singletons):
+**Per-analysis components** (created in `AnalysisEngine.analyze()`, not singletons):
 
 - `SubagentSessionManager` — Tracks subagent spawn count and limits
 - `SubagentExecutor` — Executes subagent investigations
@@ -42,16 +42,16 @@ The `ServiceManager` initializes services in strict order to resolve dependencie
 
 ### Key Entry Points
 
-| File                                          | Purpose                                  |
-| --------------------------------------------- | ---------------------------------------- |
-| `src/services/serviceManager.ts`              | DI container, phase-based initialization |
-| `src/services/toolCallingAnalysisProvider.ts` | Main analysis loop with tool-calling     |
-| `src/tools/baseTool.ts`                       | Tool base class with Zod schema          |
-| `vite.config.mts`                             | Dual build configuration                 |
+| File                             | Purpose                                  |
+| -------------------------------- | ---------------------------------------- |
+| `src/services/serviceManager.ts` | DI container, phase-based initialization |
+| `src/services/analysisEngine.ts` | Main analysis loop with tool-calling     |
+| `src/tools/baseTool.ts`          | Tool base class with Zod schema          |
+| `vite.config.mts`                | Dual build configuration                 |
 
 ### Data Flow: Tool-Calling Analysis
 
-1. `AnalysisOrchestrator` → `ToolCallingAnalysisProvider`
+1. `AnalysisOrchestrator` → `AnalysisEngine`
 2. Per-analysis state created: `TokenValidator`, `SubagentSessionManager`, `SubagentExecutor`, `PlanSessionManager`
 3. LLM requests context via tools (`FindSymbolTool`, `ReadFileTool`, etc.)
 4. `ToolExecutor` runs tools (rate-limited by session)

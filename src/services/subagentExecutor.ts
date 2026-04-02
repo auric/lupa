@@ -15,7 +15,6 @@ import type { SubagentTask, SubagentResult } from '../types/modelTypes';
 import type {
     ToolCallRecord,
     AnalysisProgressCallback,
-    SubagentProgressContext,
 } from '../types/toolCallTypes';
 import type { ChatToolCallHandler } from '../types/chatTypes';
 import type { ITool } from '../tools/ITool';
@@ -84,7 +83,11 @@ export class SubagentExecutor {
         private readonly workspaceSettings: WorkspaceSettingsService,
         private readonly chatHandler?: ChatToolCallHandler,
         private readonly progressCallback?: AnalysisProgressCallback,
-        private readonly progressContext?: SubagentProgressContext
+        private readonly onAgentProgress?: (
+            completed: number,
+            total: number,
+            running: number
+        ) => void
     ) {}
 
     /**
@@ -96,42 +99,27 @@ export class SubagentExecutor {
     }
 
     /**
-     * Report progress with main analysis context prefix.
+     * Report progress to the parent analysis.
+     * Regular messages go through progressCallback.
+     * Aggregate agent status goes through onAgentProgress (if provided).
      */
     private reportProgress(message: string, increment?: number): void {
-        if (!this.progressCallback) {
-            return;
-        }
-
-        // When recursive state is available, show aggregate agent progress
+        // When recursive state is available, report aggregate agent progress
         // Skip when all agents are done (e.g., during post-analysis adversarial phase)
         // to avoid overwriting adversarial progress with stale "Agents: N/N done"
         if (this.recursiveState) {
             const { running, completed, total } =
                 this.recursiveState.getAgentProgress();
             if (total > 0 && (running > 0 || completed < total)) {
-                const mainIter = this.progressContext?.getCurrentIteration();
-                const mainMax = this.progressContext?.getMaxIterations();
-                const turnPrefix =
-                    mainIter && mainMax ? `Turn ${mainIter}/${mainMax} · ` : '';
-                this.progressCallback(
-                    `${turnPrefix}Agents: ${completed}/${total} done${running > 0 ? `, ${running} analyzing` : ''}`,
-                    increment
-                );
-                return;
+                if (this.onAgentProgress) {
+                    this.onAgentProgress(completed, total, running);
+                    return;
+                }
+                // Fall through to progressCallback if no agent progress handler
             }
         }
 
-        if (this.progressContext) {
-            const mainIter = this.progressContext.getCurrentIteration();
-            const mainMax = this.progressContext.getMaxIterations();
-            this.progressCallback(
-                `Turn ${mainIter}/${mainMax} → ${message}`,
-                increment
-            );
-        } else {
-            this.progressCallback(message, increment);
-        }
+        this.progressCallback?.(message, increment);
     }
 
     /**

@@ -1,13 +1,16 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import * as vscode from 'vscode';
 import { z } from 'zod';
-import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
+import { AnalysisEngine } from '../services/analysisEngine';
 import { TokenConstants } from '../models/tokenConstants';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
+    createMockAnalysisEngineInput,
+    createMockAnalysisEngineOutput,
 } from './testUtils/mockFactories';
+import { DiffUtils } from '../utils/diffUtils';
 
 // Mock VS Code
 vi.mock('vscode');
@@ -28,8 +31,8 @@ vi.mock('../services/loggingService', () => ({
     },
 }));
 
-describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
-    let analysisProvider: ToolCallingAnalysisProvider;
+describe('AnalysisEngine Enhanced Integration', () => {
+    let analysisProvider: AnalysisEngine;
     let mockToolRegistry: {
         getAllTools: Mock;
         getTool: Mock;
@@ -98,9 +101,8 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             }),
         } as any;
 
-        analysisProvider = new ToolCallingAnalysisProvider(
+        analysisProvider = new AnalysisEngine(
             mockToolRegistry as any,
-            mockCopilotModelManager as any,
             mockPromptGenerator as any,
             mockWorkspaceSettings,
             mockDiffEnricher,
@@ -175,11 +177,15 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             });
 
             const result = await analysisProvider.analyze(
-                smallDiff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(smallDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Final analysis based on available context. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
         });
@@ -225,11 +231,15 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             });
 
             const result = await analysisProvider.analyze(
-                smallDiff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(smallDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Final analysis with limited context. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
         });
@@ -303,11 +313,15 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                smallDiff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(smallDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Analysis based on error message. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
             // The tool error is passed to the LLM internally, verifiable through the final result
@@ -382,11 +396,15 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                diff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(diff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Based on the file content, here is my analysis: The function was renamed from old() to new(). Padding added for minimum character requirement.'
             );
 
@@ -426,11 +444,15 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                diff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(diff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Analysis after error recovery. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
             // Error recovery is handled internally, verifiable through successful analysis completion
@@ -471,11 +493,15 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             });
 
             const result = await analysisProvider.analyze(
-                diff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(diff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Conversation reached maximum iterations with no findings.'
             );
         });
@@ -541,11 +567,15 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                diff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(diff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Analysis despite tool failure. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
             // The tool error is passed to the LLM internally, verifiable through the final result
@@ -613,11 +643,15 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 });
 
             const result = await analysisProvider.analyze(
-                diff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(diff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Analysis with malformed tool call handled. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
         });

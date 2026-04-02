@@ -6,10 +6,7 @@ import { GitOperationsManager } from './gitOperationsManager';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
-import {
-    ConversationRunner,
-    type ToolCallHandler,
-} from '../models/conversationRunner';
+import { ConversationRunner } from '../models/conversationRunner';
 import { ConversationManager } from '../models/conversationManager';
 import { ChatLLMClient } from '../models/chatLLMClient';
 import type { ILLMClient } from '../models/ILLMClient';
@@ -17,22 +14,14 @@ import { ToolCallStreamAdapter } from '../models/toolCallStreamAdapter';
 import { DebouncedStreamHandler } from '../models/debouncedStreamHandler';
 import { ChatContextManager } from '../models/chatContextManager';
 import { PromptGenerator } from '../models/promptGenerator';
-import { PlanSessionManager } from './planSessionManager';
 import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
-import { CopilotModelManager } from '../models/copilotModelManager';
-import {
-    MAIN_ANALYSIS_ONLY_TOOLS,
-    INVESTIGATION_TOOLS,
-} from '../models/toolConstants';
-import { RecursiveStateManager } from '../sessions/recursiveStateManager';
-import { FindingStore } from '../sessions/findingStore';
+
+import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
-import { PostAnalysisPipeline } from './postAnalysisPipeline';
 import { formatSelfReflectionScoresMarkdown } from './selfReflectionScorer';
-import { TokenValidator } from '../models/tokenValidator';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
@@ -44,12 +33,15 @@ import type {
     ChatToolCallHandler,
     ChatAnalysisMetadata,
 } from '../types/chatTypes';
-import type { DiffHunk } from '../types/contextTypes';
-import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
 
 import { createFollowupProvider } from './chatFollowupProvider';
+import {
+    AnalysisEngine,
+    type AnalysisEngineInput,
+    type AnalysisEngineOutput,
+} from './analysisEngine';
 
 /**
  * Dependencies required for ChatParticipantService to execute analysis commands.
@@ -60,9 +52,9 @@ export interface ChatParticipantDependencies {
     workspaceSettings: WorkspaceSettingsService;
     promptGenerator: PromptGenerator;
     gitOperations: GitOperationsManager;
-    copilotModelManager: CopilotModelManager;
     diffEnricher: DiffEnricher;
     findingValidator: FindingValidator;
+    analysisEngine: AnalysisEngine;
 }
 
 /**
@@ -515,7 +507,8 @@ export class ChatParticipantService implements vscode.Disposable {
     }
 
     /**
-     * Run analysis on diff content using the LLM with tool-calling.
+     * Run analysis on diff content using AnalysisEngine.
+     * Thin adapter that bridges chat UI streaming to AnalysisEngine's interface.
      */
     private async runAnalysis(
         request: vscode.ChatRequest,
@@ -531,374 +524,112 @@ export class ChatParticipantService implements vscode.Disposable {
         const parsedDiff = DiffUtils.parseDiff(diffResult.diffText);
         const gitRootUri = this.deps!.gitOperations.getRepository()?.rootUri;
 
-        // Create stream adapter first - needed for subagent tool streaming
+        // Create stream adapter for subagent tool streaming in chat UI
         const { debouncedHandler, adapter } = this.createStreamAdapter(
             stream,
             gitRootUri
         );
 
-        // Create per-analysis instances for complete isolation
-        const planManager = new PlanSessionManager();
-        const timeoutMs =
-            this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
-        const client = new ChatLLMClient(request.model, timeoutMs);
-
-        // Resolve model-specific calibration profile from model family/id
-        const calibrationProfile = getCalibrationProfile(
-            request.model.family,
-            request.model.id
-        );
-        Log.info(
-            `[ChatParticipantService]: Model calibration: '${calibrationProfile.name}' profile (bias: ${calibrationProfile.findingBias})`
-        );
-
-        const { subagentSessionManager, subagentExecutor } =
-            this.createSubagentContext(token, client, debouncedHandler);
-
-        // Determine if recursive review mode is available
-        const maxRecursionDepth =
-            this.deps!.workspaceSettings.getMaxRecursionDepth();
-        const isRecursiveMode = maxRecursionDepth >= 1;
-
-        // Create RecursiveStateManager when in recursive mode
-        const recursiveState = isRecursiveMode
-            ? new RecursiveStateManager(maxRecursionDepth)
-            : undefined;
-
-        if (recursiveState) {
-            recursiveState.registerAgent(
-                undefined,
-                'Root review controller',
-                this.deps!.workspaceSettings.getMaxIterations()
-            );
-            recursiveState.startAgent('root');
-            subagentExecutor.setRecursiveState(recursiveState);
-        }
-
-        const findingStore = new FindingStore();
-        const toolCallRecords: ToolCallRecord[] = [];
-
-        // Create execution context as a mutable reference so parsedDiff can be
-        // set after diff processing (RLM approach needs it on the context for tools)
-        const executionContext = {
-            planManager,
-            subagentSessionManager,
-            subagentExecutor,
-            cancellationToken: token,
-            recursiveState,
-            currentDepth: 0,
-            currentAgentId: 'root',
-            findingStore,
-            calibrationProfile,
-            toolCallCounts: new Map<string, number>(),
-            investigatedFiles: new Set<string>(),
-        } as ExecutionContext;
-
-        const toolExecutor = new ToolExecutor(
-            this.deps!.toolRegistry,
-            executionContext
-        );
-        toolExecutor.bindToContext();
-        executionContext.toolExecutor = toolExecutor;
-
-        Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
-        stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);
-
-        const runner = new ConversationRunner(client, toolExecutor);
-        const conversation = new ConversationManager();
-        const availableTools = toolExecutor.getAvailableTools();
-
-        // Composite handler: stream to chat UI AND record tool calls for evidence audit
-        let currentIteration = 0;
-        const tokenValidator = new TokenValidator(request.model);
-        const recordingHandler: ToolCallHandler = {
-            onToolCallStart: adapter.onToolCallStart?.bind(adapter),
-            onToolCallComplete: (
-                toolCallId,
-                toolName,
-                args,
-                result,
-                success,
-                error,
-                durationMs,
-                metadata
-            ) => {
-                adapter.onToolCallComplete?.(
-                    toolCallId,
-                    toolName,
-                    args,
-                    result,
-                    success,
-                    error,
-                    durationMs,
-                    metadata
-                );
-                toolCallRecords.push({
-                    id: toolCallId,
-                    toolName,
-                    arguments: args,
-                    result,
-                    success,
-                    error,
-                    durationMs: durationMs ?? 0,
-                    timestamp: Date.now(),
-                    nestedCalls: metadata?.nestedToolCalls,
-                    executionTimeMs: metadata?.executionTimeMs,
-                    iterationsUsed: metadata?.iterationsUsed,
-                });
-            },
-            onIterationStart: (current, max) => {
-                currentIteration = current;
-                adapter.onIterationStart?.(current, max);
-            },
-            getContextStatusSuffix: async () => {
-                try {
-                    const messages = conversation.getHistory().map((msg) => ({
-                        role: msg.role,
-                        content: msg.content,
-                        toolCalls: msg.toolCalls,
-                        toolCallId: msg.toolCallId,
-                    }));
-
-                    const validation = await tokenValidator.validateTokens(
-                        messages,
-                        systemPrompt
-                    );
-                    const usagePercent = Math.min(
-                        100,
-                        Math.round(
-                            (validation.totalTokens / validation.maxTokens) *
-                                100
-                        )
-                    );
-                    const remainingK = Math.max(
-                        0,
-                        Math.round(
-                            (validation.maxTokens - validation.totalTokens) /
-                                1000
-                        )
-                    );
-
-                    let suffix = '';
-                    if (usagePercent >= 90) {
-                        suffix = `\n\n⚠️ [ctx: ${usagePercent}% | ${remainingK}k remaining — wrap up NOW]`;
-                    } else if (usagePercent >= 70) {
-                        suffix = `\n\n[ctx: ${usagePercent}% | ${remainingK}k remaining]`;
-                    }
-
-                    // Periodic FindingStore reminder for dismissive models at parent level.
-                    if (
-                        calibrationProfile.findingBias === 'dismissive' &&
-                        currentIteration > 0 &&
-                        currentIteration % 5 === 0 &&
-                        findingStore.size > 0
-                    ) {
-                        const findings = findingStore.getAll();
-                        const findingSummary = findings
-                            .map(
-                                (f) =>
-                                    `[${f.id}] ${f.severity}: ${f.title} (${f.file})`
-                            )
-                            .join('; ');
-                        suffix +=
-                            `\n\n📋 REMINDER: ${findingStore.size} finding(s) recorded so far: ${findingSummary}. ` +
-                            'These MUST appear in your final review or be explicitly retracted.';
-                    }
-
-                    return suffix;
-                } catch (error) {
-                    Log.error('Error calculating context status:', error);
-                    return '';
-                }
-            },
-        };
-        const systemPrompt = isRecursiveMode
-            ? this.deps!.promptGenerator.generateRecursiveSystemPrompt(
-                  calibrationProfile
-              )
-            : this.deps!.promptGenerator.generateToolAwareSystemPrompt(
-                  calibrationProfile
-              );
-
+        // Show file tree in chat
         if (gitRootUri && parsedDiff.length > 0) {
             const fileTree = buildFileTree(parsedDiff);
             stream.filetree(fileTree, gitRootUri);
         }
 
-        // Enrich changed symbols with LSP metadata for the Code Intelligence Brief
-        stream.progress(
-            `${ACTIVITY.analyzing} Building code intelligence brief...`
-        );
-        const codeIntelBrief = await this.deps!.diffEnricher.enrich(
+        Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
+        stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);
+
+        const timeoutMs =
+            this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
+
+        const input: AnalysisEngineInput = {
             parsedDiff,
-            token
-        );
-        Log.info(
-            `[ChatParticipantService]: Code intelligence brief: ${codeIntelBrief.enrichedSymbols.length} symbols, ${codeIntelBrief.timeoutCount} timeouts`
-        );
+            llmClient: new ChatLLMClient(request.model, timeoutMs),
+            model: {
+                family: request.model.family,
+                id: request.model.id,
+                name: request.model.name,
+                maxInputTokens: request.model.maxInputTokens,
+            },
+            token,
+            userPromptSuffix: request.prompt || undefined,
+            chatHandler: debouncedHandler,
+        };
 
-        executionContext.parsedDiff = parsedDiff;
-        const userPrompt = this.deps!.promptGenerator.generateUserPrompt(
-            parsedDiff,
-            request.prompt || undefined,
-            isRecursiveMode,
-            this.deps!.workspaceSettings.getMaxSubagentsPerSession(),
-            codeIntelBrief
-        );
-        conversation.addUserMessage(userPrompt);
+        const output: AnalysisEngineOutput = {
+            onProgress: (msg) =>
+                stream.progress(`${ACTIVITY.analyzing} ${msg}`),
+            onToolCallStart: adapter.onToolCallStart?.bind(adapter),
+            onToolCallComplete: (record) => {
+                adapter.onToolCallComplete?.(
+                    record.id,
+                    record.toolName,
+                    record.arguments,
+                    typeof record.result === 'string'
+                        ? record.result
+                        : JSON.stringify(record.result),
+                    record.success,
+                    record.error,
+                    record.durationMs,
+                    {
+                        nestedToolCalls: record.nestedCalls,
+                        executionTimeMs: record.executionTimeMs,
+                        iterationsUsed: record.iterationsUsed,
+                    }
+                );
+            },
+            onIterationStart: adapter.onIterationStart?.bind(adapter),
+        };
 
-        let analysisCompleted = false;
-        let analysisError: string | undefined;
+        const result = await this.deps!.analysisEngine.analyze(input, output);
 
-        // Shared mutable set: the afterToolCalls callback adds investigation
-        // tool names after the first subagent round, and the runner reads it
-        // each iteration to filter the tool list.
-        const disabledToolNames = new Set<string>();
+        debouncedHandler.flush();
 
-        // Apply model-specific tool filtering from calibration profile.
-        for (const tool of calibrationProfile.disabledTools) {
-            disabledToolNames.add(tool);
+        if (result.wasCancelled) {
+            return this.handleCancellation(stream);
         }
 
-        try {
-            let analysisResult = await runner.run(
-                {
-                    systemPrompt,
-                    maxIterations:
-                        this.deps!.workspaceSettings.getMaxIterations(),
-                    tools: availableTools,
-                    label: `Chat /${scopeLabel}`,
-                    requiresExplicitCompletion: true,
-                    afterToolCalls: this.createCoverageGapCallback(
-                        recursiveState,
-                        parsedDiff,
-                        disabledToolNames,
-                        subagentSessionManager
-                    ),
-                    disabledToolNames,
-                },
-                conversation,
-                token,
-                recordingHandler
+        if (result.error) {
+            Log.error(
+                '[ChatParticipantService]: Analysis failed',
+                result.error
             );
-
-            debouncedHandler.flush();
-
-            if (runner.wasCancelled) {
-                return this.handleCancellation(stream);
-            }
-
-            analysisCompleted = true;
-
-            // Run full post-analysis pipeline (same as webview path)
-            const pipeline = new PostAnalysisPipeline(
-                this.deps!.findingValidator
-            );
-            const pipelineResult = await pipeline.run({
-                findingStore,
-                toolCallRecords,
-                executionContext,
-                parsedDiff,
-                calibrationProfile,
-                subagentExecutor,
-                conversationManager: conversation,
-                conversationRunner: runner,
-                systemPrompt,
-                availableTools,
-                disabledToolNames,
-                token,
-                handler: recordingHandler,
-                progressCallback: (msg) =>
-                    stream.progress(`${ACTIVITY.analyzing} ${msg}`),
-            });
-
-            if (pipelineResult.rewrittenAnalysis) {
-                analysisResult = pipelineResult.rewrittenAnalysis;
-            }
-
-            debouncedHandler.flush();
-            streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
-
-            if (pipelineResult.selfReflectionScores.length > 0) {
-                const scoreSummary = formatSelfReflectionScoresMarkdown(
-                    pipelineResult.selfReflectionScores
-                );
-                streamMarkdownWithAnchors(stream, scoreSummary, gitRootUri);
-            }
-
-            const contentAnalysis = this.analyzeResultContent(analysisResult);
-
+            const response = new ChatResponseBuilder()
+                .addErrorSection(
+                    'Analysis Error',
+                    'Something went wrong during analysis. Please try again.',
+                    result.error
+                )
+                .build();
+            stream.markdown(response);
             return {
-                metadata: {
-                    command: request.command as 'branch' | 'changes',
-                    filesAnalyzed: parsedDiff.length,
-                    issuesFound: contentAnalysis.issuesFound,
-                    hasCriticalIssues: contentAnalysis.hasCriticalIssues,
-                    hasSecurityIssues: contentAnalysis.hasSecurityIssues,
-                    hasTestingSuggestions:
-                        contentAnalysis.hasTestingSuggestions,
-                    cancelled: false,
-                    analysisTimestamp: Date.now(),
-                } satisfies ChatAnalysisMetadata,
+                errorDetails: { message: result.error },
+                metadata: { responseIsIncomplete: true },
             };
-        } catch (error) {
-            if (isCancellationError(error)) {
-                throw error;
-            }
-            analysisError = getErrorMessage(error);
-            throw error;
-        } finally {
-            subagentSessionManager.setParentCancellationToken(undefined);
-            if (recursiveState) {
-                if (analysisCompleted) {
-                    recursiveState.completeAgent('root');
-                } else if (analysisError) {
-                    recursiveState.failAgent('root', analysisError);
-                } else {
-                    recursiveState.cancelAgent('root');
-                }
-            }
-        }
-    }
-
-    private createCoverageGapCallback(
-        recursiveState: RecursiveStateManager | undefined,
-        parsedDiff: DiffHunk[],
-        disabledToolNames: Set<string>,
-        sessionManager: SubagentSessionManager
-    ): ((toolNames: string[]) => string | undefined) | undefined {
-        if (!recursiveState || parsedDiff.length === 0) {
-            return undefined;
         }
 
-        const allFiles = parsedDiff.map((d) => d.filePath);
+        streamMarkdownWithAnchors(stream, result.analysisText, gitRootUri);
 
-        return (toolNames: string[]) => {
-            if (!toolNames.includes('run_subagent_batch')) {
-                return undefined;
-            }
+        if (result.selfReflectionScores.length > 0) {
+            const scoreSummary = formatSelfReflectionScoresMarkdown(
+                result.selfReflectionScores
+            );
+            streamMarkdownWithAnchors(stream, scoreSummary, gitRootUri);
+        }
 
-            // If subagent budget is exhausted, re-enable investigation tools
-            // so the root can directly examine uncovered files.
-            if (!sessionManager.canSpawn()) {
-                for (const tool of INVESTIGATION_TOOLS) {
-                    disabledToolNames.delete(tool);
-                }
-                return recursiveState.getCoverageGapFallbackMessage(allFiles);
-            }
+        const contentAnalysis = this.analyzeResultContent(result.analysisText);
 
-            // After first subagent round, disable investigation tools for the root.
-            // The root is a controller — it delegates, not investigates.
-            if (disabledToolNames.size === 0) {
-                for (const tool of INVESTIGATION_TOOLS) {
-                    disabledToolNames.add(tool);
-                }
-                Log.info(
-                    '[ChatParticipantService] Root agent investigation tools disabled after first subagent round'
-                );
-            }
-
-            return recursiveState.getCoverageGapMessage(allFiles);
+        return {
+            metadata: {
+                command: request.command as 'branch' | 'changes',
+                filesAnalyzed: result.filesAnalyzed,
+                issuesFound: contentAnalysis.issuesFound,
+                hasCriticalIssues: contentAnalysis.hasCriticalIssues,
+                hasSecurityIssues: contentAnalysis.hasSecurityIssues,
+                hasTestingSuggestions: contentAnalysis.hasTestingSuggestions,
+                cancelled: false,
+                analysisTimestamp: Date.now(),
+            } satisfies ChatAnalysisMetadata,
         };
     }
 

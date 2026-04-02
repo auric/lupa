@@ -2,20 +2,13 @@ import * as vscode from 'vscode';
 import { ConversationManager } from '../models/conversationManager';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
-import { CopilotModelManager } from '../models/copilotModelManager';
 import { PromptGenerator } from '../models/promptGenerator';
 import { TokenValidator } from '../models/tokenValidator';
 import {
     ConversationRunner,
     type ToolCallHandler,
 } from '../models/conversationRunner';
-import type {
-    ToolCallRecord,
-    ToolCallingAnalysisResult,
-    AnalysisProgressCallback,
-    SubagentProgressContext,
-} from '../types/toolCallTypes';
-import { DiffUtils } from '../utils/diffUtils';
+import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { DiffHunk } from '../types/contextTypes';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
@@ -33,7 +26,55 @@ import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
 import { PostAnalysisPipeline } from './postAnalysisPipeline';
-import { formatSelfReflectionScoresMarkdown } from './selfReflectionScorer';
+import { type SelfReflectionScore } from './selfReflectionScorer';
+import type { ILLMClient } from '../models/ILLMClient';
+import type { ChatToolCallHandler } from '../types/chatTypes';
+
+export interface ModelInfo {
+    family: string;
+    id: string;
+    name: string;
+    maxInputTokens: number;
+}
+
+export interface AnalysisEngineInput {
+    parsedDiff: DiffHunk[];
+    llmClient: ILLMClient;
+    model: ModelInfo;
+    token: vscode.CancellationToken;
+    userPromptSuffix: string | undefined;
+    chatHandler: ChatToolCallHandler | undefined;
+}
+
+export interface AnalysisEngineOutput {
+    onProgress(message: string, increment?: number): void;
+    onAgentProgress?(
+        completed: number,
+        total: number,
+        running: number,
+        turn: number,
+        maxTurns: number
+    ): void;
+    onToolCallStart?(
+        toolName: string,
+        args: Record<string, unknown>,
+        toolIndex: number,
+        totalTools: number
+    ): void;
+    onToolCallComplete?(record: ToolCallRecord): void;
+    onIterationStart?(current: number, max: number): void;
+}
+
+export interface AnalysisEngineResult {
+    analysisText: string;
+    toolCallRecords: ToolCallRecord[];
+    completed: boolean;
+    wasCancelled: boolean;
+    error: string | undefined;
+    iterationsUsed: number | undefined;
+    selfReflectionScores: SelfReflectionScore[];
+    filesAnalyzed: number;
+}
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -42,14 +83,13 @@ import { formatSelfReflectionScoresMarkdown } from './selfReflectionScorer';
  * This class is designed to be concurrent-safe. All per-analysis state is created
  * locally within the analyze() method, allowing multiple concurrent analyses.
  */
-export class ToolCallingAnalysisProvider {
+export class AnalysisEngine implements vscode.Disposable {
     constructor(
-        private toolRegistry: ToolRegistry,
-        private copilotModelManager: CopilotModelManager,
-        private promptGenerator: PromptGenerator,
-        private workspaceSettings: WorkspaceSettingsService,
-        private diffEnricher: DiffEnricher,
-        private findingValidator: FindingValidator
+        private readonly toolRegistry: ToolRegistry,
+        private readonly promptGenerator: PromptGenerator,
+        private readonly workspaceSettings: WorkspaceSettingsService,
+        private readonly diffEnricher: DiffEnricher,
+        private readonly findingValidator: FindingValidator
     ) {}
 
     private get maxIterations(): number {
@@ -61,27 +101,15 @@ export class ToolCallingAnalysisProvider {
      *
      * This method is concurrent-safe: all per-analysis state is created locally,
      * allowing multiple analyses to run in parallel without interference.
-     *
-     * @param diff The diff content to analyze
-     * @param token Cancellation token
-     * @param progressCallback Optional callback for reporting progress to UI
-     * @returns Promise resolving to the analysis result with tool call history
      */
     async analyze(
-        diff: string,
-        token: vscode.CancellationToken,
-        progressCallback?: AnalysisProgressCallback
-    ): Promise<ToolCallingAnalysisResult> {
+        input: AnalysisEngineInput,
+        output: AnalysisEngineOutput
+    ): Promise<AnalysisEngineResult> {
         // === Per-analysis state (local for concurrent-safety) ===
         const toolCallRecords: ToolCallRecord[] = [];
         let currentIteration = 0;
         let currentMaxIterations = this.maxIterations;
-
-        // Create progress context that captures local variables
-        const progressContext: SubagentProgressContext = {
-            getCurrentIteration: () => currentIteration,
-            getMaxIterations: () => currentMaxIterations,
-        };
 
         // Create per-analysis instances for complete isolation
         const conversationManager = new ConversationManager();
@@ -90,13 +118,22 @@ export class ToolCallingAnalysisProvider {
             this.workspaceSettings
         );
         const subagentExecutor = new SubagentExecutor(
-            this.copilotModelManager,
+            input.llmClient,
             this.toolRegistry,
             new SubagentPromptGenerator(),
             this.workspaceSettings,
-            undefined, // No chat handler in command context
-            progressCallback,
-            progressContext
+            input.chatHandler,
+            (msg, inc) => output.onProgress(msg, inc),
+            output.onAgentProgress
+                ? (completed, total, running) =>
+                      output.onAgentProgress!(
+                          completed,
+                          total,
+                          running,
+                          currentIteration,
+                          currentMaxIterations
+                      )
+                : undefined
         );
 
         // Determine analysis approach and recursive mode.
@@ -134,7 +171,7 @@ export class ToolCallingAnalysisProvider {
             planManager,
             subagentSessionManager,
             subagentExecutor,
-            cancellationToken: token,
+            cancellationToken: input.token,
             recursiveState,
             currentDepth: 0,
             currentAgentId: 'root',
@@ -150,47 +187,48 @@ export class ToolCallingAnalysisProvider {
         toolExecutor.bindToContext();
         executionContext.toolExecutor = toolExecutor;
         const conversationRunner = new ConversationRunner(
-            this.copilotModelManager,
+            input.llmClient,
             toolExecutor
         );
 
         let analysisCompleted = false;
         let analysisError: string | undefined;
         let analysisText = '';
-        let toolCallCount = 0;
+        let filesAnalyzed = 0;
+        let selfReflectionScores: SelfReflectionScore[] = [];
 
         try {
             Log.info('Starting analysis with tool-calling support');
-            progressCallback?.('Initializing analysis...', 0.5);
-            subagentSessionManager.setParentCancellationToken(token);
+            output.onProgress('Initializing analysis...', 0.5);
+            subagentSessionManager.setParentCancellationToken(input.token);
 
-            // Parse diff for structured analysis
-            progressCallback?.('Processing diff...', 0.5);
-            const parsedDiff = DiffUtils.parseDiff(diff);
+            // Parse diff for structured analysis (reuse pre-parsed if provided)
+            output.onProgress('Processing diff...', 0.5);
+            const parsedDiff = input.parsedDiff;
+            filesAnalyzed = parsedDiff.length;
 
             Log.info(
                 `Tools always enabled, ${parsedDiff.length} files via diff tools`
             );
 
             // Enrich changed symbols with LSP metadata for the Code Intelligence Brief
-            progressCallback?.('Building code intelligence brief...', 0.5);
+            output.onProgress('Building code intelligence brief...', 0.5);
             const codeIntelBrief = await this.diffEnricher.enrich(
                 parsedDiff,
-                token
+                input.token
             );
             Log.info(
                 `Code intelligence brief: ${codeIntelBrief.enrichedSymbols.length} symbols, ${codeIntelBrief.timeoutCount} timeouts`
             );
 
             // Resolve model and calibration profile before prompt generation
-            const model = await this.copilotModelManager.getCurrentModel();
             Log.info(
-                `Using model: ${model.name} (${model.vendor}/${model.id}, ${model.maxInputTokens} tokens)`
+                `Using model: ${input.model.name} (${input.model.id}, ${input.model.maxInputTokens} tokens)`
             );
 
             const calibrationProfile = getCalibrationProfile(
-                model.family,
-                model.id
+                input.model.family,
+                input.model.id
             );
             executionContext.calibrationProfile = calibrationProfile;
             Log.info(
@@ -211,16 +249,17 @@ export class ToolCallingAnalysisProvider {
             executionContext.parsedDiff = parsedDiff;
             const userMessage = this.promptGenerator.generateUserPrompt(
                 parsedDiff,
-                undefined,
+                input.userPromptSuffix,
                 isRecursiveMode,
                 this.workspaceSettings.getMaxSubagentsPerSession(),
                 codeIntelBrief
             );
 
             conversationManager.addUserMessage(userMessage);
-            progressCallback?.('Starting conversation with AI model...', 0.5);
+            output.onProgress('Starting conversation with AI model...', 0.5);
 
-            const tokenValidator = new TokenValidator(model);
+            const chatModel = await input.llmClient.getCurrentModel();
+            const tokenValidator = new TokenValidator(chatModel);
 
             // Create context status function that captures local state
             const getContextStatusSuffix = async (): Promise<string> => {
@@ -238,11 +277,19 @@ export class ToolCallingAnalysisProvider {
                         messages,
                         systemPrompt
                     );
-                    const usagePercent = Math.round(
-                        (validation.totalTokens / validation.maxTokens) * 100
+                    const usagePercent = Math.min(
+                        100,
+                        Math.round(
+                            (validation.totalTokens / validation.maxTokens) *
+                                100
+                        )
                     );
-                    const remainingK = Math.round(
-                        (validation.maxTokens - validation.totalTokens) / 1000
+                    const remainingK = Math.max(
+                        0,
+                        Math.round(
+                            (validation.maxTokens - validation.totalTokens) /
+                                1000
+                        )
                     );
 
                     let suffix = '';
@@ -285,9 +332,14 @@ export class ToolCallingAnalysisProvider {
                 onIterationStart: (current, max) => {
                     currentIteration = current;
                     currentMaxIterations = max;
-                    progressCallback?.(
-                        `Turn ${current}/${max}: Analyzing...`,
-                        0.2
+                    output.onIterationStart?.(current, max);
+                },
+                onToolCallStart: (toolName, args, toolIndex, totalTools) => {
+                    output.onToolCallStart?.(
+                        toolName,
+                        args,
+                        toolIndex,
+                        totalTools
                     );
                 },
                 onToolCallComplete: (
@@ -300,8 +352,7 @@ export class ToolCallingAnalysisProvider {
                     durationMs,
                     metadata
                 ) => {
-                    toolCallCount++;
-                    toolCallRecords.push({
+                    const record: ToolCallRecord = {
                         id: toolCallId,
                         toolName,
                         arguments: args,
@@ -313,7 +364,9 @@ export class ToolCallingAnalysisProvider {
                         nestedCalls: metadata?.nestedToolCalls,
                         executionTimeMs: metadata?.executionTimeMs,
                         iterationsUsed: metadata?.iterationsUsed,
-                    });
+                    };
+                    toolCallRecords.push(record);
+                    output.onToolCallComplete?.(record);
                 },
                 getContextStatusSuffix,
             };
@@ -346,7 +399,7 @@ export class ToolCallingAnalysisProvider {
                     disabledToolNames,
                 },
                 conversationManager,
-                token,
+                input.token,
                 handler
             );
             analysisCompleted = !conversationRunner.wasCancelled;
@@ -367,11 +420,9 @@ export class ToolCallingAnalysisProvider {
                     systemPrompt,
                     availableTools: availableTools,
                     disabledToolNames,
-                    token,
+                    token: input.token,
                     handler,
-                    progressCallback: progressCallback
-                        ? (msg, inc) => progressCallback(msg, inc)
-                        : undefined,
+                    progressCallback: (msg, inc) => output.onProgress(msg, inc),
                 });
 
                 toolCallRecords.push(
@@ -381,14 +432,10 @@ export class ToolCallingAnalysisProvider {
                     analysisText = pipelineResult.rewrittenAnalysis;
                 }
 
-                if (pipelineResult.selfReflectionScores.length > 0) {
-                    analysisText += formatSelfReflectionScoresMarkdown(
-                        pipelineResult.selfReflectionScores
-                    );
-                }
+                selfReflectionScores = pipelineResult.selfReflectionScores;
 
-                progressCallback?.(
-                    `Analysis complete (${toolCallCount} tool calls)`,
+                output.onProgress(
+                    `Analysis complete (${toolCallRecords.length} tool calls)`,
                     2
                 );
                 Log.info('Analysis completed successfully');
@@ -418,14 +465,16 @@ export class ToolCallingAnalysisProvider {
             }
         }
 
-        return this.buildAnalysisResult(
-            toolCallRecords,
+        return {
             analysisText,
-            analysisCompleted,
-            analysisError,
-            conversationRunner.wasCancelled,
-            conversationRunner.iterationsUsed
-        );
+            toolCallRecords: [...toolCallRecords],
+            completed: analysisCompleted,
+            wasCancelled: conversationRunner.wasCancelled,
+            error: analysisError,
+            iterationsUsed: conversationRunner.iterationsUsed,
+            selfReflectionScores,
+            filesAnalyzed,
+        };
     }
 
     private createCoverageGapCallback(
@@ -456,7 +505,9 @@ export class ToolCallingAnalysisProvider {
 
             // After first subagent round, disable investigation tools for the root.
             // The root is a controller — it delegates, not investigates.
-            if (disabledToolNames.size === 0) {
+            // Check for specific investigation tools rather than set size, since
+            // calibration profiles may pre-populate disabledToolNames.
+            if (!disabledToolNames.has(INVESTIGATION_TOOLS[0])) {
                 for (const tool of INVESTIGATION_TOOLS) {
                     disabledToolNames.add(tool);
                 }
@@ -466,33 +517,6 @@ export class ToolCallingAnalysisProvider {
             }
 
             return recursiveState.getCoverageGapMessage(allFiles);
-        };
-    }
-
-    private buildAnalysisResult(
-        toolCallRecords: ToolCallRecord[],
-        analysis: string,
-        completed: boolean,
-        error: string | undefined,
-        wasCancelled: boolean,
-        iterationsUsed?: number
-    ): ToolCallingAnalysisResult {
-        const successfulCalls = toolCallRecords.filter((r) => r.success).length;
-        const failedCalls = toolCallRecords.filter((r) => !r.success).length;
-
-        return {
-            analysis,
-            toolCalls: {
-                calls: [...toolCallRecords],
-                totalCalls: toolCallRecords.length,
-                successfulCalls,
-                failedCalls,
-                analysisCompleted: completed,
-                analysisError: error,
-                iterationsUsed,
-                maxIterations: this.maxIterations,
-            },
-            wasCancelled,
         };
     }
 

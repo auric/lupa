@@ -1,13 +1,11 @@
 import * as vscode from 'vscode';
 import { AnalysisMode } from '../types/modelTypes';
-import type {
-    ToolCallsData,
-    AnalysisProgressCallback,
-} from '../types/toolCallTypes';
 import { IServiceRegistry } from '../services/serviceManager';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { Log } from '../services/loggingService';
+import { formatSelfReflectionScoresMarkdown } from '../services/selfReflectionScorer';
+import { DiffUtils } from '../utils/diffUtils';
 
 /**
  * AnalysisOrchestrator handles the core PR analysis workflow.
@@ -146,31 +144,81 @@ export class AnalysisOrchestrator implements vscode.Disposable {
 
                     updateProgress('Starting analysis...');
 
-                    const progressCallback: AnalysisProgressCallback =
-                        updateProgress;
+                    const copilotModel =
+                        await this.services.copilotModelManager.getCurrentModel();
 
-                    const result =
-                        await this.services.toolCallingAnalysisProvider.analyze(
-                            diffText,
-                            cancellationTokenSource.token,
-                            progressCallback
-                        );
+                    const result = await this.services.analysisEngine.analyze(
+                        {
+                            parsedDiff: DiffUtils.parseDiff(diffText),
+                            llmClient: this.services.copilotModelManager,
+                            model: {
+                                family: copilotModel.family,
+                                id: copilotModel.id,
+                                name: copilotModel.name,
+                                maxInputTokens: copilotModel.maxInputTokens,
+                            },
+                            token: cancellationTokenSource.token,
+                            userPromptSuffix: undefined,
+                            chatHandler: undefined,
+                        },
+                        {
+                            onProgress: updateProgress,
+                            onAgentProgress: (
+                                completed,
+                                total,
+                                running,
+                                turn,
+                                maxTurns
+                            ) => {
+                                const turnPrefix =
+                                    turn > 0
+                                        ? `Turn ${turn}/${maxTurns} · `
+                                        : '';
+                                updateProgress(
+                                    `${turnPrefix}Agents: ${completed}/${total} done${running > 0 ? `, ${running} analyzing` : ''}`
+                                );
+                            },
+                            onIterationStart: (current, max) => {
+                                updateProgress(
+                                    `Turn ${current}/${max}: Analyzing...`,
+                                    0.2
+                                );
+                            },
+                        }
+                    );
 
                     if (result.wasCancelled) {
                         throw new vscode.CancellationError();
                     }
 
-                    const analysis = result.analysis;
-                    const toolCallsData: ToolCallsData | undefined =
-                        result.toolCalls;
+                    let analysisText = result.analysisText;
+                    if (result.selfReflectionScores.length > 0) {
+                        analysisText += formatSelfReflectionScoresMarkdown(
+                            result.selfReflectionScores
+                        );
+                    }
 
                     // Display results in webview
                     const title = `PR Analysis: ${refName}`;
                     this.services.uiManager.displayAnalysisResults(
                         title,
                         diffText,
-                        analysis,
-                        toolCallsData
+                        analysisText,
+                        {
+                            calls: result.toolCallRecords,
+                            totalCalls: result.toolCallRecords.length,
+                            successfulCalls: result.toolCallRecords.filter(
+                                (r) => r.success
+                            ).length,
+                            failedCalls: result.toolCallRecords.filter(
+                                (r) => !r.success
+                            ).length,
+                            analysisCompleted: result.completed,
+                            analysisError: result.error,
+                            iterationsUsed: result.iterationsUsed,
+                            maxIterations:
+                                this.services.workspaceSettings.getMaxIterations(),
+                        }
                     );
 
                     this.services.statusBar.showTemporaryMessage(

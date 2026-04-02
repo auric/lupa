@@ -62,7 +62,7 @@ src/
 │
 ├── 📁 services/                   # Core business logic
 │   ├── serviceManager.ts         # 🔑 DI container (3-phase init)
-│   ├── toolCallingAnalysisProvider.ts # Main analysis engine
+│   ├── analysisEngine.ts             # Main analysis engine
 │   ├── chatParticipantService.ts # @lupa chat participant
 │   ├── gitOperationsManager.ts   # Git repository operations
 │   ├── gitService.ts             # Low-level Git commands
@@ -225,13 +225,13 @@ src/
 
 ### Core Analysis Flow
 
-| File                                      | Role in Flow                    |
-| ----------------------------------------- | ------------------------------- |
-| `coordinators/analysisOrchestrator.ts`    | Initiates analysis              |
-| `services/toolCallingAnalysisProvider.ts` | Runs analysis loop              |
-| `models/conversationRunner.ts`            | Multi-turn conversation         |
-| `models/toolExecutor.ts`                  | Executes tools                  |
-| `tools/*.ts`                              | Individual tool implementations |
+| File                                   | Role in Flow                    |
+| -------------------------------------- | ------------------------------- |
+| `coordinators/analysisOrchestrator.ts` | Initiates analysis              |
+| `services/analysisEngine.ts`           | Runs analysis loop              |
+| `models/conversationRunner.ts`         | Multi-turn conversation         |
+| `models/toolExecutor.ts`               | Executes tools                  |
+| `tools/*.ts`                           | Individual tool implementations |
 
 ### Configuration
 

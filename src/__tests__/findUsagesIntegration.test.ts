@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
+import { AnalysisEngine } from '../services/analysisEngine';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
@@ -9,8 +9,11 @@ import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
     createMockGitOperationsManager,
+    createMockAnalysisEngineInput,
+    createMockAnalysisEngineOutput,
 } from './testUtils/mockFactories';
 import { PromptGenerator } from '../models/promptGenerator';
+import { DiffUtils } from '../utils/diffUtils';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -51,7 +54,7 @@ const mockCopilotModelManager = {
 };
 
 describe('FindUsages Integration Tests', () => {
-    let toolCallingAnalyzer: ToolCallingAnalysisProvider;
+    let toolCallingAnalyzer: AnalysisEngine;
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let findUsagesTool: FindUsagesTool;
@@ -90,9 +93,8 @@ describe('FindUsages Integration Tests', () => {
             }),
         } as any;
 
-        toolCallingAnalyzer = new ToolCallingAnalysisProvider(
+        toolCallingAnalyzer = new AnalysisEngine(
             toolRegistry,
-            mockCopilotModelManager as any,
             promptGenerator,
             mockWorkspaceSettings,
             mockDiffEnricher,
@@ -216,11 +218,15 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(diff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Based on the tool results, I found 2 usages of MyClass. The analysis is complete with all references identified and formatted. Adding padding to meet 100 char minimum.'
             );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
@@ -293,11 +299,15 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class UnusedClass {}';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(diff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'No usages found for this class, it appears to be unused. The symbol exists in the codebase but has no references. Adding padding to meet 100 char minimum.'
             );
         });
@@ -401,11 +411,15 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class ClassA {}\n+class ClassB {}';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(diff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'Both classes have one usage each. ClassA and ClassB are both referenced once in the codebase usage files. Adding padding to meet 100 char minimum.'
             );
             expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(4); // Two tools × (1 definition + 1 reference call each) = 4 calls
@@ -451,11 +465,15 @@ describe('FindUsages Integration Tests', () => {
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+// some change';
             const result = await toolCallingAnalyzer.analyze(
-                diff,
-                tokenSource.token
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(diff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
             );
 
-            expect(result.analysis).toBe(
+            expect(result.analysisText).toBe(
                 'I encountered an error finding usages for that symbol. The file could not be opened or the symbol was not found. Adding padding to meet 100 char minimum.'
             );
         });
@@ -519,7 +537,14 @@ describe('FindUsages Integration Tests', () => {
 
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
-            await toolCallingAnalyzer.analyze(diff, tokenSource.token);
+            await toolCallingAnalyzer.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(diff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
 
             expect(capturedContext?.includeDeclaration).toBe(true);
         });
@@ -598,7 +623,14 @@ describe('FindUsages Integration Tests', () => {
 
             const diff =
                 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
-            await toolCallingAnalyzer.analyze(diff, tokenSource.token);
+            await toolCallingAnalyzer.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(diff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
 
             // The context_line_count parameter is passed to the tool - verification is done
             // through the tool being called correctly via the mocked executeCommand

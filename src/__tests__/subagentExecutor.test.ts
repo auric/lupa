@@ -387,13 +387,34 @@ describe('SubagentExecutor', () => {
     });
 
     describe('Progress Reporting', () => {
-        it('should call progress callback with context prefix', async () => {
+        it('should call progress callback with message when no recursiveState', async () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
             const progressCallback = vi.fn();
-            const progressContext = {
-                getCurrentIteration: vi.fn().mockReturnValue(3),
-                getMaxIterations: vi.fn().mockReturnValue(10),
-            };
+
+            const registry = new ToolRegistry();
+            registry.registerTool(createMockTool('read_file'));
+
+            const executor = new SubagentExecutor(
+                modelManager,
+                registry,
+                promptGenerator,
+                workspaceSettings,
+                undefined, // chatHandler
+                progressCallback
+            );
+
+            await executor.execute(defaultTask, tokenSource.token, 1);
+
+            expect(progressCallback).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.any(Number)
+            );
+        });
+
+        it('should call onAgentProgress with structured data when recursiveState has active agents', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+            const progressCallback = vi.fn();
+            const onAgentProgress = vi.fn();
 
             const registry = new ToolRegistry();
             registry.registerTool(createMockTool('read_file'));
@@ -405,13 +426,60 @@ describe('SubagentExecutor', () => {
                 workspaceSettings,
                 undefined, // chatHandler
                 progressCallback,
-                progressContext
+                onAgentProgress
             );
+
+            // Set up recursiveState with active agents
+            const mockRecursiveState = {
+                getAgentProgress: vi.fn().mockReturnValue({
+                    running: 2,
+                    completed: 1,
+                    total: 3,
+                }),
+            };
+            executor.setRecursiveState(mockRecursiveState as any);
 
             await executor.execute(defaultTask, tokenSource.token, 1);
 
+            // onAgentProgress should be called with structured (completed, total, running)
+            expect(onAgentProgress).toHaveBeenCalledWith(1, 3, 2);
+
+            // progressCallback should NOT be called since agent progress uses the separate callback
+            expect(progressCallback).not.toHaveBeenCalled();
+        });
+
+        it('should fall through to progressCallback when recursiveState has active agents but onAgentProgress is not provided', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+            const progressCallback = vi.fn();
+
+            const registry = new ToolRegistry();
+            registry.registerTool(createMockTool('read_file'));
+
+            const executor = new SubagentExecutor(
+                modelManager,
+                registry,
+                promptGenerator,
+                workspaceSettings,
+                undefined, // chatHandler
+                progressCallback
+                // no onAgentProgress
+            );
+
+            // Set up recursiveState with active agents
+            const mockRecursiveState = {
+                getAgentProgress: vi.fn().mockReturnValue({
+                    running: 2,
+                    completed: 1,
+                    total: 3,
+                }),
+            };
+            executor.setRecursiveState(mockRecursiveState as any);
+
+            await executor.execute(defaultTask, tokenSource.token, 1);
+
+            // progressCallback should be called as fallback since onAgentProgress is not provided
             expect(progressCallback).toHaveBeenCalledWith(
-                expect.stringContaining('Turn 3/10'),
+                expect.any(String),
                 expect.any(Number)
             );
         });
