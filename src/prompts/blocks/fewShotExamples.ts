@@ -27,7 +27,7 @@ export function generateFewShotExamples(
 
 **Investigation**:
 \`\`\`
-→ find_usages({symbol: "parseConfig", file: "src/config.ts"})
+→ find_usages({symbol_name: "parseConfig", file_path: "src/config.ts"})
   Result: 3 callers found:
     - loadSettings() at src/settings.ts:45
     - initApp() at src/app.ts:12
@@ -51,7 +51,7 @@ export function generateFewShotExamples(
 
 **Investigation**:
 \`\`\`
-→ find_usages({symbol: "validateInput", file: "src/validator.ts"})
+→ find_usages({symbol_name: "validateInput", file_path: "src/validator.ts"})
   Result: 4 callers found:
     - handleSubmit() at src/form.ts:22
     - processRequest() at src/api.ts:45

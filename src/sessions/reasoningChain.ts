@@ -44,7 +44,14 @@ export interface ThinkCheckpoint {
     readonly investigationToolCount: number;
 }
 
-/** Tools considered "investigation" tools — using these counts as evidence gathering */
+/**
+ * Tools considered "investigation" tools for evidence-aware gating.
+ * Used to auto-transition hypotheses (generated→investigating) and count evidence gathering.
+ * NOTE: Different from INVESTIGATION_TOOLS in toolConstants.ts which is used for
+ * tool access control in recursive mode. The sets intentionally differ:
+ * - This set includes validate_claim (evidence gathering) and excludes batch_tools (meta-tool)
+ * - toolConstants.ts includes batch_tools (access control) and excludes validate_claim
+ */
 const INVESTIGATION_TOOLS = new Set([
     'find_usages',
     'find_symbol',
@@ -62,9 +69,22 @@ export class ReasoningChain {
     private nextHypothesisId = 1;
     private toolCallsSinceLastCheckpoint: string[] = [];
 
-    /** Record a tool call (called by ToolExecutor or think tool on each tool execution) */
+    /** Record a tool call (called by ToolExecutor on each tool execution) */
     recordToolCall(toolName: string): void {
         this.toolCallsSinceLastCheckpoint.push(toolName);
+
+        // Auto-transition hypotheses when investigation tools are called
+        if (INVESTIGATION_TOOLS.has(toolName)) {
+            for (const h of this.hypotheses) {
+                if (h.status === 'generated') {
+                    h.status = 'investigating';
+                    h.lastUpdatedAtCheckpoint = this.checkpoints.length;
+                }
+                if (h.status === 'investigating') {
+                    h.investigationTools.push(toolName);
+                }
+            }
+        }
     }
 
     /** Get tools called since the last think checkpoint */

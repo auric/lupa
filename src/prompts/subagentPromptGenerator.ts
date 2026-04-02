@@ -91,7 +91,7 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 \`\`\`
 get_file_diff({file_paths: ["src/auth.ts"]})
 → find_symbol({name_path: "login", include_body: true})
-→ find_usages({symbol: "login", file: "src/auth.ts"})
+→ find_usages({symbol_name: "login", file_path: "src/auth.ts"})
 → think({topic: "auth.ts analysis", analysis: "Describe: login() takes email+password, queries DB, compares with bcrypt.compare(). 3 callers: /api/login, /api/oauth, /api/admin. Contract: returns JWT or throws 401. Judge: Early return on user-not-found before bcrypt creates timing side-channel that leaks whether email exists.", identified_risks: ["Timing attack on password comparison"], next_action: "validate_claim for constant-time comparison"})
 → validate_claim({claim_type: "symbol_missing", symbol: "timingSafeEqual", file: "src/auth.ts", line: 12})
 → think({topic: "devil's advocate", analysis: "Could a middleware handle this? No — auth.ts is the direct entry point. Is timing-safe comparison needed here? Yes — password comparison.", next_action: "record finding"})
@@ -133,7 +133,7 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 \`\`\`
 get_file_diff({file_paths: ["src/auth.ts"]})
 → find_symbol({name_path: "login", include_body: true})
-→ find_usages({symbol: "login", file: "src/auth.ts"})
+→ find_usages({symbol_name: "login", file_path: "src/auth.ts"})
 → think({topic: "auth.ts analysis", analysis: "Describe: login() takes email+password, queries DB, compares with bcrypt. 3 callers. Contract: returns JWT or throws 401. Judge: Timing side-channel — early return on user-not-found leaks email existence.", identified_risks: ["Timing attack"], next_action: "validate_claim"})
 → validate_claim({claim_type: "symbol_missing", symbol: "timingSafeEqual", file: "src/auth.ts", line: 12})
 → think({topic: "devil's advocate", analysis: "No middleware or wrapper for this. Real issue.", next_action: "record finding"})

@@ -12,6 +12,7 @@ import {
     createCancelledExecutionContext,
 } from './testUtils/mockFactories';
 import type { ExecutionContext } from '../types/executionContext';
+import { ReasoningChain } from '../sessions/reasoningChain';
 
 // Mock tools for testing
 class MockSuccessTool implements ITool {
@@ -843,6 +844,73 @@ describe('ToolExecutor', () => {
             await expect(
                 limitedExecutor.executeTool('success_tool', { message: 'test' })
             ).rejects.toThrow(vscode.CancellationError);
+        });
+    });
+
+    describe('ReasoningChain Integration', () => {
+        it('recordToolCall is called even when response is too large', async () => {
+            const chain = new ReasoningChain();
+            const ctx = createMockExecutionContext({ reasoningChain: chain });
+            const executor = new ToolExecutor(toolRegistry, ctx);
+            executor.bindToContext();
+
+            const oversizedTool: ITool = {
+                name: 'oversized_tool',
+                description: 'Returns oversized response',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'oversized_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> =>
+                    toolSuccess(
+                        'x'.repeat(TokenConstants.MAX_TOOL_RESPONSE_CHARS + 1)
+                    ),
+            };
+            toolRegistry.registerTool(oversizedTool);
+
+            const result = await executor.executeTool('oversized_tool', {});
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Response too large');
+            // recordToolCall should have been called before size validation
+            expect(chain.getToolCallsSinceLastCheckpoint()).toContain(
+                'oversized_tool'
+            );
+        });
+
+        it('think tool is excluded from recordToolCall', async () => {
+            const chain = new ReasoningChain();
+            const ctx = createMockExecutionContext({ reasoningChain: chain });
+            const executor = new ToolExecutor(toolRegistry, ctx);
+            executor.bindToContext();
+
+            // Register a mock think tool
+            const thinkTool: ITool = {
+                name: 'think',
+                description: 'Think tool',
+                schema: z.object({ topic: z.string(), analysis: z.string() }),
+                getVSCodeTool: () => ({
+                    name: 'think',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> =>
+                    toolSuccess('Thinking done'),
+            };
+            toolRegistry.registerTool(thinkTool);
+
+            await executor.executeTool('think', {
+                topic: 'test',
+                analysis: 'test',
+            });
+
+            // 'think' should NOT appear in tool calls since it manages its own checkpoint
+            expect(chain.getToolCallsSinceLastCheckpoint()).not.toContain(
+                'think'
+            );
+            expect(chain.getToolCallsSinceLastCheckpoint()).toHaveLength(0);
         });
     });
 

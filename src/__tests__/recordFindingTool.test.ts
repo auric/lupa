@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { RecordFindingTool } from '../tools/recordFindingTool';
 import { createMockExecutionContext } from './testUtils/mockFactories';
 import { FindingStore } from '../sessions/findingStore';
+import { ReasoningChain } from '../sessions/reasoningChain';
 
 vi.mock('../services/loggingService', () => ({
     Log: {
@@ -562,6 +563,79 @@ describe('RecordFindingTool', () => {
 
             expect(result.success).toBe(true);
             expect(store.size).toBe(1);
+        });
+    });
+
+    describe('hypothesis confirmation via ReasoningChain', () => {
+        it('marks matching hypothesis as confirmed when title matches', async () => {
+            const store = new FindingStore();
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth review', ['Missing error handler']);
+            // Transition to 'investigating' via investigation tool
+            chain.recordToolCall('find_usages');
+
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                reasoningChain: chain,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            const hypothesis = chain.getAllHypotheses()[0];
+            expect(hypothesis.status).toBe('confirmed');
+            expect(hypothesis.resolutionNote).toContain(
+                'Missing error handler'
+            );
+        });
+
+        it('falls back to most recent investigating hypothesis when no text match', async () => {
+            const store = new FindingStore();
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('review', [
+                'unrelated risk alpha',
+                'unrelated risk beta',
+            ]);
+            // Transition both to 'investigating'
+            chain.recordToolCall('read_file');
+
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                reasoningChain: chain,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            // Neither hypothesis text matches the finding title,
+            // so the most recent investigating one (beta, index 1) gets confirmed
+            expect(chain.getAllHypotheses()[0].status).toBe('investigating');
+            expect(chain.getAllHypotheses()[1].status).toBe('confirmed');
+        });
+
+        it('does not mark hypothesis if no open hypotheses exist', async () => {
+            const store = new FindingStore();
+            const chain = new ReasoningChain();
+            // Add hypotheses but confirm/dismiss them all
+            chain.addCheckpoint('review', ['risk1', 'risk2']);
+            chain.markConfirmed(1, 'already found');
+            chain.markDismissed(2, 'disproved');
+
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                reasoningChain: chain,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            // Both should retain their original statuses
+            expect(chain.getAllHypotheses()[0].status).toBe('confirmed');
+            expect(chain.getAllHypotheses()[1].status).toBe('dismissed');
+            expect(store.size).toBe(1); // Finding still recorded successfully
         });
     });
 });

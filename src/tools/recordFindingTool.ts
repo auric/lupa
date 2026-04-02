@@ -227,6 +227,34 @@ export class RecordFindingTool extends BaseTool {
             })),
         });
 
+        // Mark best-matching hypothesis as confirmed in reasoning chain
+        if (context.reasoningChain) {
+            const open = context.reasoningChain.getOpenHypotheses();
+            if (open.length > 0) {
+                const titleLower = args.title.toLowerCase();
+                const descLower = (args.description ?? '').toLowerCase();
+                // Try substring match: hypothesis text appears in title/description or vice versa
+                const match = open.find((h) => {
+                    const hLower = h.text.toLowerCase();
+                    return (
+                        titleLower.includes(hLower) ||
+                        hLower.includes(titleLower) ||
+                        descLower.includes(hLower)
+                    );
+                });
+                // Fall back to most recent investigating hypothesis
+                const target =
+                    match ??
+                    open.filter((h) => h.status === 'investigating').at(-1);
+                if (target) {
+                    context.reasoningChain.markConfirmed(
+                        target.id,
+                        `Recorded as finding ${finding.id}: ${args.title}`
+                    );
+                }
+            }
+        }
+
         // Evidence-aware gating: warn (don't block) if no investigation tools
         // were called since the last think checkpoint. This catches models that
         // skip the think→investigate→record workflow.

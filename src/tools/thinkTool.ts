@@ -85,7 +85,9 @@ export class ThinkTool extends BaseTool {
             );
         }
 
-        // --- Uninvestigated hypothesis warning ---
+        // --- Uninvestigated hypothesis follow-up reminder ---
+        // Note: hypotheses auto-transition to 'investigating' when investigation
+        // tools run, so truly uninvestigated ones had no tool activity at all.
         const uninvestigated = chain?.getUninvestigatedHypotheses() ?? [];
         const staleHypotheses = uninvestigated.filter(
             (h) =>
@@ -99,7 +101,7 @@ export class ThinkTool extends BaseTool {
                 .map((h) => `[H${h.id}] "${h.text}"`)
                 .join(', ');
             parts.push(
-                `⚠️ STALE HYPOTHESES: ${staleHypotheses.length} hypothesis(es) from earlier checkpoints were never investigated: ${staleList}. Investigate these with tools or explicitly dismiss them.`
+                `⚠️ FOLLOW-UP REMINDER: ${staleHypotheses.length} hypothesis(es) from earlier checkpoints may still need attention: ${staleList}. If already investigated, record findings or dismiss with evidence; otherwise investigate with tools.`
             );
         }
 

@@ -63,23 +63,23 @@ ${
     calibration.findingBias === 'dismissive'
         ? `### Investigation Algorithm (execute for each changed file)
 
-1. Call \\\`get_file_diff({file_paths: ["<file>"]})\\\` → read the diff
+1. Call \`get_file_diff({file_paths: ["<file>"]})\` → read the diff
 2. For each changed function/method in the diff:
-   a. Call \\\`read_file\\\` → full function body with 30 lines context
-   b. Call \\\`find_usages\\\` → all callers of this function
+   a. Call \`read_file\` → full function body with 30 lines context
+   b. Call \`find_usages\` → all callers of this function
    c. For EACH caller, verify:
       - New null/undefined return? → Does caller check for null?
       - New error throw? → Does caller have try-catch?
       - Changed parameter type? → Does caller pass correct type?
       - Changed return type? → Does caller use return value correctly?
       - Removed validation? → Does any caller depend on it?
-   d. If ANY caller CANNOT handle the change → call \\\`record_finding\\\`
+   d. If ANY caller CANNOT handle the change → call \`record_finding\`
    e. If ALL callers handle it correctly → move to next function
 3. After all functions checked, verify:
    - New error paths propagated to callers?
    - New resources acquired and released?
    - Changed control flow breaks existing invariants?
-4. Call \\\`think\\\` checkpoint with findings summary
+4. Call \`think\` checkpoint with findings summary
 5. Repeat for next file
 
 **Decision rule**: A finding exists when a SPECIFIC caller of CHANGED code will produce wrong behavior. Name the caller, the scenario, and the wrong behavior. If you cannot name all three, it is not a finding.`
@@ -87,14 +87,14 @@ ${
 - If you review multiple files and identify zero risks at checkpoint #1, you are likely being too agreeable — go back and hypothesize harder
 - Real code changes almost always have edge cases, error handling gaps, or subtle type issues worth at least investigating
 - Generating hypotheses costs nothing — disprove them with tools if they're wrong
-- A review that says "everything looks good" without any \\\`validate_claim\\\` calls is incomplete, not thorough`
+- A review that says "everything looks good" without any \`validate_claim\` calls is incomplete, not thorough`
 }
 
 ### Example: Reviewing a File Change
 
 1. \`get_file_diff({file_paths: ["src/auth.ts"]})\` → see what changed
 2. \`think({topic: "src/auth.ts changes", analysis: "login() now accepts plain string password instead of hash", identified_risks: ["timing attack on === comparison", "plain text password in memory"], next_action: "find_usages for login()"})\`
-3. \`find_usages({symbol: "login", file: "src/auth.ts"})\` → trace all callers
+3. \`find_usages({symbol_name: "login", file_path: "src/auth.ts"})\` → trace all callers
 4. For each caller, check: does it handle the new behavior?
 5. If caller at risk → \`record_finding({...})\` immediately
 6. If all callers safe → move to next changed function
@@ -189,7 +189,7 @@ ${
     calibration.findingBias === 'dismissive'
         ? `
 **Zero-finding safety check**: If you have investigated every file and recorded zero findings, verify:
-1. Did you call \\\`find_usages\\\` for every changed public function? (check your tool call history)
+1. Did you call \`find_usages\` for every changed public function? (check your tool call history)
 2. Did every caller handle the change? (cite the specific tool output)
 3. Are there any new null paths, error paths, or type changes?
 If yes to all three → zero findings is correct. If no → go back and investigate the gap.`

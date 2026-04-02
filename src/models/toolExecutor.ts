@@ -242,6 +242,12 @@ export class ToolExecutor {
             );
             const elapsed = Date.now() - startTime;
 
+            // Record tool call in reasoning chain for evidence-aware gating
+            // Skip 'think' — it manages its own checkpoint via addCheckpoint()
+            if (name !== 'think') {
+                this.executionContext.reasoningChain?.recordToolCall(name);
+            }
+
             // Validate response size only for successful results with data
             if (toolResult.success && toolResult.data) {
                 const maxChars =
@@ -296,9 +302,6 @@ export class ToolExecutor {
                     );
                 }
             }
-
-            // Record tool call in reasoning chain for evidence-aware gating
-            this.executionContext.reasoningChain?.recordToolCall(name);
 
             return {
                 name,

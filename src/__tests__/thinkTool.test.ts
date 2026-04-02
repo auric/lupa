@@ -261,7 +261,7 @@ describe('ThinkTool', () => {
                 context
             );
 
-            expect(result.data).toContain('STALE HYPOTHESES');
+            expect(result.data).toContain('FOLLOW-UP REMINDER');
             expect(result.data).toContain('forgotten risk');
         });
 

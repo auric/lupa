@@ -182,6 +182,74 @@ describe('ReasoningChain', () => {
         });
     });
 
+    describe('recordToolCall auto-transition', () => {
+        it('recordToolCall with investigation tool auto-transitions generated hypotheses to investigating', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack', 'null check']);
+
+            // Both should start as 'generated'
+            expect(chain.getAllHypotheses()[0].status).toBe('generated');
+            expect(chain.getAllHypotheses()[1].status).toBe('generated');
+
+            chain.recordToolCall('find_usages');
+
+            // Both should now be 'investigating'
+            expect(chain.getAllHypotheses()[0].status).toBe('investigating');
+            expect(chain.getAllHypotheses()[1].status).toBe('investigating');
+        });
+
+        it('recordToolCall with investigation tool populates investigationTools on investigating hypotheses', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack']);
+
+            chain.recordToolCall('find_usages');
+            chain.recordToolCall('read_file');
+
+            const h = chain.getAllHypotheses()[0];
+            expect(h.status).toBe('investigating');
+            expect(h.investigationTools).toEqual(['find_usages', 'read_file']);
+        });
+
+        it('recordToolCall with non-investigation tool does not transition hypotheses', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack']);
+
+            chain.recordToolCall('think');
+            chain.recordToolCall('update_plan');
+
+            expect(chain.getAllHypotheses()[0].status).toBe('generated');
+            expect(chain.getAllHypotheses()[0].investigationTools).toEqual([]);
+        });
+
+        it('getUninvestigatedHypotheses returns empty after investigation tools called', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['risk1', 'risk2']);
+
+            // Before investigation: both uninvestigated
+            expect(chain.getUninvestigatedHypotheses()).toHaveLength(2);
+
+            chain.recordToolCall('find_usages');
+
+            // After investigation: auto-transitioned to 'investigating', no longer 'generated'
+            expect(chain.getUninvestigatedHypotheses()).toHaveLength(0);
+        });
+
+        it('auto-transition does not affect already confirmed or dismissed hypotheses', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['risk1', 'risk2', 'risk3']);
+
+            chain.markConfirmed(1, 'found issue');
+            chain.markDismissed(2, 'disproved');
+
+            chain.recordToolCall('read_file');
+
+            expect(chain.getAllHypotheses()[0].status).toBe('confirmed');
+            expect(chain.getAllHypotheses()[1].status).toBe('dismissed');
+            // Only the 'generated' one should transition
+            expect(chain.getAllHypotheses()[2].status).toBe('investigating');
+        });
+    });
+
     describe('isolation', () => {
         it('should not share state between separate instances', () => {
             const chain1 = new ReasoningChain();
