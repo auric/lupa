@@ -139,6 +139,11 @@ export class RecordFindingTool extends BaseTool {
             }
         }
 
+        // After coercing to number, check for invalid 0
+        if (normalized.hypothesis_id === 0) {
+            delete normalized.hypothesis_id;
+        }
+
         return normalized;
     }
 
@@ -262,6 +267,7 @@ export class RecordFindingTool extends BaseTool {
         });
 
         // Mark linked hypothesis as confirmed in reasoning chain
+        let implicitHypothesisId: number | undefined;
         if (context.reasoningChain) {
             const chain = context.reasoningChain;
             let target: { id: number } | undefined;
@@ -294,6 +300,9 @@ export class RecordFindingTool extends BaseTool {
                     `Recorded as finding ${finding.id}: ${args.title}`,
                     finding.id
                 );
+                if (args.hypothesis_id == null) {
+                    implicitHypothesisId = target.id;
+                }
             }
         }
 
@@ -322,8 +331,11 @@ export class RecordFindingTool extends BaseTool {
             : '';
 
         return toolSuccess(
-            `Finding recorded: [${finding.id}] ${finding.severity} — ${finding.title}\n` +
-                `Evidence: ${args.verification_evidence}\n` +
+            `Finding recorded: [${finding.id}] ${finding.severity} — ${finding.title}` +
+                (implicitHypothesisId != null
+                    ? ` (linked to hypothesis [H${implicitHypothesisId}])`
+                    : '') +
+                `\nEvidence: ${args.verification_evidence}\n` +
                 `Disproof attempt: ${args.disproof_note}\n\n` +
                 `LSP claims: ${args.verifiable_claims?.length ?? 0} attached for post-hoc validation\n\n` +
                 `⚠️ MANDATORY SELF-CHECK before continuing:\n` +

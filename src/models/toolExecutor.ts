@@ -336,6 +336,7 @@ export class ToolExecutor {
                 `Tool '${name}' threw exception: ${errorMsg} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`,
                 error
             );
+            this.executionContext.reasoningChain?.recordToolCall(name);
             return {
                 name,
                 success: false,

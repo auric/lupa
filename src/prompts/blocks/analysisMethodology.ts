@@ -125,7 +125,7 @@ Call \`think\` at these checkpoints to maintain analysis quality:
 ### Step 5: Verify Your Hypotheses (MANDATORY for MEDIUM+ Findings)
 
 The issues you identified are **HYPOTHESES**, not confirmed findings.
-Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using the verification gates from \`<finding_quality>\` above.
+Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using the verification gates from \`<finding_quality>\` below.
 
 **For each MEDIUM+ hypothesis:**
 1. Ask: "What would make this NOT a problem?"

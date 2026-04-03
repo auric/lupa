@@ -111,7 +111,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
                     (f, i) =>
                         `  ${i + 1}. [${f.id}] ${f.severity}: ${f.title} (${f.file})\n` +
                         `     Affected: ${f.affectedComponent || 'NOT SPECIFIED'} | Mechanism: ${f.failureMechanism || 'NOT SPECIFIED'}\n` +
-                        `     Evidence: ${f.description.slice(0, 150)}...\n` +
+                        `     Evidence: ${f.description.length > 150 ? f.description.slice(0, 150) + '...' : f.description}\n` +
                         `     Disproof: ${f.disproof.method || 'NONE PROVIDED'}`
                 )
                 .join('\n');
