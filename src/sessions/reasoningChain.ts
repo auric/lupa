@@ -174,6 +174,16 @@ export class ReasoningChain {
         }
     }
 
+    /** Revert a confirmed hypothesis back to investigating (e.g., when finding is retracted) */
+    revertToInvestigating(hypothesisId: number, note?: string): void {
+        const h = this.hypotheses.find((h) => h.id === hypothesisId);
+        if (h && h.status === 'confirmed') {
+            h.status = 'investigating';
+            h.lastUpdatedAtCheckpoint = this.checkpoints.length;
+            h.resolutionNote = note;
+        }
+    }
+
     /** Get hypotheses that were generated but never investigated */
     getUninvestigatedHypotheses(): TrackedHypothesis[] {
         return this.hypotheses.filter(

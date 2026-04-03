@@ -42,6 +42,25 @@ export class RetractFindingTool extends BaseTool {
 
         store.remove(args.finding_id);
 
+        // Revert hypothesis status if this finding confirmed one
+        if (context.reasoningChain) {
+            const confirmed = context.reasoningChain
+                .getAllHypotheses()
+                .filter(
+                    (h) =>
+                        h.status === 'confirmed' &&
+                        h.resolutionNote?.includes(
+                            `finding ${args.finding_id}:`
+                        )
+                );
+            for (const h of confirmed) {
+                context.reasoningChain.revertToInvestigating(
+                    h.id,
+                    'Finding retracted'
+                );
+            }
+        }
+
         return toolSuccess(
             `Retracted finding "${args.finding_id}" (${existing.title}). Reason: ${args.reason}. Remaining findings: ${store.size}.`
         );

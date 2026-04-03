@@ -300,4 +300,38 @@ describe('ReasoningChain', () => {
             expect(chain1.getToolCallsSinceLastCheckpoint()).toEqual([]);
         });
     });
+
+    describe('revertToInvestigating', () => {
+        it('reverts confirmed hypothesis to investigating', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack']);
+            chain.markConfirmed(1, 'found in loadSettings');
+
+            chain.revertToInvestigating(1, 'Finding retracted');
+
+            const h = chain.getAllHypotheses()[0];
+            expect(h.status).toBe('investigating');
+            expect(h.resolutionNote).toBe('Finding retracted');
+        });
+
+        it('does not revert non-confirmed hypothesis', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack']);
+
+            // hypothesis is 'generated' — should not be reverted
+            chain.revertToInvestigating(1, 'Finding retracted');
+
+            expect(chain.getAllHypotheses()[0].status).toBe('generated');
+        });
+
+        it('does not revert dismissed hypothesis', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack']);
+            chain.markDismissed(1, 'disproved');
+
+            chain.revertToInvestigating(1, 'Finding retracted');
+
+            expect(chain.getAllHypotheses()[0].status).toBe('dismissed');
+        });
+    });
 });
