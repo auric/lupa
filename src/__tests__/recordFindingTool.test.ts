@@ -55,6 +55,40 @@ describe('RecordFindingTool', () => {
         tool = new RecordFindingTool();
     });
 
+    describe('normalizeArgs', () => {
+        it('strips "H1" format to numeric 1', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: 'H1',
+            });
+            expect(result.hypothesis_id).toBe(1);
+        });
+
+        it('strips "[H2]" format to numeric 2', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: '[H2]',
+            });
+            expect(result.hypothesis_id).toBe(2);
+        });
+
+        it('passes through numeric hypothesis_id unchanged', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: 3,
+            });
+            expect(result.hypothesis_id).toBe(3);
+        });
+
+        it('passes through undefined hypothesis_id', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: undefined,
+            });
+            expect(result.hypothesis_id).toBeUndefined();
+        });
+    });
+
     it('should have correct name', () => {
         expect(tool.name).toBe('record_finding');
     });
@@ -636,6 +670,53 @@ describe('RecordFindingTool', () => {
             expect(chain.getAllHypotheses()[0].status).toBe('confirmed');
             expect(chain.getAllHypotheses()[1].status).toBe('dismissed');
             expect(store.size).toBe(1); // Finding still recorded successfully
+        });
+
+        it('does not fall back when explicit hypothesis_id refers to non-open hypothesis', async () => {
+            const store = new FindingStore();
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('review', ['risk alpha', 'risk beta']);
+            // Transition both to 'investigating'
+            chain.recordToolCall('read_file');
+            // Confirm the first one so it's no longer open
+            chain.markConfirmed(1, 'already confirmed');
+
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                reasoningChain: chain,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            // Pass hypothesis_id: 1 which is already confirmed — should NOT fall back to hypothesis 2
+            await tool.execute({ ...BASE_FINDING_ARGS, hypothesis_id: 1 }, ctx);
+
+            expect(chain.getAllHypotheses()[0].status).toBe('confirmed'); // stays confirmed
+            expect(chain.getAllHypotheses()[1].status).toBe('investigating'); // NOT confirmed by fallback
+            expect(store.size).toBe(1); // Finding still recorded
+        });
+
+        it('does not fall back when explicit hypothesis_id does not exist', async () => {
+            const store = new FindingStore();
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('review', ['risk alpha']);
+            chain.recordToolCall('read_file');
+
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                reasoningChain: chain,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            // Pass hypothesis_id: 999 which doesn't exist — should NOT fall back to hypothesis 1
+            await tool.execute(
+                { ...BASE_FINDING_ARGS, hypothesis_id: 999 },
+                ctx
+            );
+
+            expect(chain.getAllHypotheses()[0].status).toBe('investigating'); // NOT confirmed
+            expect(store.size).toBe(1); // Finding still recorded
         });
     });
 });

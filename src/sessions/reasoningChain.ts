@@ -157,7 +157,7 @@ export class ReasoningChain {
     /** Mark a hypothesis as confirmed (finding recorded) */
     markConfirmed(hypothesisId: number, note?: string): void {
         const h = this.hypotheses.find((h) => h.id === hypothesisId);
-        if (h) {
+        if (h && (h.status === 'generated' || h.status === 'investigating')) {
             h.status = 'confirmed';
             h.lastUpdatedAtCheckpoint = this.checkpoints.length;
             h.resolutionNote = note;
@@ -167,7 +167,7 @@ export class ReasoningChain {
     /** Mark a hypothesis as dismissed with reason */
     markDismissed(hypothesisId: number, note?: string): void {
         const h = this.hypotheses.find((h) => h.id === hypothesisId);
-        if (h) {
+        if (h && (h.status === 'generated' || h.status === 'investigating')) {
             h.status = 'dismissed';
             h.lastUpdatedAtCheckpoint = this.checkpoints.length;
             h.resolutionNote = note;

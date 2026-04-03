@@ -115,6 +115,23 @@ export class RecordFindingTool extends BaseTool {
             ),
     });
 
+    override normalizeArgs(
+        args: Record<string, unknown>
+    ): Record<string, unknown> {
+        const normalized = { ...args };
+        // Strip common LLM formats like "H1", "[H1]", "H 1" → 1
+        if (
+            typeof normalized.hypothesis_id === 'string' &&
+            normalized.hypothesis_id !== ''
+        ) {
+            const match = normalized.hypothesis_id.match(/\d+/);
+            if (match) {
+                normalized.hypothesis_id = Number(match[0]);
+            }
+        }
+        return normalized;
+    }
+
     async execute(
         args: z.infer<typeof this.schema>,
         context: ExecutionContext
@@ -250,10 +267,11 @@ export class RecordFindingTool extends BaseTool {
                                 h.status === 'investigating')
                     );
                 target = byId;
-            }
-
-            // Fallback: most recent investigating hypothesis
-            if (!target) {
+                // Don't fall back — explicit ID that doesn't match means
+                // the hypothesis was already resolved or doesn't exist
+            } else {
+                // Fallback only when no explicit hypothesis ID was provided:
+                // use the most recent investigating hypothesis
                 target = chain
                     .getOpenHypotheses()
                     .filter((h) => h.status === 'investigating')

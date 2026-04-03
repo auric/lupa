@@ -99,6 +99,39 @@ describe('ReasoningChain', () => {
 
             expect(chain.getAllHypotheses()[0].status).toBe('confirmed');
         });
+
+        it('markConfirmed does not re-confirm a dismissed hypothesis', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack']);
+            chain.markDismissed(1, 'disproved');
+
+            chain.markConfirmed(1, 'trying to re-confirm');
+
+            expect(chain.getAllHypotheses()[0].status).toBe('dismissed');
+        });
+
+        it('markDismissed does not dismiss a confirmed hypothesis', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack']);
+            chain.markConfirmed(1, 'real issue');
+
+            chain.markDismissed(1, 'trying to dismiss');
+
+            expect(chain.getAllHypotheses()[0].status).toBe('confirmed');
+        });
+
+        it('markConfirmed does not affect abandoned hypothesis', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack']);
+
+            // Manually set to abandoned via direct mutation (abandoned is a terminal state)
+            const h = chain.getAllHypotheses()[0];
+            (h as { status: string }).status = 'abandoned';
+
+            chain.markConfirmed(1, 'trying to confirm abandoned');
+
+            expect(chain.getAllHypotheses()[0].status).toBe('abandoned');
+        });
     });
 
     describe('query methods', () => {
