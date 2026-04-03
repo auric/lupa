@@ -3,6 +3,8 @@ import { generatePRReviewerRole } from '../prompts/blocks/roleDefinitions';
 import { generateAnalysisMethodology } from '../prompts/blocks/analysisMethodology';
 import { generateSelfReflectionGuidance } from '../prompts/blocks/selfReflection';
 import { generateFindingQualityGuidance } from '../prompts/blocks/findingQualityGuidance';
+import { generateFewShotExamples } from '../prompts/blocks/fewShotExamples';
+import { generateVerificationChecklist } from '../prompts/blocks/verificationChecklist';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
 
 const DISMISSIVE_PROFILE: ModelCalibrationProfile = {
@@ -226,6 +228,48 @@ describe('Calibration-aware prompt blocks', () => {
             // Balanced profile includes revert test and FP patterns
             expect(guidance).toContain('Revert Test');
             expect(guidance).toContain('Top False Positive Patterns');
+        });
+    });
+
+    describe('generateFewShotExamples', () => {
+        it('should return empty string for balanced models', () => {
+            const result = generateFewShotExamples(BALANCED_PROFILE);
+            expect(result).toBe('');
+        });
+
+        it('should return examples for dismissive models', () => {
+            const result = generateFewShotExamples(DISMISSIVE_PROFILE);
+            expect(result).toContain('Examples');
+        });
+
+        it('should include both finding and dismissal examples', () => {
+            const result = generateFewShotExamples(DISMISSIVE_PROFILE);
+            expect(result).toContain('record_finding');
+            expect(result).toContain('Dismissed');
+        });
+
+        it('should be language-agnostic with diverse file extensions', () => {
+            const result = generateFewShotExamples(DISMISSIVE_PROFILE);
+            expect(result).toContain('.py');
+            expect(result).toContain('.java');
+            expect(result).toContain('.go');
+        });
+    });
+
+    describe('generateVerificationChecklist', () => {
+        it('should return empty string for balanced models', () => {
+            const result = generateVerificationChecklist(BALANCED_PROFILE);
+            expect(result).toBe('');
+        });
+
+        it('should return checklist for dismissive models', () => {
+            const result = generateVerificationChecklist(DISMISSIVE_PROFILE);
+            expect(result).toContain('Verification Checklist');
+        });
+
+        it('should reference tool names', () => {
+            const result = generateVerificationChecklist(DISMISSIVE_PROFILE);
+            expect(result).toContain('find_usages');
         });
     });
 });

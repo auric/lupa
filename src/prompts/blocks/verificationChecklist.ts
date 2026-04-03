@@ -40,6 +40,6 @@ For each changed file, execute this checklist. Check off each item with the tool
 - [ ] **Integration points**: Changed function signatures → All call sites updated?
 - [ ] **Configuration**: New config options → Defaults sensible? Missing options handled?
 
-**Completion rule**: You may call \`think_about_completion\` only after checking at least the per-function items for every changed function. Missing checks must be noted in your completion summary.
+**Completion rule**: You may call \`think_about_completion\` only after checking at least the per-function items for every changed function. Missing checks must be noted in your completion summary. Then call \`submit_review\` to deliver your findings.
 </verification_checklist>`;
 }

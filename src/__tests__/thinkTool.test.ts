@@ -320,5 +320,22 @@ describe('ThinkTool', () => {
 
             expect(result.data).not.toContain('Open hypotheses');
         });
+
+        it('should work when reasoningChain is undefined', async () => {
+            const context = createMockExecutionContext();
+            delete (context as any).reasoningChain;
+
+            const result = await tool.execute(
+                {
+                    topic: 'test',
+                    analysis: 'test analysis',
+                    identified_risks: [],
+                    next_action: 'continue',
+                },
+                context
+            );
+
+            expect(result.success).toBe(true);
+        });
     });
 });

@@ -323,6 +323,7 @@ export class ToolExecutor {
                 Log.warn(
                     `Tool '${name}' timed out [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
                 );
+                this.executionContext.reasoningChain?.recordToolCall(name);
                 return {
                     name,
                     success: false,

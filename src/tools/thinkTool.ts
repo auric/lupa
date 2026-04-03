@@ -76,7 +76,7 @@ export class ThinkTool extends BaseTool {
         // --- Evidence-aware gating ---
         // Warn if next_action mentions recording but no investigation since last checkpoint
         const wantsToRecord = next_action
-            ? /record.?finding|record_finding/i.test(next_action)
+            ? /record.*finding/i.test(next_action)
             : false;
         // Use checkpoint's captured count — addCheckpoint already reset the running counter
         const investigationCount = checkpoint?.investigationToolCount ?? 0;

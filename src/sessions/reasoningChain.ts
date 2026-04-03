@@ -71,6 +71,11 @@ export class ReasoningChain {
     private nextHypothesisId = 1;
     private toolCallsSinceLastCheckpoint: string[] = [];
 
+    /** Get the current checkpoint number (1-based, minimum 1 even before first checkpoint) */
+    private getCurrentCheckpointNumber(): number {
+        return Math.max(1, this.checkpoints.length);
+    }
+
     /** Record a tool call (called by ToolExecutor on each tool execution) */
     recordToolCall(toolName: string): void {
         this.toolCallsSinceLastCheckpoint.push(toolName);
@@ -80,7 +85,8 @@ export class ReasoningChain {
             for (const h of this.hypotheses) {
                 if (h.status === 'generated') {
                     h.status = 'investigating';
-                    h.lastUpdatedAtCheckpoint = this.checkpoints.length;
+                    h.lastUpdatedAtCheckpoint =
+                        this.getCurrentCheckpointNumber();
                 }
                 if (h.status === 'investigating') {
                     h.investigationTools.push(toolName);
@@ -107,6 +113,10 @@ export class ReasoningChain {
         const hypothesisIds: number[] = [];
 
         for (const risk of risks) {
+            if (!risk.trim()) {
+                continue;
+            }
+
             // Check for duplicate/similar hypotheses (exact match)
             const existing = this.hypotheses.find(
                 (h) =>
@@ -151,7 +161,7 @@ export class ReasoningChain {
             const h = this.hypotheses.find((h) => h.id === id);
             if (h && h.status === 'generated') {
                 h.status = 'investigating';
-                h.lastUpdatedAtCheckpoint = this.checkpoints.length;
+                h.lastUpdatedAtCheckpoint = this.getCurrentCheckpointNumber();
             }
         }
     }
@@ -165,7 +175,7 @@ export class ReasoningChain {
         const h = this.hypotheses.find((h) => h.id === hypothesisId);
         if (h && (h.status === 'generated' || h.status === 'investigating')) {
             h.status = 'confirmed';
-            h.lastUpdatedAtCheckpoint = this.checkpoints.length;
+            h.lastUpdatedAtCheckpoint = this.getCurrentCheckpointNumber();
             h.resolutionNote = note;
             h.confirmedByFindingId = findingId;
         }
@@ -176,7 +186,7 @@ export class ReasoningChain {
         const h = this.hypotheses.find((h) => h.id === hypothesisId);
         if (h && (h.status === 'generated' || h.status === 'investigating')) {
             h.status = 'dismissed';
-            h.lastUpdatedAtCheckpoint = this.checkpoints.length;
+            h.lastUpdatedAtCheckpoint = this.getCurrentCheckpointNumber();
             h.resolutionNote = note;
         }
     }
@@ -186,9 +196,19 @@ export class ReasoningChain {
         const h = this.hypotheses.find((h) => h.id === hypothesisId);
         if (h && h.status === 'confirmed') {
             h.status = 'investigating';
-            h.lastUpdatedAtCheckpoint = this.checkpoints.length;
+            h.lastUpdatedAtCheckpoint = this.getCurrentCheckpointNumber();
             h.resolutionNote = note;
             h.confirmedByFindingId = undefined;
+        }
+    }
+
+    /** Mark a hypothesis as abandoned (started but explicitly dropped) */
+    markAbandoned(hypothesisId: number, note?: string): void {
+        const h = this.hypotheses.find((h) => h.id === hypothesisId);
+        if (h && (h.status === 'generated' || h.status === 'investigating')) {
+            h.status = 'abandoned';
+            h.lastUpdatedAtCheckpoint = this.getCurrentCheckpointNumber();
+            h.resolutionNote = note;
         }
     }
 
@@ -238,13 +258,16 @@ export class ReasoningChain {
         const dismissed = this.hypotheses.filter(
             (h) => h.status === 'dismissed'
         );
+        const abandoned = this.hypotheses.filter(
+            (h) => h.status === 'abandoned'
+        );
         const uninvestigated = this.getUninvestigatedHypotheses();
         const investigating = this.hypotheses.filter(
             (h) => h.status === 'investigating'
         );
 
         const lines: string[] = [
-            `Hypothesis Trail: ${this.hypotheses.length} total, ${confirmed.length} confirmed, ${dismissed.length} dismissed, ${uninvestigated.length} uninvestigated, ${investigating.length} still investigating`,
+            `Hypothesis Trail: ${this.hypotheses.length} total, ${confirmed.length} confirmed, ${dismissed.length} dismissed, ${abandoned.length} abandoned, ${uninvestigated.length} uninvestigated, ${investigating.length} still investigating`,
         ];
 
         if (uninvestigated.length > 0) {
@@ -286,6 +309,16 @@ export class ReasoningChain {
             lines.push('');
             lines.push('❌ DISMISSED (disproved with evidence):');
             for (const h of dismissed) {
+                lines.push(
+                    `  - [H${h.id}] "${h.text}"${h.resolutionNote ? ` — ${h.resolutionNote}` : ''}`
+                );
+            }
+        }
+
+        if (abandoned.length > 0) {
+            lines.push('');
+            lines.push('🚫 ABANDONED (dropped without resolution):');
+            for (const h of abandoned) {
                 lines.push(
                     `  - [H${h.id}] "${h.text}"${h.resolutionNote ? ` — ${h.resolutionNote}` : ''}`
                 );

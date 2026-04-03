@@ -15,14 +15,13 @@ export function createZeroFindingChallengeStep(): PipelineStep {
         name: 'zero-finding-challenge',
         label: 'Zero-Finding Challenge',
         description:
-            'Challenges dismissive models that report 0 findings on non-trivial PRs',
+            'Challenges any model that reports 0 findings on non-trivial PRs',
         kind: 'llm-conversation',
 
         shouldRun(context: PipelineContext): boolean {
             return (
                 context.findingStore.size === 0 &&
-                context.parsedDiff.length >= MIN_FILES_FOR_NONTRIVIAL_PR &&
-                context.calibrationProfile.findingBias === 'dismissive'
+                context.parsedDiff.length >= MIN_FILES_FOR_NONTRIVIAL_PR
             );
         },
 

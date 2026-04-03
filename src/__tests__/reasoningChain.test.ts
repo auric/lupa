@@ -39,6 +39,14 @@ describe('ReasoningChain', () => {
             expect(chain.getAllHypotheses()).toHaveLength(1);
         });
 
+        it('should skip empty and whitespace-only hypothesis text', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('test', ['', '  ', 'valid hypothesis', '\t\n']);
+            const hyps = chain.getAllHypotheses();
+            expect(hyps).toHaveLength(1);
+            expect(hyps[0].text).toBe('valid hypothesis');
+        });
+
         it('should track tool calls between checkpoints', () => {
             const chain = new ReasoningChain();
             chain.addCheckpoint('first', ['risk1']);
