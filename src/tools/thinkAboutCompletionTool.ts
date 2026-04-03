@@ -6,6 +6,8 @@ import { ExecutionContext } from '../types/executionContext';
 import { flexibleStringArrayNonEmpty } from './schemaHelpers';
 import { pathSuffixMatch } from '../utils/pathUtils';
 
+const MAX_HYPOTHESIS_TRAIL_CHARS = 2000;
+
 const Recommendation = z.enum([
     'approve',
     'approve_with_suggestions',
@@ -144,6 +146,13 @@ export class ThinkAboutCompletionTool extends BaseTool {
             return '';
         }
 
-        return `\n\n🔗 HYPOTHESIS TRAIL:\n${chain.generateHypothesisTrailSummary()}`;
+        let summary = chain.generateHypothesisTrailSummary();
+        if (summary.length > MAX_HYPOTHESIS_TRAIL_CHARS) {
+            summary =
+                summary.slice(0, MAX_HYPOTHESIS_TRAIL_CHARS) +
+                '\n...[truncated]';
+        }
+
+        return `\n\n🔗 HYPOTHESIS TRAIL:\n${summary}`;
     }
 }

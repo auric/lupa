@@ -190,6 +190,7 @@ export class ToolExecutor {
             };
         }
 
+        let managesOwnRecording = false;
         try {
             const tool = this.restrictToLocal
                 ? this.localTools.get(name)
@@ -236,6 +237,7 @@ export class ToolExecutor {
             }
 
             const validatedArgs = parseResult.data;
+            managesOwnRecording = tool.managesOwnChainRecording ?? false;
             const toolResult = await tool.execute(
                 validatedArgs,
                 this.executionContext
@@ -243,7 +245,7 @@ export class ToolExecutor {
             const elapsed = Date.now() - startTime;
 
             // Record tool call in reasoning chain for evidence-aware gating
-            if (!tool.managesOwnChainRecording) {
+            if (!managesOwnRecording) {
                 this.executionContext.reasoningChain?.recordToolCall(name);
             }
 
@@ -323,7 +325,9 @@ export class ToolExecutor {
                 Log.warn(
                     `Tool '${name}' timed out [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
                 );
-                this.executionContext.reasoningChain?.recordToolCall(name);
+                if (!managesOwnRecording) {
+                    this.executionContext.reasoningChain?.recordToolCall(name);
+                }
                 return {
                     name,
                     success: false,
@@ -336,7 +340,9 @@ export class ToolExecutor {
                 `Tool '${name}' threw exception: ${errorMsg} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`,
                 error
             );
-            this.executionContext.reasoningChain?.recordToolCall(name);
+            if (!managesOwnRecording) {
+                this.executionContext.reasoningChain?.recordToolCall(name);
+            }
             return {
                 name,
                 success: false,

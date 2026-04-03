@@ -27,7 +27,7 @@ export function createZeroFindingChallengeStep(): PipelineStep {
 
         async execute(context: PipelineContext): Promise<PipelineStepResult> {
             Log.info(
-                `Zero-finding challenge: dismissive model reported 0 findings on ${context.parsedDiff.length}-file PR`
+                `Zero-finding challenge: model reported 0 findings on non-trivial ${context.parsedDiff.length}-file PR`
             );
 
             const investigationDisabled =
