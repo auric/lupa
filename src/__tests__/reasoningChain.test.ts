@@ -132,6 +132,33 @@ describe('ReasoningChain', () => {
 
             expect(chain.getAllHypotheses()[0].status).toBe('abandoned');
         });
+
+        it('markConfirmed stores confirmedByFindingId', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('error handling', ['missing error handler']);
+
+            chain.markConfirmed(1, 'confirmed note', 'finding-1');
+
+            const h = chain.getAllHypotheses()[0];
+            expect(h.status).toBe('confirmed');
+            expect(h.confirmedByFindingId).toBe('finding-1');
+        });
+
+        it('revertToInvestigating clears confirmedByFindingId', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('error handling', ['missing error handler']);
+
+            chain.markConfirmed(1, 'confirmed note', 'finding-1');
+            expect(chain.getAllHypotheses()[0].confirmedByFindingId).toBe(
+                'finding-1'
+            );
+
+            chain.revertToInvestigating(1, 'reverted');
+
+            const h = chain.getAllHypotheses()[0];
+            expect(h.status).toBe('investigating');
+            expect(h.confirmedByFindingId).toBeUndefined();
+        });
     });
 
     describe('query methods', () => {

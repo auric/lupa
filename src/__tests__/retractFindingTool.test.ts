@@ -142,10 +142,7 @@ describe('RetractFindingTool', () => {
             verifiableClaims: [],
         });
 
-        chain.markConfirmed(
-            1,
-            `Recorded as finding ${recorded.id}: Missing error handler`
-        );
+        chain.markConfirmed(1, 'Confirmed as finding', recorded.id);
         expect(chain.getAllHypotheses()[0].status).toBe('confirmed');
 
         context = {
@@ -202,8 +199,8 @@ describe('RetractFindingTool', () => {
             verifiableClaims: [],
         });
 
-        chain.markConfirmed(1, `Recorded as finding ${f1.id}: Risk one issue`);
-        chain.markConfirmed(2, `Recorded as finding ${f2.id}: Risk two issue`);
+        chain.markConfirmed(1, 'Confirmed as finding', f1.id);
+        chain.markConfirmed(2, 'Confirmed as finding', f2.id);
 
         context = {
             ...context,
@@ -217,5 +214,61 @@ describe('RetractFindingTool', () => {
 
         expect(chain.getAllHypotheses()[0].status).toBe('investigating');
         expect(chain.getAllHypotheses()[1].status).toBe('confirmed');
+    });
+
+    it('does not revert hypothesis with different confirmedByFindingId', async () => {
+        const chain = new ReasoningChain();
+        chain.addCheckpoint('risks', ['risk one']);
+        chain.recordToolCall('read_file');
+
+        const f1 = store.record({
+            agentId: 'root',
+            severity: 'HIGH',
+            category: 'error_handling_gap',
+            title: 'Risk one issue',
+            file: 'src/a.ts',
+            lineRange: [1, 5],
+            description: 'desc',
+            supportingToolCalls: ['read_file'],
+            disproof: {
+                attempted: true,
+                method: 'checked',
+                result: 'valid',
+            },
+            verifiableClaims: [],
+        });
+
+        const f2 = store.record({
+            agentId: 'root',
+            severity: 'MEDIUM',
+            category: 'logic_error',
+            title: 'Risk two issue',
+            file: 'src/b.ts',
+            lineRange: [10, 15],
+            description: 'desc',
+            supportingToolCalls: ['read_file'],
+            disproof: {
+                attempted: true,
+                method: 'checked',
+                result: 'valid',
+            },
+            verifiableClaims: [],
+        });
+
+        chain.markConfirmed(1, 'Confirmed as finding', f1.id);
+
+        context = {
+            ...context,
+            reasoningChain: chain,
+        };
+
+        // Retract f2 — hypothesis 1 was confirmed by f1, should stay confirmed
+        await tool.execute(
+            { finding_id: f2.id, reason: 'False positive' },
+            context
+        );
+
+        expect(chain.getAllHypotheses()[0].status).toBe('confirmed');
+        expect(chain.getAllHypotheses()[0].confirmedByFindingId).toBe(f1.id);
     });
 });

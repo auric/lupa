@@ -87,6 +87,38 @@ describe('RecordFindingTool', () => {
             });
             expect(result.hypothesis_id).toBeUndefined();
         });
+
+        it('converts null hypothesis_id to undefined', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: null,
+            });
+            expect(result.hypothesis_id).toBeUndefined();
+        });
+
+        it('converts empty string hypothesis_id to undefined', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: '',
+            });
+            expect(result.hypothesis_id).toBeUndefined();
+        });
+
+        it('converts whitespace-only hypothesis_id to undefined', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: '  ',
+            });
+            expect(result.hypothesis_id).toBeUndefined();
+        });
+
+        it('converts string with no digits to undefined', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: 'abc',
+            });
+            expect(result.hypothesis_id).toBeUndefined();
+        });
     });
 
     it('should have correct name', () => {

@@ -49,9 +49,7 @@ export class RetractFindingTool extends BaseTool {
                 .filter(
                     (h) =>
                         h.status === 'confirmed' &&
-                        h.resolutionNote?.includes(
-                            `finding ${args.finding_id}:`
-                        )
+                        h.confirmedByFindingId === args.finding_id
                 );
             for (const h of confirmed) {
                 context.reasoningChain.revertToInvestigating(

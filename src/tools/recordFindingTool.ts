@@ -119,16 +119,26 @@ export class RecordFindingTool extends BaseTool {
         args: Record<string, unknown>
     ): Record<string, unknown> {
         const normalized = { ...args };
-        // Strip common LLM formats like "H1", "[H1]", "H 1" → 1
-        if (
-            typeof normalized.hypothesis_id === 'string' &&
-            normalized.hypothesis_id !== ''
-        ) {
-            const match = normalized.hypothesis_id.match(/\d+/);
-            if (match) {
-                normalized.hypothesis_id = Number(match[0]);
+
+        // Normalize hypothesis_id: strip LLM formats like "H1", "[H1]", "H 1" → 1
+        // Also handle null/""/whitespace which z.coerce.number() would turn into 0
+        const hid = normalized.hypothesis_id;
+        if (hid == null || hid === '') {
+            delete normalized.hypothesis_id;
+        } else if (typeof hid === 'string') {
+            const trimmed = hid.trim();
+            if (trimmed === '') {
+                delete normalized.hypothesis_id;
+            } else {
+                const match = trimmed.match(/\d+/);
+                if (match) {
+                    normalized.hypothesis_id = Number(match[0]);
+                } else {
+                    delete normalized.hypothesis_id;
+                }
             }
         }
+
         return normalized;
     }
 
@@ -281,7 +291,8 @@ export class RecordFindingTool extends BaseTool {
             if (target) {
                 chain.markConfirmed(
                     target.id,
-                    `Recorded as finding ${finding.id}: ${args.title}`
+                    `Recorded as finding ${finding.id}: ${args.title}`,
+                    finding.id
                 );
             }
         }

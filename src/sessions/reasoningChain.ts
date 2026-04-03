@@ -28,6 +28,8 @@ export interface TrackedHypothesis {
     investigationTools: string[];
     /** Resolution note (why confirmed/dismissed/abandoned) */
     resolutionNote?: string;
+    /** Finding ID that confirmed this hypothesis (set by record_finding, used by retract_finding) */
+    confirmedByFindingId?: string;
 }
 
 /** Summary of a think checkpoint */
@@ -155,12 +157,17 @@ export class ReasoningChain {
     }
 
     /** Mark a hypothesis as confirmed (finding recorded) */
-    markConfirmed(hypothesisId: number, note?: string): void {
+    markConfirmed(
+        hypothesisId: number,
+        note?: string,
+        findingId?: string
+    ): void {
         const h = this.hypotheses.find((h) => h.id === hypothesisId);
         if (h && (h.status === 'generated' || h.status === 'investigating')) {
             h.status = 'confirmed';
             h.lastUpdatedAtCheckpoint = this.checkpoints.length;
             h.resolutionNote = note;
+            h.confirmedByFindingId = findingId;
         }
     }
 
@@ -181,6 +188,7 @@ export class ReasoningChain {
             h.status = 'investigating';
             h.lastUpdatedAtCheckpoint = this.checkpoints.length;
             h.resolutionNote = note;
+            h.confirmedByFindingId = undefined;
         }
     }
 
