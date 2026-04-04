@@ -78,6 +78,7 @@ export interface PipelineContext {
 
     // --- Accumulated state (mutated by steps) ---
     droppedTitles: string[];
+    downgradedTitles: string[];
     additionalToolCallRecords: ToolCallRecord[];
     selfReflectionScores: SelfReflectionScore[];
     rewrittenAnalysis: string | undefined;

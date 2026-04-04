@@ -27,6 +27,7 @@ function createMockContext(
 ): PipelineContext {
     return {
         droppedTitles: [],
+        downgradedTitles: [],
         additionalToolCallRecords: [],
         selfReflectionScores: [],
         rewrittenAnalysis: undefined,
@@ -250,7 +251,7 @@ describe('runPipeline', () => {
         expect(records[1].durationMs).toBe(0);
     });
 
-    it('records failed status and marks remaining steps as not-reached', async () => {
+    it('records failed status and continues to next step', async () => {
         const error = new Error('step blew up');
         const failingStep = createMockStep({
             name: 'failing-step',
@@ -269,9 +270,8 @@ describe('runPipeline', () => {
         expect(records[0].status).toBe('failed');
         expect(records[0].durationMs).toBeGreaterThanOrEqual(0);
         expect(records[1].name).toBe('next-step');
-        expect(records[1].status).toBe('not-reached');
-        expect(records[1].durationMs).toBe(0);
-        expect(nextStep.execute).not.toHaveBeenCalled();
+        expect(records[1].status).toBe('executed');
+        expect(nextStep.execute).toHaveBeenCalled();
     });
 
     it('rethrows CancellationError from step.execute', async () => {

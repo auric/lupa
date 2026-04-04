@@ -98,6 +98,22 @@ export function createWorkflowEnforcementStep(): PipelineStep {
                     context.executionContext.cancellationToken,
                     context.handler
                 );
+
+                const wasCancelled = context.conversationRunner.wasCancelled;
+                const hitMax = context.conversationRunner.hitMaxIterations;
+
+                if (wasCancelled || hitMax) {
+                    const reason = wasCancelled
+                        ? 'was cancelled'
+                        : 'hit iteration limit';
+                    Log.warn(`Workflow enforcement conversation ${reason}`);
+                    return {
+                        findingsDropped: [],
+                        findingsDowngraded: [],
+                        toolCallRecords: [],
+                        summary: `Workflow enforcement incomplete: conversation ${reason}`,
+                    };
+                }
             }
 
             return {

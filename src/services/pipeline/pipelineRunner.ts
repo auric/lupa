@@ -67,26 +67,16 @@ export async function runPipeline(
             Log.warn(
                 `Pipeline: "${step.label}" failed after ${durationMs}ms — ${getErrorMessage(error)}`
             );
-
-            // Record remaining steps as not-reached for telemetry/Phase UI
-            const failedIdx = steps.indexOf(step);
-            for (let i = failedIdx + 1; i < steps.length; i++) {
-                const remaining = steps[i]!;
-                records.push({
-                    name: remaining.name,
-                    label: remaining.label,
-                    kind: remaining.kind,
-                    status: 'not-reached',
-                    durationMs: 0,
-                });
-            }
-            break;
+            continue;
         }
         const durationMs = Math.round(performance.now() - start);
 
-        // Accumulate dropped titles into shared context
+        // Accumulate dropped/downgraded titles into shared context
         if (result.findingsDropped.length > 0) {
             context.droppedTitles.push(...result.findingsDropped);
+        }
+        if (result.findingsDowngraded.length > 0) {
+            context.downgradedTitles.push(...result.findingsDowngraded);
         }
 
         // Accumulate tool call records
