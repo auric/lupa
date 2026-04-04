@@ -5,7 +5,7 @@ import type {
     PipelineStepResult,
 } from '../pipelineTypes';
 
-const REWRITE_BUDGET = 10;
+const REWRITE_BUDGET = 50;
 const REWRITE_ALLOWED_TOOLS = new Set([
     'think',
     'submit_review',
