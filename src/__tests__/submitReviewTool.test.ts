@@ -392,6 +392,59 @@ const x = 1;
             expect(result.success).toBe(true);
         });
 
+        it('allows review with soft warning when confirmed hypotheses outnumber findings', async () => {
+            const { ReasoningChain } =
+                await import('../sessions/reasoningChain');
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('review', [
+                'timing attack on login',
+                'SQL injection in query builder',
+                'missing null check in handler',
+            ]);
+            chain.markConfirmed(1, 'found it');
+            chain.markConfirmed(2, 'found it');
+            chain.markConfirmed(3, 'found it');
+
+            const store = new FindingStore();
+            store.record({
+                agentId: 'root',
+                severity: 'HIGH',
+                category: 'security_vulnerability',
+                title: 'Timing attack on login',
+                file: 'src/auth.ts',
+                lineRange: [10, 15],
+                description: 'Password comparison using ===',
+                affectedComponent: 'login()',
+                failureMechanism: 'wrong_return_value',
+                supportingToolCalls: ['find_usages'],
+                disproof: {
+                    attempted: true,
+                    method: 'checked callers',
+                    result: 'confirmed',
+                },
+                verifiableClaims: [],
+            });
+
+            const ctx = ctxWithReflection({
+                reasoningChain: chain,
+                findingStore: store,
+            });
+
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'Found a timing attack vulnerability in the login auth module at src/auth.ts.',
+                },
+                ctx
+            );
+
+            // Should succeed but with warning about missing hypotheses
+            expect(result.success).toBe(true);
+            expect(result.data).toContain(
+                '3 hypotheses were confirmed but only 1 finding(s) recorded'
+            );
+        });
+
         it('allows review when no hypotheses were confirmed', async () => {
             const { ReasoningChain } =
                 await import('../sessions/reasoningChain');
