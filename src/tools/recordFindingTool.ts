@@ -268,6 +268,7 @@ export class RecordFindingTool extends BaseTool {
 
         // Mark linked hypothesis as confirmed in reasoning chain
         let implicitHypothesisId: number | undefined;
+        let hypothesisNote = '';
         if (context.reasoningChain) {
             const chain = context.reasoningChain;
             let target: { id: number } | undefined;
@@ -285,6 +286,9 @@ export class RecordFindingTool extends BaseTool {
                 target = byId;
                 // Don't fall back — explicit ID that doesn't match means
                 // the hypothesis was already resolved or doesn't exist
+                if (!byId) {
+                    hypothesisNote = `\n⚠️ hypothesis_id ${args.hypothesis_id} not found or already resolved — finding recorded without hypothesis link.`;
+                }
             } else {
                 // Fallback only when no explicit hypothesis ID was provided:
                 // use the most recent investigating hypothesis
@@ -312,12 +316,17 @@ export class RecordFindingTool extends BaseTool {
         let evidenceGapWarning = '';
         const chain = context.reasoningChain;
         if (chain) {
-            const investigationSinceCheckpoint =
+            // Check investigation tools in both the current window (since last checkpoint)
+            // AND the most recent checkpoint itself. This avoids false positives in the
+            // canonical investigate→think→record workflow, where investigation happened
+            // before the think checkpoint that reset the counter.
+            const toolsSinceCheckpoint =
                 chain.getInvestigationToolCountSinceLastCheckpoint();
-            if (
-                investigationSinceCheckpoint === 0 &&
-                chain.getCheckpointCount() > 0
-            ) {
+            const lastCheckpointTools =
+                chain.getAllCheckpoints().at(-1)?.investigationToolCount ?? 0;
+            const recentInvestigation =
+                toolsSinceCheckpoint + lastCheckpointTools;
+            if (recentInvestigation === 0 && chain.getCheckpointCount() > 0) {
                 evidenceGapWarning =
                     '\n\n⚠️ EVIDENCE GAP: No investigation tools were called since your last think checkpoint. ' +
                     'The think→investigate→record workflow produces higher quality findings. ' +
@@ -344,7 +353,8 @@ export class RecordFindingTool extends BaseTool {
                 `3. Is this MECHANICAL (provable by tools) or INTENT-BASED (requires knowing author's rationale)? Intent-based findings have the highest FP rate.\n` +
                 `If the answer to #1 is NO, call retract_finding immediately.` +
                 softLimitWarning +
-                evidenceGapWarning
+                evidenceGapWarning +
+                hypothesisNote
         );
     }
 }

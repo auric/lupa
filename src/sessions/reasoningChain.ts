@@ -112,8 +112,9 @@ export class ReasoningChain {
         const checkpointNumber = this.checkpoints.length + 1;
         const hypothesisIds: number[] = [];
 
-        for (const risk of risks) {
-            if (!risk.trim()) {
+        for (const rawRisk of risks) {
+            const risk = rawRisk.trim();
+            if (!risk) {
                 continue;
             }
 

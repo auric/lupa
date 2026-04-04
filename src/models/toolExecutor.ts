@@ -152,6 +152,11 @@ export class ToolExecutor {
      * @returns Promise resolving to the tool execution result
      */
     async executeTool(name: string, args: any): Promise<ToolExecutionResult> {
+        // Normalize tool name: some models emit "functions." prefix
+        if (name.startsWith('functions.')) {
+            name = name.slice('functions.'.length);
+        }
+
         const startTime = Date.now();
 
         // Defensive cancellation check FIRST - before any other logic.
