@@ -205,6 +205,8 @@ export class AnalysisEngine implements vscode.Disposable {
         let filesAnalyzed = 0;
         let selfReflectionScores: SelfReflectionScore[] = [];
         let stepRecords: StepRecord[] = [];
+        let mainAnalysisWasCancelled = false;
+        let mainAnalysisIterationsUsed = 0;
 
         try {
             Log.info('Starting analysis with tool-calling support');
@@ -412,6 +414,8 @@ export class AnalysisEngine implements vscode.Disposable {
                 handler
             );
             analysisCompleted = !conversationRunner.wasCancelled;
+            mainAnalysisWasCancelled = conversationRunner.wasCancelled;
+            mainAnalysisIterationsUsed = conversationRunner.iterationsUsed;
 
             if (analysisCompleted) {
                 const pipeline = new PostAnalysisPipeline(
@@ -478,9 +482,9 @@ export class AnalysisEngine implements vscode.Disposable {
             analysisText,
             toolCallRecords: [...toolCallRecords],
             completed: analysisCompleted,
-            wasCancelled: conversationRunner.wasCancelled,
+            wasCancelled: mainAnalysisWasCancelled,
             error: analysisError,
-            iterationsUsed: conversationRunner.iterationsUsed,
+            iterationsUsed: mainAnalysisIterationsUsed,
             selfReflectionScores,
             filesAnalyzed,
             stepRecords,
