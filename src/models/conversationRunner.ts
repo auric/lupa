@@ -125,6 +125,8 @@ export class ConversationRunner {
     private _hitRateLimit = false;
     private _hitQuotaExhausted = false;
     private _wasCancelled = false;
+    private _degraded = false;
+    private _exitReason: string | undefined;
     private _iterationsUsed = 0;
 
     /** Maximum number of consecutive rate-limit retries before giving up */
@@ -161,6 +163,16 @@ export class ConversationRunner {
     /** Whether the last run() exited due to cancellation. */
     get wasCancelled(): boolean {
         return this._wasCancelled;
+    }
+
+    /** Whether the last run() produced degraded results (error/fallback exit path). */
+    get degraded(): boolean {
+        return this._degraded;
+    }
+
+    /** Machine-readable reason for degraded exit, or undefined if run completed normally. */
+    get exitReason(): string | undefined {
+        return this._exitReason;
     }
 
     /** Number of iterations (LLM turns) used in the last run(). */
@@ -218,6 +230,8 @@ export class ConversationRunner {
         this._hitRateLimit = false;
         this._hitQuotaExhausted = false;
         this._wasCancelled = false;
+        this._degraded = false;
+        this._exitReason = undefined;
         this._iterationsUsed = 0;
         const toolNamesCalled = new Set<string>();
 
@@ -562,6 +576,9 @@ export class ConversationRunner {
                                 `${logPrefix} Model did not call submit_review after ${MAX_COMPLETION_NUDGES} nudges. Accepting response as final.`
                             );
 
+                            this._degraded = true;
+                            this._exitReason = 'completion-nudge-exhaustion';
+
                             // Try to extract review content from malformed tool call attempts
                             const extractedReview =
                                 extractReviewFromMalformedToolCall(
@@ -730,6 +747,8 @@ export class ConversationRunner {
                             Log.error(
                                 `${logPrefix} Response too long: exceeded ${ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES} retries, giving up`
                             );
+                            this._degraded = true;
+                            this._exitReason = 'response-too-long';
                             return (
                                 lastSubstantiveResponse ||
                                 'The model consistently generated responses that exceeded the maximum length. ' +
@@ -763,6 +782,8 @@ export class ConversationRunner {
                         Log.error(
                             `${logPrefix} Context overflow at iteration ${iteration} — stopping to prevent token spiral`
                         );
+                        this._degraded = true;
+                        this._exitReason = 'context-overflow';
                         return (
                             lastSubstantiveResponse ||
                             "The conversation exceeded the model's context limit. Partial results may be available."
@@ -776,6 +797,8 @@ export class ConversationRunner {
                         Log.error(
                             `${logPrefix} Conversation history corrupted (orphaned tool messages) — stopping`
                         );
+                        this._degraded = true;
+                        this._exitReason = 'conversation-corruption';
                         return (
                             lastSubstantiveResponse ||
                             'The conversation history became corrupted. Partial results may be available.'
@@ -817,6 +840,8 @@ export class ConversationRunner {
                         Log.error(
                             `${logPrefix} ${consecutiveErrors} consecutive errors — stopping to prevent infinite error loop`
                         );
+                        this._degraded = true;
+                        this._exitReason = 'consecutive-errors';
                         return (
                             lastSubstantiveResponse ||
                             `Stopped after ${consecutiveErrors} consecutive errors. Last error: ${getErrorMessage(error)}`
@@ -1186,5 +1211,7 @@ export class ConversationRunner {
         this._hitRateLimit = false;
         this._hitQuotaExhausted = false;
         this._wasCancelled = false;
+        this._degraded = false;
+        this._exitReason = undefined;
     }
 }
