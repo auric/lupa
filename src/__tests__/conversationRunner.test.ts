@@ -2423,6 +2423,71 @@ describe('ConversationRunner', () => {
             );
             expect(explicitUrgent.length).toBe(0);
         });
+
+        it('should skip warning and only fire urgent when thresholds collide for small maxIterations', async () => {
+            const addUserMessageSpy = vi.spyOn(conversation, 'addUserMessage');
+
+            // maxIterations=5: both thresholds round to 4
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation((request: any) => {
+                    callCount++;
+                    if (request.tools.length === 0) {
+                        return Promise.resolve({
+                            content: 'Final text',
+                            toolCalls: undefined,
+                        });
+                    }
+                    return Promise.resolve({
+                        content: null,
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: '{}',
+                                },
+                            },
+                        ],
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 5,
+                tools: [createMockTool('find_symbol')],
+                requiresExplicitCompletion: true,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Budget warning should NOT fire (skipped because thresholds collide)
+            const budgetWarnings = addUserMessageSpy.mock.calls.filter(
+                (call) =>
+                    typeof call[0] === 'string' &&
+                    call[0].includes('Budget warning')
+            );
+            expect(budgetWarnings.length).toBe(0);
+
+            // Only the urgent warning should fire
+            const urgentWarnings = addUserMessageSpy.mock.calls.filter(
+                (call) =>
+                    typeof call[0] === 'string' && call[0].includes('URGENT')
+            );
+            expect(urgentWarnings.length).toBe(1);
+        });
     });
 
     describe('disabledToolNames', () => {
