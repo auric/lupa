@@ -228,5 +228,50 @@ describe('createSelfReflectionStep', () => {
                 context.conversationManager.truncateToMessageCount
             ).toHaveBeenCalledWith(5);
         });
+
+        it('sets budgetExhausted when conversation hits max iterations', async () => {
+            const store = new FindingStore();
+            const f1 = store.record({
+                agentId: 'root',
+                severity: 'HIGH',
+                category: 'logic_error',
+                title: 'Finding A',
+                file: 'a.ts',
+                lineRange: [1, 2],
+                description: 'desc',
+                supportingToolCalls: [],
+                disproof: { attempted: false },
+                verifiableClaims: [],
+            });
+
+            mockRunSelfReflection.mockResolvedValue({
+                scores: [
+                    {
+                        findingId: f1.id,
+                        title: 'Finding A',
+                        score: 8,
+                        rationale: 'Verified',
+                    },
+                ],
+                dropped: [],
+                kept: ['Finding A'],
+            });
+
+            const context = createMockContext({
+                findingStore: store,
+                conversationRunner: {
+                    hitMaxIterations: true,
+                    wasCancelled: false,
+                    hitRateLimit: false,
+                } as any,
+            });
+            const result = await step.execute(context);
+
+            expect(result.budgetExhausted).toBe(true);
+            expect(result.summary).toContain('hit iteration limit');
+            // Partial scores should still be assigned
+            expect(context.selfReflectionScores).toBeDefined();
+            expect(context.selfReflectionScores).toHaveLength(1);
+        });
     });
 });

@@ -82,13 +82,16 @@ export function createRewriteStep(): PipelineStep {
             const wasCancelled = context.conversationRunner.wasCancelled;
             const hitMax = context.conversationRunner.hitMaxIterations;
             const hitRate = context.conversationRunner.hitRateLimit;
+            const degraded = context.conversationRunner.degraded;
 
-            if (wasCancelled || hitMax || hitRate) {
+            if (wasCancelled || hitMax || hitRate || degraded) {
                 const reason = wasCancelled
                     ? 'was cancelled'
                     : hitRate
                       ? 'hit rate limit'
-                      : 'hit iteration limit';
+                      : hitMax
+                        ? 'hit iteration limit'
+                        : `exited abnormally (${context.conversationRunner.exitReason ?? 'unknown'})`;
                 Log.warn(
                     `Rewrite phase ${reason} — preserving original analysis text`
                 );

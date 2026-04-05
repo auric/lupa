@@ -1,3 +1,4 @@
+import { Log } from '../../loggingService';
 import type {
     PipelineStep,
     PipelineContext,
@@ -46,10 +47,33 @@ export function createSelfReflectionStep(): PipelineStep {
                 (s) => context.findingStore.getById(s.findingId) !== undefined
             );
 
+            const wasCancelled = context.conversationRunner.wasCancelled;
+            const hitMax = context.conversationRunner.hitMaxIterations;
+            const hitRate = context.conversationRunner.hitRateLimit;
+            const degraded = context.conversationRunner.degraded;
+
+            let reason: string | undefined;
+            if (wasCancelled || hitMax || hitRate || degraded) {
+                reason = wasCancelled
+                    ? 'was cancelled'
+                    : hitRate
+                      ? 'hit rate limit'
+                      : hitMax
+                        ? 'hit iteration limit'
+                        : `exited abnormally (${context.conversationRunner.exitReason ?? 'unknown'})`;
+                Log.warn(
+                    `Self-reflection scoring ${reason} — ${context.selfReflectionScores.length} of ${reflectionResult.scores.length} scores kept`
+                );
+            }
+
             return {
                 findingsDropped: reflectionResult.dropped,
                 findingsDowngraded: [],
                 toolCallRecords: [],
+                budgetExhausted: hitMax,
+                summary: reason
+                    ? `Self-reflection incomplete: conversation ${reason}. Partial scores applied, unscored findings kept.`
+                    : undefined,
             };
         },
     };

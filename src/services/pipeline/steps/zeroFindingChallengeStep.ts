@@ -77,16 +77,19 @@ export function createZeroFindingChallengeStep(): PipelineStep {
             const wasCancelled = context.conversationRunner.wasCancelled;
             const hitMax = context.conversationRunner.hitMaxIterations;
             const hitRate = context.conversationRunner.hitRateLimit;
+            const degraded = context.conversationRunner.degraded;
 
             if (
-                (wasCancelled || hitMax || hitRate) &&
+                (wasCancelled || hitMax || hitRate || degraded) &&
                 context.findingStore.size === 0
             ) {
                 const reason = wasCancelled
                     ? 'was cancelled'
                     : hitRate
                       ? 'hit rate limit'
-                      : 'hit iteration limit';
+                      : hitMax
+                        ? 'hit iteration limit'
+                        : `exited abnormally (${context.conversationRunner.exitReason ?? 'unknown'})`;
                 const summary = `Challenge inconclusive: conversation ended without new findings (${reason})`;
                 Log.warn(summary);
                 return emptyStepResult({
