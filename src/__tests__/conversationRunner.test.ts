@@ -2232,6 +2232,199 @@ describe('ConversationRunner', () => {
         });
     });
 
+    describe('Explicit Completion Budget Warnings', () => {
+        it('should inject budget warning at 80% of iterations when requiresExplicitCompletion is true', async () => {
+            const addUserMessageSpy = vi.spyOn(conversation, 'addUserMessage');
+
+            // maxIterations=20: explicitWarningIteration = floor(20 * 0.8) = 16
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation((request: any) => {
+                    callCount++;
+                    if (request.tools.length === 0) {
+                        return Promise.resolve({
+                            content: 'Final text',
+                            toolCalls: undefined,
+                        });
+                    }
+                    return Promise.resolve({
+                        content: null,
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: '{}',
+                                },
+                            },
+                        ],
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 20,
+                tools: [createMockTool('find_symbol')],
+                requiresExplicitCompletion: true,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Should have the 80% budget warning
+            const budgetWarnings = addUserMessageSpy.mock.calls.filter(
+                (call) =>
+                    typeof call[0] === 'string' &&
+                    call[0].includes('Budget warning')
+            );
+            expect(budgetWarnings.length).toBe(1);
+            expect(budgetWarnings[0][0]).toContain(
+                '16 of 20 iterations (4 remaining)'
+            );
+            expect(budgetWarnings[0][0]).toContain('submit_review');
+        });
+
+        it('should inject urgent warning at 92% of iterations when requiresExplicitCompletion is true', async () => {
+            const addUserMessageSpy = vi.spyOn(conversation, 'addUserMessage');
+
+            // maxIterations=20: explicitUrgentIteration = floor(20 * 0.92) = 18
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation((request: any) => {
+                    callCount++;
+                    if (request.tools.length === 0) {
+                        return Promise.resolve({
+                            content: 'Final text',
+                            toolCalls: undefined,
+                        });
+                    }
+                    return Promise.resolve({
+                        content: null,
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: '{}',
+                                },
+                            },
+                        ],
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 20,
+                tools: [createMockTool('find_symbol')],
+                requiresExplicitCompletion: true,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Should have the urgent 92% warning
+            const urgentWarnings = addUserMessageSpy.mock.calls.filter(
+                (call) =>
+                    typeof call[0] === 'string' && call[0].includes('URGENT')
+            );
+            expect(urgentWarnings.length).toBe(1);
+            expect(urgentWarnings[0][0]).toContain(
+                'Only 2 iteration(s) remaining out of 20'
+            );
+            expect(urgentWarnings[0][0]).toContain(
+                'MUST call submit_review NOW'
+            );
+        });
+
+        it('should NOT inject explicit-completion budget warnings when requiresExplicitCompletion is false', async () => {
+            const addUserMessageSpy = vi.spyOn(conversation, 'addUserMessage');
+
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation((request: any) => {
+                    callCount++;
+                    if (request.tools.length === 0) {
+                        return Promise.resolve({
+                            content: 'Final text',
+                            toolCalls: undefined,
+                        });
+                    }
+                    return Promise.resolve({
+                        content: null,
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: '{}',
+                                },
+                            },
+                        ],
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 20,
+                tools: [createMockTool('find_symbol')],
+                // requiresExplicitCompletion defaults to false
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Should NOT have explicit-completion budget warnings
+            const budgetWarnings = addUserMessageSpy.mock.calls.filter(
+                (call) =>
+                    typeof call[0] === 'string' &&
+                    call[0].includes('Budget warning')
+            );
+            expect(budgetWarnings.length).toBe(0);
+
+            // Should NOT have explicit-completion urgent warnings
+            // (the URGENT that fires is the subagent wind-down one, not explicit-completion)
+            const explicitUrgent = addUserMessageSpy.mock.calls.filter(
+                (call) =>
+                    typeof call[0] === 'string' &&
+                    call[0].includes('MUST call submit_review NOW')
+            );
+            expect(explicitUrgent.length).toBe(0);
+        });
+    });
+
     describe('disabledToolNames', () => {
         it('should filter out disabled tools from LLM requests', async () => {
             const modelManager = createMockModelManager([

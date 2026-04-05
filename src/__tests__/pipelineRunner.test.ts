@@ -284,4 +284,25 @@ describe('runPipeline', () => {
 
         await expect(runPipeline([failingStep], context)).rejects.toThrow();
     });
+
+    it('propagates budgetExhausted from step result to record', async () => {
+        const step = createMockStep({
+            name: 'budget-step',
+            label: 'Budget Step',
+            execute: vi.fn().mockResolvedValue({
+                findingsDropped: [],
+                findingsDowngraded: [],
+                toolCallRecords: [],
+                budgetExhausted: true,
+                summary: 'Step ran out of budget',
+            }),
+        });
+
+        const records = await runPipeline([step], context);
+
+        expect(records).toHaveLength(1);
+        expect(records[0].status).toBe('executed');
+        expect(records[0].budgetExhausted).toBe(true);
+        expect(records[0].result?.budgetExhausted).toBe(true);
+    });
 });
