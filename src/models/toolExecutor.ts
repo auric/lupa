@@ -360,11 +360,11 @@ export class ToolExecutor {
      * Execute multiple tools in parallel.
      *
      * Cancellation behavior: When any tool throws CancellationError, Promise.all rejects
-     * immediately and the error propagates up to stop the analysis. Other in-flight tools
-     * continue running but their results are discarded. This is intentional—tools observe
-     * the shared cancellation token and clean up their own resources (e.g., ripgrep kills
-     * child processes, withCancellableTimeout races against the token). Forcibly aborting
-     * promises isn't possible in JavaScript; cancellation is cooperative.
+     * immediately. Before propagating that error, we wait for the remaining in-flight
+     * tool executions to settle so they cannot mutate shared execution state after the
+     * caller has already rolled back. Cancellation remains cooperative—tools observe the
+     * shared cancellation token and clean up their own resources (e.g., ripgrep kills
+     * child processes, withCancellableTimeout races against the token).
      *
      * @param requests Array of tool execution requests
      * @returns Promise resolving to an array of tool execution results
@@ -401,6 +401,7 @@ export class ToolExecutor {
             // executeTool rethrows CancellationError, so it reaches here via Promise.all rejection.
             if (isCancellationError(error)) {
                 Log.debug('Parallel tool execution cancelled');
+                await Promise.allSettled(executionPromises);
                 throw error;
             }
 
@@ -456,6 +457,10 @@ export class ToolExecutor {
      */
     getToolCallCount(): number {
         return this.sharedCallCount.value;
+    }
+
+    setToolCallCount(count: number): void {
+        this.sharedCallCount.value = count;
     }
 
     /**

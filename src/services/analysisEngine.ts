@@ -424,6 +424,7 @@ export class AnalysisEngine implements vscode.Disposable {
                 const pipelineResult = await pipeline.run({
                     findingStore,
                     toolCallRecords,
+                    initialAnalysisText: analysisText,
                     executionContext,
                     parsedDiff,
                     calibrationProfile,

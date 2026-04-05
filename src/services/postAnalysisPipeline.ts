@@ -29,6 +29,7 @@ import {
 export interface PostAnalysisPipelineOptions {
     findingStore: FindingStore;
     toolCallRecords: ToolCallRecord[];
+    initialAnalysisText: string;
     executionContext: ExecutionContext;
     parsedDiff: DiffHunk[];
     calibrationProfile: ModelCalibrationProfile;
@@ -76,6 +77,10 @@ export class PostAnalysisPipeline {
             additionalToolCallRecords: [] as ToolCallRecord[],
             selfReflectionScores: [] as SelfReflectionScore[],
             rewrittenAnalysis: undefined as string | undefined,
+            lastCommittedReviewText: options.initialAnalysisText,
+            lastCommittedFindingStoreSnapshot:
+                options.findingStore.createSnapshot(),
+            lastCommittedSelfReflectionScores: [] as SelfReflectionScore[],
         };
 
         const stepRecords = await runPipeline(steps, context);

@@ -1,5 +1,8 @@
 import type { ToolCallRecord } from '../../types/toolCallTypes';
-import type { FindingStore } from '../../sessions/findingStore';
+import type {
+    FindingStore,
+    FindingStoreSnapshot,
+} from '../../sessions/findingStore';
 import type { ExecutionContext } from '../../types/executionContext';
 import type { DiffHunk } from '../../types/contextTypes';
 import type { ModelCalibrationProfile } from '../../models/modelCalibration';
@@ -98,6 +101,9 @@ export interface PipelineContext {
     additionalToolCallRecords: ToolCallRecord[];
     selfReflectionScores: SelfReflectionScore[];
     rewrittenAnalysis: string | undefined;
+    lastCommittedReviewText?: string;
+    lastCommittedFindingStoreSnapshot?: FindingStoreSnapshot;
+    lastCommittedSelfReflectionScores?: SelfReflectionScore[];
 }
 
 // ---------------------------------------------------------------------------

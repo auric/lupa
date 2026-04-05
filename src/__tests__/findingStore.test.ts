@@ -205,4 +205,26 @@ describe('FindingStore', () => {
         store.updateSeverity('nonexistent', 'LOW');
         expect(store.getAll()[0]!.severity).toBe('HIGH');
     });
+
+    it('restores findings and next id from a snapshot', () => {
+        const store = new FindingStore();
+        const original = store.record(
+            makeFinding({ title: 'original', severity: 'HIGH' })
+        );
+        const snapshot = store.createSnapshot();
+
+        store.updateSeverity(original.id, 'LOW');
+        store.record(makeFinding({ title: 'temporary' }));
+        store.remove(original.id);
+
+        store.restoreSnapshot(snapshot);
+
+        expect(store.size).toBe(1);
+        expect(store.getById(original.id)?.severity).toBe('HIGH');
+
+        const nextFinding = store.record(
+            makeFinding({ title: 'after restore' })
+        );
+        expect(nextFinding.id).toBe('finding-2');
+    });
 });

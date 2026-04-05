@@ -1,4 +1,5 @@
 import { Log } from '../../loggingService';
+import { runGuardedConversationPhase } from '../pipelineUtils';
 import { emptyStepResult } from '../pipelineTypes';
 import type {
     PipelineStep,
@@ -59,49 +60,58 @@ export function createRewriteStep(): PipelineStep {
             }
             parts.push('Then call submit_review.');
 
+            const rollbackConversationHistory =
+                context.conversationManager.getHistory();
+            const rollbackFindingSnapshot =
+                context.lastCommittedFindingStoreSnapshot ??
+                context.findingStore.createSnapshot();
+            const rollbackReviewText = context.lastCommittedReviewText;
+            const rollbackSelfReflectionScores = structuredClone(
+                context.lastCommittedSelfReflectionScores ?? []
+            );
             context.conversationManager.addUserMessage(parts.join(' '));
 
             const rewriteTools = context.availableTools.filter((t) =>
                 REWRITE_ALLOWED_TOOLS.has(t.name)
             );
 
-            const rewriteResult = await context.conversationRunner.run(
-                {
-                    systemPrompt: context.systemPrompt,
-                    maxIterations: REWRITE_BUDGET,
-                    tools: rewriteTools,
-                    disabledToolNames: context.disabledToolNames,
-                    label: 'Rewrite Phase',
-                    requiresExplicitCompletion: true,
-                },
-                context.conversationManager,
-                context.executionContext.cancellationToken,
-                context.handler
-            );
+            let rewriteResult: string;
+            let completion;
+            try {
+                ({ latestReview: rewriteResult, completion } =
+                    await runGuardedConversationPhase({
+                        context,
+                        label: 'Rewrite Phase',
+                        maxIterations: REWRITE_BUDGET,
+                        tools: rewriteTools,
+                        rollbackFindingStoreToSnapshot: rollbackFindingSnapshot,
+                        rollbackConversationHistory,
+                    }));
+            } catch (error) {
+                context.rewrittenAnalysis = rollbackReviewText;
+                context.selfReflectionScores = rollbackSelfReflectionScores;
+                throw error;
+            }
 
-            const wasCancelled = context.conversationRunner.wasCancelled;
-            const hitMax = context.conversationRunner.hitMaxIterations;
-            const hitRate = context.conversationRunner.hitRateLimit;
-            const degraded = context.conversationRunner.degraded;
-
-            if (wasCancelled || hitMax || hitRate || degraded) {
-                const reason = wasCancelled
-                    ? 'was cancelled'
-                    : hitRate
-                      ? 'hit rate limit'
-                      : hitMax
-                        ? 'hit iteration limit'
-                        : `exited abnormally (${context.conversationRunner.exitReason ?? 'unknown'})`;
+            if (!completion.completed) {
+                context.rewrittenAnalysis = rollbackReviewText;
+                context.selfReflectionScores = rollbackSelfReflectionScores;
                 Log.warn(
-                    `Rewrite phase ${reason} — preserving original analysis text`
+                    `Rewrite phase ${completion.reason} — preserving original analysis text`
                 );
                 return emptyStepResult({
-                    budgetExhausted: hitMax,
-                    summary: `Rewrite incomplete: conversation ${reason}. Original review preserved.`,
+                    budgetExhausted: completion.budgetExhausted,
+                    summary: `Rewrite incomplete: conversation ${completion.reason}. Original review preserved.`,
                 });
             }
 
             context.rewrittenAnalysis = rewriteResult;
+            context.lastCommittedReviewText = rewriteResult;
+            context.lastCommittedFindingStoreSnapshot =
+                context.findingStore.createSnapshot();
+            context.lastCommittedSelfReflectionScores = structuredClone(
+                context.selfReflectionScores
+            );
 
             return emptyStepResult();
         },

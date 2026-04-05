@@ -46,6 +46,13 @@ export interface ThinkCheckpoint {
     readonly investigationToolCount: number;
 }
 
+export interface ReasoningChainSnapshot {
+    hypotheses: TrackedHypothesis[];
+    checkpoints: ThinkCheckpoint[];
+    nextHypothesisId: number;
+    toolCallsSinceLastCheckpoint: string[];
+}
+
 /**
  * Tools considered "investigation" tools for evidence-aware gating.
  * Used to auto-transition hypotheses (generated→investigating) and count evidence gathering.
@@ -225,6 +232,23 @@ export class ReasoningChain {
         return this.hypotheses.filter(
             (h) => h.status === 'generated' || h.status === 'investigating'
         );
+    }
+
+    createSnapshot(): ReasoningChainSnapshot {
+        return structuredClone({
+            hypotheses: this.hypotheses,
+            checkpoints: this.checkpoints,
+            nextHypothesisId: this.nextHypothesisId,
+            toolCallsSinceLastCheckpoint: this.toolCallsSinceLastCheckpoint,
+        });
+    }
+
+    restoreSnapshot(snapshot: ReasoningChainSnapshot): void {
+        const clone = structuredClone(snapshot);
+        this.hypotheses = clone.hypotheses;
+        this.checkpoints = clone.checkpoints;
+        this.nextHypothesisId = clone.nextHypothesisId;
+        this.toolCallsSinceLastCheckpoint = clone.toolCallsSinceLastCheckpoint;
     }
 
     /** Get all tracked hypotheses */

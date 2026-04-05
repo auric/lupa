@@ -1,5 +1,14 @@
+import type {
+    ConversationRunner,
+    ToolCallHandler,
+} from '../../models/conversationRunner';
+import type { ConversationManager } from '../../models/conversationManager';
+import type { FindingStoreSnapshot } from '../../sessions/findingStore';
+import type { ReasoningChainSnapshot } from '../../sessions/reasoningChain';
 import type { ITool } from '../../tools/ITool';
+import type { Message } from '../../types/conversationTypes';
 import type { FindingSeverity } from '../../types/findingTypes';
+import type { PipelineContext } from './pipelineTypes';
 
 const SEVERITY_ORDER: readonly FindingSeverity[] = [
     'LOW',
@@ -7,6 +16,67 @@ const SEVERITY_ORDER: readonly FindingSeverity[] = [
     'HIGH',
     'CRITICAL',
 ] as const;
+
+type ConversationRunnerCompletionState = Pick<
+    ConversationRunner,
+    | 'wasCancelled'
+    | 'hitMaxIterations'
+    | 'hitRateLimit'
+    | 'degraded'
+    | 'exitReason'
+>;
+
+export interface ConversationCompletionStatus {
+    completed: boolean;
+    budgetExhausted: boolean;
+    reason: string | undefined;
+}
+
+interface GuardedConversationPhaseOptions {
+    context: Pick<
+        PipelineContext,
+        | 'conversationRunner'
+        | 'conversationManager'
+        | 'executionContext'
+        | 'handler'
+        | 'systemPrompt'
+        | 'disabledToolNames'
+        | 'findingStore'
+    >;
+    label: string;
+    maxIterations: number;
+    tools: ITool[];
+    rollbackFindingStoreToSnapshot?: FindingStoreSnapshot;
+    rollbackConversationHistory?: Message[];
+}
+
+export interface GuardedConversationPhaseResult {
+    latestReview: string;
+    completion: ConversationCompletionStatus;
+}
+
+type PhaseStateSnapshotContext = Pick<
+    PipelineContext,
+    'conversationManager' | 'executionContext' | 'findingStore'
+> &
+    Partial<Pick<PipelineContext, 'selfReflectionScores'>>;
+
+interface PipelinePhaseStateSnapshotOptions {
+    conversationHistory?: Message[];
+    findingStoreSnapshot?: FindingStoreSnapshot;
+    selfReflectionScores?: PipelineContext['selfReflectionScores'];
+}
+
+export interface PipelinePhaseStateSnapshot {
+    conversationHistory?: Message[];
+    findingStoreSnapshot?: FindingStoreSnapshot;
+    selfReflectionScores?: PipelineContext['selfReflectionScores'];
+    toolCallCounts: Map<string, number>;
+    totalToolCalls?: number;
+    investigatedFiles?: Set<string>;
+    completionReadiness?: PipelineContext['executionContext']['completionReadiness'];
+    reasoningChainSnapshot?: ReasoningChainSnapshot;
+}
 
 export function downgradeSeverity(
     severity: FindingSeverity
@@ -16,6 +86,215 @@ export function downgradeSeverity(
         return SEVERITY_ORDER[idx - 1];
     }
     return undefined;
+}
+
+export function classifyConversationCompletion(
+    runner: ConversationRunnerCompletionState
+): ConversationCompletionStatus {
+    if (
+        !runner.wasCancelled &&
+        !runner.hitMaxIterations &&
+        !runner.hitRateLimit &&
+        !runner.degraded
+    ) {
+        return {
+            completed: true,
+            budgetExhausted: false,
+            reason: undefined,
+        };
+    }
+
+    const abnormalExitReason =
+        runner.exitReason ?? (runner.degraded ? 'degraded' : 'unknown');
+
+    return {
+        completed: false,
+        budgetExhausted: runner.hitMaxIterations,
+        reason: runner.wasCancelled
+            ? 'was cancelled'
+            : runner.hitRateLimit
+              ? 'hit rate limit'
+              : runner.hitMaxIterations
+                ? 'hit iteration limit'
+                : `exited abnormally (${abnormalExitReason})`,
+    };
+}
+
+export function restoreConversationHistory(
+    conversationManager: Pick<
+        ConversationManager,
+        'clearHistory' | 'prependHistoryMessages'
+    >,
+    history: Message[]
+): void {
+    conversationManager.clearHistory();
+    conversationManager.prependHistoryMessages(history);
+}
+
+export function capturePipelinePhaseState(
+    context: PhaseStateSnapshotContext,
+    options: PipelinePhaseStateSnapshotOptions = {}
+): PipelinePhaseStateSnapshot {
+    return {
+        conversationHistory: options.conversationHistory,
+        findingStoreSnapshot: options.findingStoreSnapshot,
+        selfReflectionScores:
+            options.selfReflectionScores !== undefined
+                ? structuredClone(options.selfReflectionScores)
+                : undefined,
+        toolCallCounts: context.executionContext.toolCallCounts
+            ? new Map(context.executionContext.toolCallCounts)
+            : new Map(),
+        totalToolCalls:
+            context.executionContext.toolExecutor?.getToolCallCount(),
+        investigatedFiles: context.executionContext.investigatedFiles
+            ? new Set(context.executionContext.investigatedFiles)
+            : undefined,
+        completionReadiness: context.executionContext.completionReadiness
+            ? {
+                  ...context.executionContext.completionReadiness,
+                  uninvestigatedFiles: [
+                      ...context.executionContext.completionReadiness
+                          .uninvestigatedFiles,
+                  ],
+              }
+            : undefined,
+        reasoningChainSnapshot:
+            context.executionContext.reasoningChain?.createSnapshot(),
+    };
+}
+
+export function restorePipelinePhaseState(
+    context: PhaseStateSnapshotContext,
+    snapshot: PipelinePhaseStateSnapshot
+): void {
+    if (snapshot.conversationHistory) {
+        restoreConversationHistory(
+            context.conversationManager,
+            snapshot.conversationHistory
+        );
+    }
+
+    if (snapshot.findingStoreSnapshot) {
+        context.findingStore.restoreSnapshot(snapshot.findingStoreSnapshot);
+    }
+
+    if (
+        'selfReflectionScores' in context &&
+        snapshot.selfReflectionScores !== undefined
+    ) {
+        context.selfReflectionScores = structuredClone(
+            snapshot.selfReflectionScores
+        );
+    }
+
+    if (context.executionContext.toolCallCounts) {
+        context.executionContext.toolCallCounts.clear();
+        for (const [toolName, count] of snapshot.toolCallCounts) {
+            context.executionContext.toolCallCounts.set(toolName, count);
+        }
+    } else if (snapshot.toolCallCounts.size > 0) {
+        context.executionContext.toolCallCounts = new Map(
+            snapshot.toolCallCounts
+        );
+    }
+
+    context.executionContext.investigatedFiles = snapshot.investigatedFiles
+        ? new Set(snapshot.investigatedFiles)
+        : undefined;
+
+    context.executionContext.completionReadiness = snapshot.completionReadiness
+        ? {
+              ...snapshot.completionReadiness,
+              uninvestigatedFiles: [
+                  ...snapshot.completionReadiness.uninvestigatedFiles,
+              ],
+          }
+        : undefined;
+
+    if (snapshot.reasoningChainSnapshot) {
+        context.executionContext.reasoningChain?.restoreSnapshot(
+            snapshot.reasoningChainSnapshot
+        );
+    }
+
+    if (
+        snapshot.totalToolCalls !== undefined &&
+        context.executionContext.toolExecutor
+    ) {
+        context.executionContext.toolExecutor.setToolCallCount(
+            snapshot.totalToolCalls
+        );
+    }
+}
+
+export async function runGuardedConversationPhase(
+    options: GuardedConversationPhaseOptions
+): Promise<GuardedConversationPhaseResult> {
+    const {
+        context,
+        label,
+        maxIterations,
+        tools,
+        rollbackFindingStoreToSnapshot,
+        rollbackConversationHistory,
+    } = options;
+
+    const bufferedToolCallCompletions: Parameters<
+        NonNullable<ToolCallHandler['onToolCallComplete']>
+    >[] = [];
+
+    const rollbackState = capturePipelinePhaseState(context, {
+        conversationHistory: rollbackConversationHistory,
+        findingStoreSnapshot: rollbackFindingStoreToSnapshot,
+    });
+
+    const rollbackPhaseState = () => {
+        restorePipelinePhaseState(context, rollbackState);
+    };
+
+    const phaseHandler: ToolCallHandler = {
+        onIterationStart: context.handler.onIterationStart,
+        onToolCallStart: context.handler.onToolCallStart,
+        onToolCallComplete: (...args) => {
+            bufferedToolCallCompletions.push(args);
+        },
+        getContextStatusSuffix: context.handler.getContextStatusSuffix,
+    };
+
+    let latestReview: string;
+    try {
+        latestReview = await context.conversationRunner.run(
+            {
+                systemPrompt: context.systemPrompt,
+                maxIterations,
+                tools,
+                disabledToolNames: context.disabledToolNames,
+                label,
+                requiresExplicitCompletion: true,
+            },
+            context.conversationManager,
+            context.executionContext.cancellationToken,
+            phaseHandler
+        );
+    } catch (error) {
+        rollbackPhaseState();
+        throw error;
+    }
+
+    const completion = classifyConversationCompletion(
+        context.conversationRunner
+    );
+
+    if (!completion.completed) {
+        rollbackPhaseState();
+    } else {
+        for (const completionArgs of bufferedToolCallCompletions) {
+            context.handler.onToolCallComplete?.(...completionArgs);
+        }
+    }
+
+    return { latestReview, completion };
 }
 
 export function filterTools(tools: ITool[], excludeNames: string[]): ITool[] {

@@ -1,10 +1,21 @@
 import { Log } from '../../loggingService';
+import {
+    runSelfReflection,
+    type SelfReflectionResult,
+} from '../../selfReflectionScorer';
+import type { ToolCallHandler } from '../../../models/conversationRunner';
+import { emptyStepResult } from '../pipelineTypes';
+import {
+    capturePipelinePhaseState,
+    classifyConversationCompletion,
+    restoreConversationHistory,
+    restorePipelinePhaseState,
+} from '../pipelineUtils';
 import type {
-    PipelineStep,
     PipelineContext,
+    PipelineStep,
     PipelineStepResult,
 } from '../pipelineTypes';
-import { runSelfReflection } from '../../selfReflectionScorer';
 
 export function createSelfReflectionStep(): PipelineStep {
     return {
@@ -22,58 +33,75 @@ export function createSelfReflectionStep(): PipelineStep {
         async execute(context: PipelineContext): Promise<PipelineStepResult> {
             context.progressCallback?.('Self-reflection scoring...', 0.75);
 
-            const preReflectionMessageCount =
-                context.conversationManager.getMessageCount();
-
-            const reflectionResult = await runSelfReflection({
-                findingStore: context.findingStore,
-                parsedDiff: context.parsedDiff,
-                calibrationProfile: context.calibrationProfile,
-                conversationManager: context.conversationManager,
-                conversationRunner: context.conversationRunner,
-                systemPrompt: context.systemPrompt,
-                token: context.executionContext.cancellationToken,
-                handler: context.handler,
+            const preReflectionHistory =
+                context.conversationManager.getHistory();
+            const rollbackState = capturePipelinePhaseState(context, {
+                conversationHistory: preReflectionHistory,
+                findingStoreSnapshot: context.findingStore.createSnapshot(),
+                selfReflectionScores: context.selfReflectionScores,
             });
+            const bufferedToolCallCompletions: Parameters<
+                NonNullable<ToolCallHandler['onToolCallComplete']>
+            >[] = [];
+            const phaseHandler: ToolCallHandler = {
+                onIterationStart: context.handler.onIterationStart,
+                onToolCallStart: context.handler.onToolCallStart,
+                onToolCallComplete: (...args) => {
+                    bufferedToolCallCompletions.push(args);
+                },
+                getContextStatusSuffix: context.handler.getContextStatusSuffix,
+            };
 
-            context.conversationManager.truncateToMessageCount(
-                preReflectionMessageCount
+            let reflectionResult: SelfReflectionResult;
+            try {
+                reflectionResult = await runSelfReflection({
+                    findingStore: context.findingStore,
+                    parsedDiff: context.parsedDiff,
+                    calibrationProfile: context.calibrationProfile,
+                    conversationManager: context.conversationManager,
+                    conversationRunner: context.conversationRunner,
+                    systemPrompt: context.systemPrompt,
+                    token: context.executionContext.cancellationToken,
+                    handler: phaseHandler,
+                });
+            } catch (error) {
+                restorePipelinePhaseState(context, rollbackState);
+                throw error;
+            }
+
+            const completion = classifyConversationCompletion(
+                context.conversationRunner
             );
-
-            // Only include scores for findings that survived the drop threshold.
-            // Dropped findings are removed from findingStore by runSelfReflection,
-            // so filter to those still present.
-            context.selfReflectionScores = reflectionResult.scores.filter(
-                (s) => context.findingStore.getById(s.findingId) !== undefined
-            );
-
-            const wasCancelled = context.conversationRunner.wasCancelled;
-            const hitMax = context.conversationRunner.hitMaxIterations;
-            const hitRate = context.conversationRunner.hitRateLimit;
-            const degraded = context.conversationRunner.degraded;
-
-            let reason: string | undefined;
-            if (wasCancelled || hitMax || hitRate || degraded) {
-                reason = wasCancelled
-                    ? 'was cancelled'
-                    : hitRate
-                      ? 'hit rate limit'
-                      : hitMax
-                        ? 'hit iteration limit'
-                        : `exited abnormally (${context.conversationRunner.exitReason ?? 'unknown'})`;
+            if (!completion.completed) {
+                restorePipelinePhaseState(context, rollbackState);
                 Log.warn(
-                    `Self-reflection scoring ${reason} — ${context.selfReflectionScores.length} of ${reflectionResult.scores.length} scores kept`
+                    `Self-reflection scoring ${completion.reason} — preserving original self-reflection state`
                 );
+
+                return emptyStepResult({
+                    budgetExhausted: completion.budgetExhausted,
+                    summary: `Self-reflection incomplete: conversation ${completion.reason}. Original self-reflection state preserved.`,
+                });
+            }
+
+            restoreConversationHistory(
+                context.conversationManager,
+                preReflectionHistory
+            );
+
+            context.selfReflectionScores = reflectionResult.scores.filter(
+                (score) =>
+                    context.findingStore.getById(score.findingId) !== undefined
+            );
+
+            for (const completionArgs of bufferedToolCallCompletions) {
+                context.handler.onToolCallComplete?.(...completionArgs);
             }
 
             return {
                 findingsDropped: reflectionResult.dropped,
                 findingsDowngraded: [],
                 toolCallRecords: [],
-                budgetExhausted: hitMax,
-                summary: reason
-                    ? `Self-reflection incomplete: conversation ${reason}. Partial scores applied, unscored findings kept.`
-                    : undefined,
             };
         },
     };
