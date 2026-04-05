@@ -187,14 +187,24 @@ export class ConversationRunner {
         let windDownInjected = false;
         let windDownNudged = false;
         let urgentWindDownNudged = false;
+        let explicitCompletionWarned = false;
+        let explicitCompletionUrgent = false;
         const WIND_DOWN_THRESHOLD = 0.85;
         const URGENT_WIND_DOWN_THRESHOLD = 0.92;
+        const EXPLICIT_COMPLETION_WARNING_THRESHOLD = 0.8;
+        const EXPLICIT_COMPLETION_URGENT_THRESHOLD = 0.92;
         const FINAL_BUFFER_ITERATIONS = 2;
         const windDownIteration = Math.floor(
             config.maxIterations * WIND_DOWN_THRESHOLD
         );
         const urgentWindDownIteration = Math.floor(
             config.maxIterations * URGENT_WIND_DOWN_THRESHOLD
+        );
+        const explicitWarningIteration = Math.floor(
+            config.maxIterations * EXPLICIT_COMPLETION_WARNING_THRESHOLD
+        );
+        const explicitUrgentIteration = Math.floor(
+            config.maxIterations * EXPLICIT_COMPLETION_URGENT_THRESHOLD
         );
         // Only buffer multiple final iterations when budget is large enough
         // to justify the overhead (>10 iterations).
@@ -280,6 +290,42 @@ export class ConversationRunner {
                         );
                         Log.info(
                             `${logPrefix} Urgent wind-down nudge injected at iteration ${iteration}/${config.maxIterations}`
+                        );
+                    }
+
+                    // Budget-awareness nudges for explicit-completion conversations.
+                    // Unlike subagent wind-down, we never remove tools — the LLM
+                    // needs them (e.g. submit_review) to complete its task.
+                    if (
+                        config.requiresExplicitCompletion &&
+                        iteration === explicitWarningIteration &&
+                        !explicitCompletionWarned
+                    ) {
+                        explicitCompletionWarned = true;
+                        const remaining = config.maxIterations - iteration;
+                        conversation.addUserMessage(
+                            `Budget warning: You have used ${iteration} of ${config.maxIterations} iterations (${remaining} remaining). ` +
+                                `Finalize your current work and call submit_review soon to ensure your progress is saved.`
+                        );
+                        Log.info(
+                            `${logPrefix} Explicit-completion budget warning at iteration ${iteration}/${config.maxIterations}`
+                        );
+                    }
+
+                    if (
+                        config.requiresExplicitCompletion &&
+                        iteration === explicitUrgentIteration &&
+                        !explicitCompletionUrgent
+                    ) {
+                        explicitCompletionUrgent = true;
+                        const remaining = config.maxIterations - iteration;
+                        conversation.addUserMessage(
+                            `⚠️ URGENT: Only ${remaining} iteration(s) remaining out of ${config.maxIterations}. ` +
+                                `You MUST call submit_review NOW. If you do not submit before the budget runs out, ` +
+                                `your work will not be saved. Call submit_review immediately with your current results.`
+                        );
+                        Log.info(
+                            `${logPrefix} Explicit-completion urgent warning at iteration ${iteration}/${config.maxIterations}`
                         );
                     }
 
