@@ -160,41 +160,17 @@ describe('SubagentSessionManager', () => {
     });
 
     describe('Cancellation Propagation', () => {
-        it('should return undefined from registerSubagentCancellation when no parent token set', () => {
-            const childSource = createMockCancellationTokenSource();
-            const disposable =
-                sessionManager.registerSubagentCancellation(childSource);
-            expect(disposable).toBeUndefined();
+        it('should return undefined from getParentCancellationToken when no parent token set', () => {
+            expect(sessionManager.getParentCancellationToken()).toBeUndefined();
         });
 
-        it('should cancel child source when parent token fires', () => {
+        it('should return parent token after setParentCancellationToken', () => {
             const parentSource = createMockCancellationTokenSource();
             sessionManager.setParentCancellationToken(parentSource.token);
 
-            const childSource = createMockCancellationTokenSource();
-            const disposable =
-                sessionManager.registerSubagentCancellation(childSource);
-
-            expect(disposable).toBeDefined();
-            expect(childSource.cancel).not.toHaveBeenCalled();
-
-            // Fire parent cancellation
-            parentSource.cancel();
-            expect(childSource.cancel).toHaveBeenCalled();
-        });
-
-        it('should propagate to multiple child sources', () => {
-            const parentSource = createMockCancellationTokenSource();
-            sessionManager.setParentCancellationToken(parentSource.token);
-
-            const child1 = createMockCancellationTokenSource();
-            const child2 = createMockCancellationTokenSource();
-            sessionManager.registerSubagentCancellation(child1);
-            sessionManager.registerSubagentCancellation(child2);
-
-            parentSource.cancel();
-            expect(child1.cancel).toHaveBeenCalled();
-            expect(child2.cancel).toHaveBeenCalled();
+            expect(sessionManager.getParentCancellationToken()).toBe(
+                parentSource.token
+            );
         });
 
         it('should clear parent token on reset', () => {
@@ -202,10 +178,7 @@ describe('SubagentSessionManager', () => {
             sessionManager.setParentCancellationToken(parentSource.token);
             sessionManager.reset();
 
-            const childSource = createMockCancellationTokenSource();
-            const disposable =
-                sessionManager.registerSubagentCancellation(childSource);
-            expect(disposable).toBeUndefined();
+            expect(sessionManager.getParentCancellationToken()).toBeUndefined();
         });
     });
 });

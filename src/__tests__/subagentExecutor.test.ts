@@ -692,7 +692,7 @@ describe('SubagentExecutor', () => {
                 recordSpawn: vi.fn().mockReturnValue(1),
                 getRemainingBudget: vi.fn().mockReturnValue(5),
                 getCount: vi.fn().mockReturnValue(1),
-                registerSubagentCancellation: vi.fn(),
+                getParentCancellationToken: vi.fn(),
                 setParentCancellationToken: vi.fn(),
             };
 

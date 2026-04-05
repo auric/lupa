@@ -67,21 +67,6 @@ export class SubagentSessionManager {
         return this.parentCancellationToken;
     }
 
-    /**
-     * Register a subagent cancellation source so it mirrors the parent cancellation token.
-     */
-    registerSubagentCancellation(
-        source: vscode.CancellationTokenSource
-    ): vscode.Disposable | undefined {
-        if (!this.parentCancellationToken) {
-            return undefined;
-        }
-
-        return this.parentCancellationToken.onCancellationRequested(() => {
-            source.cancel();
-        });
-    }
-
     reset(): void {
         this.count = 0;
         this.nextId = 0;

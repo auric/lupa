@@ -214,6 +214,7 @@ export function createBufferedHandler(
             for (const args of buffered) {
                 source.onToolCallComplete?.(...args);
             }
+            buffered.length = 0;
         },
     };
 }
