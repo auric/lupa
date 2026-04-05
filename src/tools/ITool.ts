@@ -37,6 +37,13 @@ export interface ITool {
     /** Maximum response size in chars. Defaults to TokenConstants.MAX_TOOL_RESPONSE_CHARS. */
     maxResponseChars?: number;
 
+    /**
+     * Whether this tool manages its own ReasoningChain recording (e.g., via addCheckpoint).
+     * When true, ToolExecutor will NOT call recordToolCall() after execution.
+     * Default: false (ToolExecutor records all calls).
+     */
+    managesOwnChainRecording?: boolean;
+
     /** Returns VS Code LanguageModelChatTool for API registration */
     getVSCodeTool(): vscode.LanguageModelChatTool;
 

@@ -152,6 +152,11 @@ export class ToolExecutor {
      * @returns Promise resolving to the tool execution result
      */
     async executeTool(name: string, args: any): Promise<ToolExecutionResult> {
+        // Normalize tool name: some models emit "functions." prefix
+        if (name.startsWith('functions.')) {
+            name = name.slice('functions.'.length);
+        }
+
         const startTime = Date.now();
 
         // Defensive cancellation check FIRST - before any other logic.
@@ -190,6 +195,7 @@ export class ToolExecutor {
             };
         }
 
+        let managesOwnRecording = false;
         try {
             const tool = this.restrictToLocal
                 ? this.localTools.get(name)
@@ -236,11 +242,17 @@ export class ToolExecutor {
             }
 
             const validatedArgs = parseResult.data;
+            managesOwnRecording = tool.managesOwnChainRecording ?? false;
             const toolResult = await tool.execute(
                 validatedArgs,
                 this.executionContext
             );
             const elapsed = Date.now() - startTime;
+
+            // Record tool call in reasoning chain for evidence-aware gating
+            if (!managesOwnRecording) {
+                this.executionContext.reasoningChain?.recordToolCall(name);
+            }
 
             // Validate response size only for successful results with data
             if (toolResult.success && toolResult.data) {
@@ -318,6 +330,9 @@ export class ToolExecutor {
                 Log.warn(
                     `Tool '${name}' timed out [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
                 );
+                if (!managesOwnRecording) {
+                    this.executionContext.reasoningChain?.recordToolCall(name);
+                }
                 return {
                     name,
                     success: false,
@@ -330,6 +345,9 @@ export class ToolExecutor {
                 `Tool '${name}' threw exception: ${errorMsg} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`,
                 error
             );
+            if (!managesOwnRecording) {
+                this.executionContext.reasoningChain?.recordToolCall(name);
+            }
             return {
                 name,
                 success: false,

@@ -6,6 +6,8 @@ import { ExecutionContext } from '../types/executionContext';
 import { flexibleStringArrayNonEmpty } from './schemaHelpers';
 import { pathSuffixMatch } from '../utils/pathUtils';
 
+const MAX_HYPOTHESIS_TRAIL_CHARS = 2000;
+
 const Recommendation = z.enum([
     'approve',
     'approve_with_suggestions',
@@ -111,7 +113,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
                     (f, i) =>
                         `  ${i + 1}. [${f.id}] ${f.severity}: ${f.title} (${f.file})\n` +
                         `     Affected: ${f.affectedComponent || 'NOT SPECIFIED'} | Mechanism: ${f.failureMechanism || 'NOT SPECIFIED'}\n` +
-                        `     Evidence: ${f.description.slice(0, 150)}...\n` +
+                        `     Evidence: ${f.description.length > 150 ? f.description.slice(0, 150) + '...' : f.description}\n` +
                         `     Disproof: ${f.disproof.method || 'NONE PROVIDED'}`
                 )
                 .join('\n');
@@ -130,7 +132,27 @@ export class ThinkAboutCompletionTool extends BaseTool {
             `✅ Reflection recorded. ${files_analyzed.length}/${files_in_diff} files (${coveragePercent}%), ` +
                 `${issues_count} issue(s), recommendation: ${recommendation}.${coverageNote}${investigationNote} ` +
                 `Pre-submit: for each finding, verify it's MECHANICAL (not intent-based), name the confirming tool call, ` +
-                `confirm disproof was attempted. Drop anything "by design." Now call submit_review.${findingStoreNote}`
+                `confirm disproof was attempted. Drop anything "by design." Now call submit_review.${findingStoreNote}${this.generateHypothesisTrailNote(context)}`
         );
+    }
+
+    /**
+     * Generate hypothesis trail from reasoning chain for CoVe integration.
+     * Shows which hypotheses were investigated, which were abandoned.
+     */
+    private generateHypothesisTrailNote(context: ExecutionContext): string {
+        const chain = context.reasoningChain;
+        if (!chain || chain.getAllHypotheses().length === 0) {
+            return '';
+        }
+
+        let summary = chain.generateHypothesisTrailSummary();
+        if (summary.length > MAX_HYPOTHESIS_TRAIL_CHARS) {
+            summary =
+                summary.slice(0, MAX_HYPOTHESIS_TRAIL_CHARS) +
+                '\n...[truncated]';
+        }
+
+        return `\n\n🔗 HYPOTHESIS TRAIL:\n${summary}`;
     }
 }

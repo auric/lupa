@@ -3,6 +3,8 @@ import { generatePRReviewerRole } from '../prompts/blocks/roleDefinitions';
 import { generateAnalysisMethodology } from '../prompts/blocks/analysisMethodology';
 import { generateSelfReflectionGuidance } from '../prompts/blocks/selfReflection';
 import { generateFindingQualityGuidance } from '../prompts/blocks/findingQualityGuidance';
+import { generateFewShotExamples } from '../prompts/blocks/fewShotExamples';
+import { generateVerificationChecklist } from '../prompts/blocks/verificationChecklist';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
 
 const DISMISSIVE_PROFILE: ModelCalibrationProfile = {
@@ -78,10 +80,10 @@ describe('Calibration-aware prompt blocks', () => {
             expect(role).not.toContain('autonomous agent');
         });
 
-        it('should emphasize persistence for dismissive models', () => {
+        it('should emphasize procedural investigation for dismissive models', () => {
             const role = generatePRReviewerRole(DISMISSIVE_PROFILE);
-            expect(role).toContain('Persistence');
-            expect(role).toContain('disciplined investigator');
+            expect(role).toContain('systematically investigate');
+            expect(role).toContain('trace callers with find_usages');
         });
 
         it('should not mention "zero findings" for dismissive models', () => {
@@ -111,7 +113,9 @@ describe('Calibration-aware prompt blocks', () => {
         it('should remove kill ratio for dismissive models', () => {
             const methodology = generateAnalysisMethodology(DISMISSIVE_PROFILE);
             expect(methodology).not.toContain('Target kill ratio');
-            expect(methodology).toContain('Evidence ambiguity');
+            expect(methodology).toContain(
+                'Verification procedure for dismissive models'
+            );
         });
 
         it('should include stricter kill ratio for aggressive models', () => {
@@ -128,8 +132,8 @@ describe('Calibration-aware prompt blocks', () => {
 
         it('should strengthen skepticism for dismissive models', () => {
             const methodology = generateAnalysisMethodology(DISMISSIVE_PROFILE);
-            expect(methodology).toContain('submit_review will reject');
-            expect(methodology).toContain('revisit your strongest hypothesis');
+            expect(methodology).toContain('Investigation Algorithm');
+            expect(methodology).toContain('Zero-finding safety check');
         });
 
         it('should produce balanced output with balanced profile', () => {
@@ -144,9 +148,7 @@ describe('Calibration-aware prompt blocks', () => {
             const reflection =
                 generateSelfReflectionGuidance(DISMISSIVE_PROFILE);
             expect(reflection).toContain('evidence review');
-            expect(reflection).toContain(
-                'What did the tool output actually show'
-            );
+            expect(reflection).toContain('which tool call investigated it');
         });
 
         it("should use devil's advocate for balanced models", () => {
@@ -226,6 +228,48 @@ describe('Calibration-aware prompt blocks', () => {
             // Balanced profile includes revert test and FP patterns
             expect(guidance).toContain('Revert Test');
             expect(guidance).toContain('Top False Positive Patterns');
+        });
+    });
+
+    describe('generateFewShotExamples', () => {
+        it('should return empty string for balanced models', () => {
+            const result = generateFewShotExamples(BALANCED_PROFILE);
+            expect(result).toBe('');
+        });
+
+        it('should return examples for dismissive models', () => {
+            const result = generateFewShotExamples(DISMISSIVE_PROFILE);
+            expect(result).toContain('Examples');
+        });
+
+        it('should include both finding and dismissal examples', () => {
+            const result = generateFewShotExamples(DISMISSIVE_PROFILE);
+            expect(result).toContain('record_finding');
+            expect(result).toContain('Dismissed');
+        });
+
+        it('should be language-agnostic with diverse file extensions', () => {
+            const result = generateFewShotExamples(DISMISSIVE_PROFILE);
+            expect(result).toContain('.py');
+            expect(result).toContain('.java');
+            expect(result).toContain('.go');
+        });
+    });
+
+    describe('generateVerificationChecklist', () => {
+        it('should return empty string for balanced models', () => {
+            const result = generateVerificationChecklist(BALANCED_PROFILE);
+            expect(result).toBe('');
+        });
+
+        it('should return checklist for dismissive models', () => {
+            const result = generateVerificationChecklist(DISMISSIVE_PROFILE);
+            expect(result).toContain('Verification Checklist');
+        });
+
+        it('should reference tool names', () => {
+            const result = generateVerificationChecklist(DISMISSIVE_PROFILE);
+            expect(result).toContain('find_usages');
         });
     });
 });

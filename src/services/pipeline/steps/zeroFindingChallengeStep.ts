@@ -15,20 +15,19 @@ export function createZeroFindingChallengeStep(): PipelineStep {
         name: 'zero-finding-challenge',
         label: 'Zero-Finding Challenge',
         description:
-            'Challenges dismissive models that report 0 findings on non-trivial PRs',
+            'Challenges any model that reports 0 findings on non-trivial PRs',
         kind: 'llm-conversation',
 
         shouldRun(context: PipelineContext): boolean {
             return (
                 context.findingStore.size === 0 &&
-                context.parsedDiff.length >= MIN_FILES_FOR_NONTRIVIAL_PR &&
-                context.calibrationProfile.findingBias === 'dismissive'
+                context.parsedDiff.length >= MIN_FILES_FOR_NONTRIVIAL_PR
             );
         },
 
         async execute(context: PipelineContext): Promise<PipelineStepResult> {
             Log.info(
-                `Zero-finding challenge: dismissive model reported 0 findings on ${context.parsedDiff.length}-file PR`
+                `Zero-finding challenge: model reported 0 findings on non-trivial ${context.parsedDiff.length}-file PR`
             );
 
             const investigationDisabled =
@@ -74,10 +73,23 @@ export function createZeroFindingChallengeStep(): PipelineStep {
                 context.handler
             );
 
+            const wasCancelled = context.conversationRunner.wasCancelled;
+            const hitMax = context.conversationRunner.hitMaxIterations;
+            let summary: string | undefined;
+
+            if ((wasCancelled || hitMax) && context.findingStore.size === 0) {
+                const reason = wasCancelled
+                    ? 'was cancelled'
+                    : 'hit iteration limit';
+                summary = `Challenge inconclusive: conversation ended without new findings (${reason})`;
+                Log.warn(summary);
+            }
+
             return {
                 findingsDropped: [],
                 findingsDowngraded: [],
                 toolCallRecords: [],
+                summary,
             };
         },
     };

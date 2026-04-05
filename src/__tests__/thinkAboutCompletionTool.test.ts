@@ -6,6 +6,7 @@ import {
     createCancelledExecutionContext,
 } from './testUtils/mockFactories';
 import { FindingStore } from '../sessions/findingStore';
+import { ReasoningChain } from '../sessions/reasoningChain';
 
 vi.mock('../services/loggingService', () => ({
     Log: {
@@ -232,6 +233,37 @@ describe('ThinkAboutCompletionTool', () => {
 
             expect(result.success).toBe(true);
             expect(result.data).not.toContain('CHAIN-OF-VERIFICATION');
+        });
+    });
+
+    describe('hypothesis trail integration', () => {
+        it('includes hypothesis trail when reasoningChain has hypotheses', async () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth review', [
+                'timing attack in login',
+                'missing null check',
+            ]);
+            chain.recordToolCall('read_file');
+            chain.markConfirmed(1, 'found issue');
+            chain.markDismissed(2, 'all callers handle it');
+
+            const ctx = createMockExecutionContext({ reasoningChain: chain });
+
+            const result = await tool.execute(
+                {
+                    summary_draft: 'Found timing attack issue in login flow.',
+                    issues_count: 1,
+                    files_analyzed: ['src/auth.ts'],
+                    files_in_diff: 1,
+                    recommendation: 'request_changes',
+                },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('Hypothesis Trail');
+            expect(result.data).toContain('1 confirmed');
+            expect(result.data).toContain('1 dismissed');
         });
     });
 });

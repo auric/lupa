@@ -72,6 +72,7 @@ export class PostAnalysisPipeline {
             ...options,
             findingValidator: this.findingValidator,
             droppedTitles: [] as string[],
+            downgradedTitles: [] as string[],
             additionalToolCallRecords: [] as ToolCallRecord[],
             selfReflectionScores: [] as SelfReflectionScore[],
             rewrittenAnalysis: undefined as string | undefined,

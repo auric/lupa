@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { RecordFindingTool } from '../tools/recordFindingTool';
 import { createMockExecutionContext } from './testUtils/mockFactories';
 import { FindingStore } from '../sessions/findingStore';
+import { ReasoningChain } from '../sessions/reasoningChain';
 
 vi.mock('../services/loggingService', () => ({
     Log: {
@@ -52,6 +53,72 @@ describe('RecordFindingTool', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         tool = new RecordFindingTool();
+    });
+
+    describe('normalizeArgs', () => {
+        it('strips "H1" format to numeric 1', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: 'H1',
+            });
+            expect(result.hypothesis_id).toBe(1);
+        });
+
+        it('strips "[H2]" format to numeric 2', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: '[H2]',
+            });
+            expect(result.hypothesis_id).toBe(2);
+        });
+
+        it('passes through numeric hypothesis_id unchanged', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: 3,
+            });
+            expect(result.hypothesis_id).toBe(3);
+        });
+
+        it('passes through undefined hypothesis_id', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: undefined,
+            });
+            expect(result.hypothesis_id).toBeUndefined();
+        });
+
+        it('converts null hypothesis_id to undefined', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: null,
+            });
+            expect(result.hypothesis_id).toBeUndefined();
+        });
+
+        it('converts empty string hypothesis_id to undefined', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: '',
+            });
+            expect(result.hypothesis_id).toBeUndefined();
+        });
+
+        it('converts whitespace-only hypothesis_id to undefined', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: '  ',
+            });
+            expect(result.hypothesis_id).toBeUndefined();
+        });
+
+        it('converts string with no digits to undefined', () => {
+            const result = tool.normalizeArgs({
+                ...BASE_FINDING_ARGS,
+                hypothesis_id: 'abc',
+            });
+            expect(result.hypothesis_id).toBeUndefined();
+        });
     });
 
     it('should have correct name', () => {
@@ -562,6 +629,126 @@ describe('RecordFindingTool', () => {
 
             expect(result.success).toBe(true);
             expect(store.size).toBe(1);
+        });
+    });
+
+    describe('hypothesis confirmation via ReasoningChain', () => {
+        it('marks hypothesis as confirmed when hypothesis_id is provided', async () => {
+            const store = new FindingStore();
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth review', ['Missing error handler']);
+            // Transition to 'investigating' via investigation tool
+            chain.recordToolCall('find_usages');
+
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                reasoningChain: chain,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            await tool.execute({ ...BASE_FINDING_ARGS, hypothesis_id: 1 }, ctx);
+
+            const hypothesis = chain.getAllHypotheses()[0];
+            expect(hypothesis.status).toBe('confirmed');
+            expect(hypothesis.resolutionNote).toContain(
+                'Missing error handler'
+            );
+        });
+
+        it('falls back to most recent investigating hypothesis when no hypothesis_id provided', async () => {
+            const store = new FindingStore();
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('review', [
+                'unrelated risk alpha',
+                'unrelated risk beta',
+            ]);
+            // Transition both to 'investigating'
+            chain.recordToolCall('read_file');
+
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                reasoningChain: chain,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            // Neither hypothesis text matches the finding title,
+            // so the most recent investigating one (beta, index 1) gets confirmed
+            expect(chain.getAllHypotheses()[0].status).toBe('investigating');
+            expect(chain.getAllHypotheses()[1].status).toBe('confirmed');
+        });
+
+        it('does not mark hypothesis if no open hypotheses exist', async () => {
+            const store = new FindingStore();
+            const chain = new ReasoningChain();
+            // Add hypotheses but confirm/dismiss them all
+            chain.addCheckpoint('review', ['risk1', 'risk2']);
+            chain.markConfirmed(1, 'already found');
+            chain.markDismissed(2, 'disproved');
+
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                reasoningChain: chain,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            await tool.execute(BASE_FINDING_ARGS, ctx);
+
+            // Both should retain their original statuses
+            expect(chain.getAllHypotheses()[0].status).toBe('confirmed');
+            expect(chain.getAllHypotheses()[1].status).toBe('dismissed');
+            expect(store.size).toBe(1); // Finding still recorded successfully
+        });
+
+        it('does not fall back when explicit hypothesis_id refers to non-open hypothesis', async () => {
+            const store = new FindingStore();
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('review', ['risk alpha', 'risk beta']);
+            // Transition both to 'investigating'
+            chain.recordToolCall('read_file');
+            // Confirm the first one so it's no longer open
+            chain.markConfirmed(1, 'already confirmed');
+
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                reasoningChain: chain,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            // Pass hypothesis_id: 1 which is already confirmed — should NOT fall back to hypothesis 2
+            await tool.execute({ ...BASE_FINDING_ARGS, hypothesis_id: 1 }, ctx);
+
+            expect(chain.getAllHypotheses()[0].status).toBe('confirmed'); // stays confirmed
+            expect(chain.getAllHypotheses()[1].status).toBe('investigating'); // NOT confirmed by fallback
+            expect(store.size).toBe(1); // Finding still recorded
+        });
+
+        it('does not fall back when explicit hypothesis_id does not exist', async () => {
+            const store = new FindingStore();
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('review', ['risk alpha']);
+            chain.recordToolCall('read_file');
+
+            const ctx = createMockExecutionContext({
+                findingStore: store,
+                reasoningChain: chain,
+                toolCallCounts: investigatedToolCalls(),
+                investigatedFiles: new Set(['src/api.ts']),
+            });
+
+            // Pass hypothesis_id: 999 which doesn't exist — should NOT fall back to hypothesis 1
+            await tool.execute(
+                { ...BASE_FINDING_ARGS, hypothesis_id: 999 },
+                ctx
+            );
+
+            expect(chain.getAllHypotheses()[0].status).toBe('investigating'); // NOT confirmed
+            expect(store.size).toBe(1); // Finding still recorded
         });
     });
 });

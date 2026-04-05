@@ -21,6 +21,7 @@ import type { ITool } from '../tools/ITool';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { FindingStore } from '../sessions/findingStore';
+import { ReasoningChain } from '../sessions/reasoningChain';
 import type { ExecutionContext } from '../types/executionContext';
 import type { DiffHunk } from '../types/contextTypes';
 import type { SubagentSessionManager } from './subagentSessionManager';
@@ -218,6 +219,7 @@ export class SubagentExecutor {
                 currentAgentId: options?.agentId,
                 parsedDiff: options?.parsedDiff,
                 findingStore: options?.findingStore,
+                reasoningChain: new ReasoningChain(),
                 calibrationProfile:
                     options?.calibrationProfile ?? DEFAULT_PROFILE,
                 toolCallCounts: new Map(),

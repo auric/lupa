@@ -55,6 +55,10 @@ export const DIFF_TOOLS = ['get_file_diff'] as const;
  * after the orientation phase (first subagent round).
  * The root is a controller — after it delegates, it should only retain
  * controller tools (run_subagent_batch, update_plan, think_about_completion, submit_review).
+ * NOTE: Different from INVESTIGATION_TOOLS in reasoningChain.ts which is used for
+ * evidence-aware gating. The sets intentionally differ:
+ * - This set includes batch_tools (access control) and excludes validate_claim
+ * - reasoningChain.ts includes validate_claim (evidence gathering) and excludes batch_tools (meta-tool)
  */
 export const INVESTIGATION_TOOLS = [
     'get_file_diff',

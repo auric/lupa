@@ -88,6 +88,13 @@ export class RecordFindingTool extends BaseTool {
                     '"Missing validation" or "missing logging" are NOT failure mechanisms — ' +
                     'name what actually goes WRONG when code executes.'
             ),
+        hypothesis_id: z.coerce
+            .number()
+            .optional()
+            .describe(
+                'ID of the hypothesis this finding confirms (e.g., 1 for [H1]). ' +
+                    'Reference the hypothesis ID from think tool output. Helps track reasoning chain.'
+            ),
         verifiable_claims: z
             .array(
                 z.object({
@@ -107,6 +114,38 @@ export class RecordFindingTool extends BaseTool {
                     'Example: [{claim_type: "no_callers", file: "src/auth.ts", line: 42, symbol: "hashPassword", assertion: "No callers handle the error from hashPassword"}]'
             ),
     });
+
+    override normalizeArgs(
+        args: Record<string, unknown>
+    ): Record<string, unknown> {
+        const normalized = { ...args };
+
+        // Normalize hypothesis_id: strip LLM formats like "H1", "[H1]", "H 1" → 1
+        // Also handle null/""/whitespace which z.coerce.number() would turn into 0
+        const hid = normalized.hypothesis_id;
+        if (hid == null || hid === '') {
+            delete normalized.hypothesis_id;
+        } else if (typeof hid === 'string') {
+            const trimmed = hid.trim();
+            if (trimmed === '') {
+                delete normalized.hypothesis_id;
+            } else {
+                const match = trimmed.match(/\d+/);
+                if (match) {
+                    normalized.hypothesis_id = Number(match[0]);
+                } else {
+                    delete normalized.hypothesis_id;
+                }
+            }
+        }
+
+        // After coercing to number, check for invalid 0
+        if (normalized.hypothesis_id === 0) {
+            delete normalized.hypothesis_id;
+        }
+
+        return normalized;
+    }
 
     async execute(
         args: z.infer<typeof this.schema>,
@@ -227,14 +266,85 @@ export class RecordFindingTool extends BaseTool {
             })),
         });
 
+        // Mark linked hypothesis as confirmed in reasoning chain
+        let implicitHypothesisId: number | undefined;
+        let hypothesisNote = '';
+        if (context.reasoningChain) {
+            const chain = context.reasoningChain;
+            let target: { id: number } | undefined;
+
+            if (args.hypothesis_id != null) {
+                // Explicit link: model referenced the hypothesis ID from think output
+                const byId = chain
+                    .getAllHypotheses()
+                    .find(
+                        (h) =>
+                            h.id === args.hypothesis_id &&
+                            (h.status === 'generated' ||
+                                h.status === 'investigating')
+                    );
+                target = byId;
+                // Don't fall back — explicit ID that doesn't match means
+                // the hypothesis was already resolved or doesn't exist
+                if (!byId) {
+                    hypothesisNote = `\n⚠️ hypothesis_id ${args.hypothesis_id} not found or already resolved — finding recorded without hypothesis link.`;
+                }
+            } else {
+                // Fallback only when no explicit hypothesis ID was provided:
+                // use the most recent investigating hypothesis
+                target = chain
+                    .getOpenHypotheses()
+                    .filter((h) => h.status === 'investigating')
+                    .at(-1);
+            }
+
+            if (target) {
+                chain.markConfirmed(
+                    target.id,
+                    `Recorded as finding ${finding.id}: ${args.title}`,
+                    finding.id
+                );
+                if (args.hypothesis_id == null) {
+                    implicitHypothesisId = target.id;
+                }
+            }
+        }
+
+        // Evidence-aware gating: warn (don't block) if no investigation tools
+        // were called since the last think checkpoint. This catches models that
+        // skip the think→investigate→record workflow.
+        let evidenceGapWarning = '';
+        const chain = context.reasoningChain;
+        if (chain) {
+            // Check investigation tools in both the current window (since last checkpoint)
+            // AND the most recent checkpoint itself. This avoids false positives in the
+            // canonical investigate→think→record workflow, where investigation happened
+            // before the think checkpoint that reset the counter.
+            const toolsSinceCheckpoint =
+                chain.getInvestigationToolCountSinceLastCheckpoint();
+            const lastCheckpointTools =
+                chain.getAllCheckpoints().at(-1)?.investigationToolCount ?? 0;
+            const recentInvestigation =
+                toolsSinceCheckpoint + lastCheckpointTools;
+            if (recentInvestigation === 0 && chain.getCheckpointCount() > 0) {
+                evidenceGapWarning =
+                    '\n\n⚠️ EVIDENCE GAP: No investigation tools were called since your last think checkpoint. ' +
+                    'The think→investigate→record workflow produces higher quality findings. ' +
+                    'If this finding is based on earlier investigation, continue. Otherwise, consider retracting and investigating first.';
+            }
+        }
+
         const softLimitWarning = overSoftLimit
             ? `\n\n⚠️ You have now recorded ${store.size} finding(s), which exceeds the recommended limit of ${softLimit}. ` +
               'Focus only on HIGH/CRITICAL issues from here. The post-analysis pipeline will filter weaker findings.'
             : '';
 
         return toolSuccess(
-            `Finding recorded: [${finding.id}] ${finding.severity} — ${finding.title}\n` +
-                `Evidence: ${args.verification_evidence}\n` +
+            `Finding recorded: [${finding.id}] ${finding.severity} — ${finding.title}` +
+                (implicitHypothesisId != null
+                    ? ` (linked to hypothesis [H${implicitHypothesisId}])`
+                    : '') +
+                `\nEvidence: ${args.verification_evidence}\n` +
                 `Disproof attempt: ${args.disproof_note}\n\n` +
                 `LSP claims: ${args.verifiable_claims?.length ?? 0} attached for post-hoc validation\n\n` +
                 `⚠️ MANDATORY SELF-CHECK before continuing:\n` +
@@ -242,7 +352,9 @@ export class RecordFindingTool extends BaseTool {
                 `2. Could this be INTENTIONAL design? Did you search for comments, docs, or commit history explaining the rationale?\n` +
                 `3. Is this MECHANICAL (provable by tools) or INTENT-BASED (requires knowing author's rationale)? Intent-based findings have the highest FP rate.\n` +
                 `If the answer to #1 is NO, call retract_finding immediately.` +
-                softLimitWarning
+                softLimitWarning +
+                evidenceGapWarning +
+                hypothesisNote
         );
     }
 }

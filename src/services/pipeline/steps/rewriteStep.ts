@@ -5,7 +5,7 @@ import type {
     PipelineStepResult,
 } from '../pipelineTypes';
 
-const REWRITE_BUDGET = 10;
+const REWRITE_BUDGET = 25;
 const REWRITE_ALLOWED_TOOLS = new Set([
     'think',
     'submit_review',
@@ -22,23 +22,43 @@ export function createRewriteStep(): PipelineStep {
         kind: 'llm-conversation',
 
         shouldRun(context: PipelineContext): boolean {
-            return context.droppedTitles.length > 0;
+            return (
+                context.droppedTitles.length > 0 ||
+                context.downgradedTitles.length > 0
+            );
         },
 
         async execute(context: PipelineContext): Promise<PipelineStepResult> {
+            const hasDropped = context.droppedTitles.length > 0;
+            const hasDowngraded = context.downgradedTitles.length > 0;
+
             Log.info(
-                `Post-analysis dropped ${context.droppedTitles.length} finding(s), re-entering conversation for rewrite`
+                `Post-analysis: ${context.droppedTitles.length} dropped, ${context.downgradedTitles.length} downgraded — re-entering conversation for rewrite`
             );
 
-            const droppedList = context.droppedTitles
-                .map((t) => `"${t}"`)
-                .join(', ');
+            const parts: string[] = [];
+            if (hasDropped) {
+                const droppedList = context.droppedTitles
+                    .map((t) => `"${t}"`)
+                    .join(', ');
+                parts.push(
+                    `Post-analysis verification has removed ${context.droppedTitles.length} finding(s): ${droppedList}. ` +
+                        'These findings failed evidence audit, programmatic validation, or adversarial verification. ' +
+                        'Rewrite your review WITHOUT these removed findings.'
+                );
+            }
+            if (hasDowngraded) {
+                const downgradedList = context.downgradedTitles
+                    .map((t) => `"${t}"`)
+                    .join(', ');
+                parts.push(
+                    `Post-analysis verification has downgraded the severity of ${context.downgradedTitles.length} finding(s): ${downgradedList}. ` +
+                        'Update these findings to reflect their new (lower) severity levels.'
+                );
+            }
+            parts.push('Then call submit_review.');
 
-            context.conversationManager.addUserMessage(
-                `Post-analysis verification has removed ${context.droppedTitles.length} finding(s): ${droppedList}. ` +
-                    'These findings failed evidence audit, programmatic validation, or adversarial verification. ' +
-                    'Rewrite your review WITHOUT these removed findings, then call submit_review.'
-            );
+            context.conversationManager.addUserMessage(parts.join(' '));
 
             const rewriteTools = context.availableTools.filter((t) =>
                 REWRITE_ALLOWED_TOOLS.has(t.name)

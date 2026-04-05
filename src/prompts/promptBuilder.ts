@@ -15,6 +15,8 @@ import {
     generateRecursiveMethodology,
     generateRecursiveToolGuide,
     generateFindingQualityGuidance,
+    generateFewShotExamples,
+    generateVerificationChecklist,
 } from './blocks/promptBlocks';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
 
@@ -171,6 +173,22 @@ export class PromptBuilder {
         return this;
     }
 
+    addFewShotExamples(): this {
+        const content = generateFewShotExamples(this._calibration!);
+        if (content) {
+            this.sections.push(content);
+        }
+        return this;
+    }
+
+    addVerificationChecklist(): this {
+        const content = generateVerificationChecklist(this._calibration!);
+        if (content) {
+            this.sections.push(content);
+        }
+        return this;
+    }
+
     /**
      * Add a custom section.
      */
@@ -210,6 +228,8 @@ export function createPRReviewPromptBuilder(
         .addSubagentGuidance()
         .addAnalysisMethodology()
         .addFindingQualityGuidance()
+        .addFewShotExamples()
+        .addVerificationChecklist()
         .addSelfReflection()
         .addPROutputFormat();
 }

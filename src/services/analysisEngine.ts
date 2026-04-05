@@ -20,6 +20,7 @@ import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { FindingStore } from '../sessions/findingStore';
+import { ReasoningChain } from '../sessions/reasoningChain';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
@@ -182,6 +183,7 @@ export class AnalysisEngine implements vscode.Disposable {
             currentDepth: 0,
             currentAgentId: 'root',
             findingStore,
+            reasoningChain: new ReasoningChain(),
             toolCallCounts: new Map<string, number>(),
             investigatedFiles: new Set<string>(),
         } as ExecutionContext;
@@ -203,6 +205,8 @@ export class AnalysisEngine implements vscode.Disposable {
         let filesAnalyzed = 0;
         let selfReflectionScores: SelfReflectionScore[] = [];
         let stepRecords: StepRecord[] = [];
+        let mainAnalysisWasCancelled = false;
+        let mainAnalysisIterationsUsed = 0;
 
         try {
             Log.info('Starting analysis with tool-calling support');
@@ -410,6 +414,8 @@ export class AnalysisEngine implements vscode.Disposable {
                 handler
             );
             analysisCompleted = !conversationRunner.wasCancelled;
+            mainAnalysisWasCancelled = conversationRunner.wasCancelled;
+            mainAnalysisIterationsUsed = conversationRunner.iterationsUsed;
 
             if (analysisCompleted) {
                 const pipeline = new PostAnalysisPipeline(
@@ -476,9 +482,9 @@ export class AnalysisEngine implements vscode.Disposable {
             analysisText,
             toolCallRecords: [...toolCallRecords],
             completed: analysisCompleted,
-            wasCancelled: conversationRunner.wasCancelled,
+            wasCancelled: mainAnalysisWasCancelled,
             error: analysisError,
-            iterationsUsed: conversationRunner.iterationsUsed,
+            iterationsUsed: mainAnalysisIterationsUsed,
             selfReflectionScores,
             filesAnalyzed,
             stepRecords,

@@ -61,30 +61,43 @@ After reading a diff, call \`think\` to organize your analysis before investigat
 
 ${
     calibration.findingBias === 'dismissive'
-        ? `You are a senior reviewer. Your job is to investigate thoroughly and report what you find with evidence.
-- HYPOTHESIS QUALITY MATTERS: Do NOT generate trivial hypotheses like "is this symbol used?" or "does this import exist?" — these are always verified and waste investigation time
-- Generate hypotheses about BEHAVIOR: "What happens if this function receives null?", "What if this async operation fails?", "Are all error paths handled?"
-- A review that says "everything looks good" without any \\\`validate_claim\\\` calls is incomplete — submit_review will reject it
-- When a hypothesis COULD be an issue, investigate further. Do NOT dismiss it based on reasoning alone — use tools to verify
-- NEVER use validate_claim with claim_type "symbol_unused" or "symbol_missing" for standard library identifiers or string literals — these are NOT real hypotheses`
+        ? `### Investigation Algorithm (execute for each changed file)
+
+1. Call \`get_file_diff({file_paths: ["<file>"]})\` → read the diff
+2. For each changed function/method in the diff:
+   a. Call \`read_file\` → full function body with 30 lines context
+   b. Call \`find_usages\` → all callers of this function
+   c. For EACH caller, verify:
+      - New null/undefined return? → Does caller check for null?
+      - New error throw? → Does caller have try-catch?
+      - Changed parameter type? → Does caller pass correct type?
+      - Changed return type? → Does caller use return value correctly?
+      - Removed validation? → Does any caller depend on it?
+   d. If ANY caller CANNOT handle the change → call \`record_finding\`
+   e. If ALL callers handle it correctly → move to next function
+3. After all functions checked, verify:
+   - New error paths propagated to callers?
+   - New resources acquired and released?
+   - Changed control flow breaks existing invariants?
+4. Call \`think\` checkpoint with findings summary
+5. Repeat for next file
+
+**Decision rule**: A finding exists when a SPECIFIC caller of CHANGED code will produce wrong behavior. Name the caller, the scenario, and the wrong behavior. If you cannot name all three, it is not a finding.`
         : `You are a senior reviewer, not a rubber stamp. Your job is to find issues the developer missed.
 - If you review multiple files and identify zero risks at checkpoint #1, you are likely being too agreeable — go back and hypothesize harder
 - Real code changes almost always have edge cases, error handling gaps, or subtle type issues worth at least investigating
 - Generating hypotheses costs nothing — disprove them with tools if they're wrong
-- A review that says "everything looks good" without any \\\`validate_claim\\\` calls is incomplete, not thorough`
+- A review that says "everything looks good" without any \`validate_claim\` calls is incomplete, not thorough`
 }
 
 ### Example: Reviewing a File Change
 
-1. Call \`get_file_diff({file_paths: ["src/auth.ts"]})\`
-2. Call \`think\`:
-   - topic: "changes in src/auth.ts"
-   - analysis: "The login function now accepts a plain string password instead of a hashed one. The comparison uses === which is not constant-time."
-   - identified_risks: ["Timing attack on password comparison", "Plain text password in memory"]
-   - next_action: "Call find_usages for login() to check all callers"
-3. Investigate based on next_action: \`find_usages({symbol: "login", file: "src/auth.ts"})\`
-4. If concern confirmed → \`record_finding\` immediately
-5. If concern disproved → move to next file
+1. \`get_file_diff({file_paths: ["src/auth.ts"]})\` → see what changed
+2. \`think({topic: "src/auth.ts changes", analysis: "login() now accepts plain string password instead of hash", identified_risks: ["timing attack on === comparison", "plain text password in memory"], next_action: "find_usages for login()"})\`
+3. \`find_usages({symbol_name: "login", file_path: "src/auth.ts"})\` → trace all callers
+4. For each caller, check: does it handle the new behavior?
+5. If caller at risk → \`record_finding({...})\` immediately
+6. If all callers safe → move to next changed function
 
 ### Tool Call Workflow
 The standard analysis flow follows this pattern:
@@ -112,7 +125,7 @@ Call \`think\` at these checkpoints to maintain analysis quality:
 ### Step 5: Verify Your Hypotheses (MANDATORY for MEDIUM+ Findings)
 
 The issues you identified are **HYPOTHESES**, not confirmed findings.
-Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using the verification gates from \`<finding_quality>\` above.
+Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using the verification gates from \`<finding_quality>\` below.
 
 **For each MEDIUM+ hypothesis:**
 1. Ask: "What would make this NOT a problem?"
@@ -123,7 +136,15 @@ Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using 
 ${
     calibration.findingBias === 'dismissive'
         ? `
-**Evidence ambiguity**: When tool output is ambiguous or inconclusive, this means you need MORE investigation. Try a different tool or approach. If after 3 attempts no tool can definitively confirm the issue, DROP it — ambiguity is not evidence.`
+**Verification procedure for dismissive models**:
+1. For each hypothesis in your think checkpoint:
+   a. Write the specific tool call that would DISPROVE it
+   b. Execute that tool call
+   c. If tool output shows the issue exists → record_finding
+   d. If tool output shows the issue does NOT exist → drop silently
+   e. If tool output is ambiguous → call a DIFFERENT tool for the same hypothesis
+2. After 3 tool calls for the same hypothesis with no clear answer → DROP it
+3. Each hypothesis MUST be resolved (confirmed or dropped) before moving on`
         : calibration.findingBias === 'aggressive'
           ? `
 **Target kill ratio**: Drop 50-70% of your initial hypotheses through verification.
@@ -167,7 +188,11 @@ For each change, ask:
 ${
     calibration.findingBias === 'dismissive'
         ? `
-If you have investigated every file and found zero issues, revisit your strongest hypothesis. If it has any plausible basis in tool output, record it as LOW severity — the post-analysis pipeline will filter it if it’s not real.`
+**Zero-finding safety check**: If you have investigated every file and recorded zero findings, verify:
+1. Did you call \`find_usages\` for every changed public function? (check your tool call history)
+2. Did every caller handle the change? (cite the specific tool output)
+3. Are there any new null paths, error paths, or type changes?
+If yes to all three → zero findings is correct. If no → go back and investigate the gap.`
         : ''
 }
 ${
