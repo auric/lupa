@@ -32,6 +32,8 @@ export interface PipelineStepResult {
     findingsDowngraded: string[];
     toolCallRecords: ToolCallRecord[];
     summary?: string;
+    /** True when the step ran out of iteration budget before completing. */
+    budgetExhausted?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,6 +54,8 @@ export interface StepRecord {
     status: StepStatus;
     durationMs: number;
     result?: PipelineStepResult;
+    /** True when the step's LLM conversation exhausted its iteration budget. */
+    budgetExhausted?: boolean;
 }
 
 // ---------------------------------------------------------------------------

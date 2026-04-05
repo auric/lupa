@@ -64,7 +64,7 @@ export function createRewriteStep(): PipelineStep {
                 REWRITE_ALLOWED_TOOLS.has(t.name)
             );
 
-            context.rewrittenAnalysis = await context.conversationRunner.run(
+            const rewriteResult = await context.conversationRunner.run(
                 {
                     systemPrompt: context.systemPrompt,
                     maxIterations: REWRITE_BUDGET,
@@ -77,6 +77,22 @@ export function createRewriteStep(): PipelineStep {
                 context.executionContext.cancellationToken,
                 context.handler
             );
+
+            if (context.conversationRunner.hitMaxIterations) {
+                Log.warn(
+                    `Rewrite phase exhausted budget (${REWRITE_BUDGET} iterations) — preserving original analysis text`
+                );
+                return {
+                    findingsDropped: [],
+                    findingsDowngraded: [],
+                    toolCallRecords: [],
+                    budgetExhausted: true,
+                    summary:
+                        'Rewrite incomplete: iteration budget exhausted. Original review preserved.',
+                };
+            }
+
+            context.rewrittenAnalysis = rewriteResult;
 
             return {
                 findingsDropped: [],

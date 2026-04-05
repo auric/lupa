@@ -89,6 +89,7 @@ export function createZeroFindingChallengeStep(): PipelineStep {
                 findingsDropped: [],
                 findingsDowngraded: [],
                 toolCallRecords: [],
+                budgetExhausted: hitMax,
                 summary,
             };
         },

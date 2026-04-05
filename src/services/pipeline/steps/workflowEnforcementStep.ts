@@ -111,6 +111,7 @@ export function createWorkflowEnforcementStep(): PipelineStep {
                         findingsDropped: [],
                         findingsDowngraded: [],
                         toolCallRecords: [],
+                        budgetExhausted: hitMax,
                         summary: `Workflow enforcement incomplete: conversation ${reason}`,
                     };
                 }
