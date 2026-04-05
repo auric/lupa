@@ -95,7 +95,24 @@ describe('createRewriteStep', () => {
 
             expect(context.rewrittenAnalysis).toBeUndefined();
             expect(result.budgetExhausted).toBe(true);
-            expect(result.summary).toContain('budget exhausted');
+            expect(result.summary).toContain('hit iteration limit');
+        });
+
+        it('preserves original analysis when conversation is cancelled', async () => {
+            const context = createMockContext({
+                droppedTitles: ['Finding A'],
+                conversationRunner: {
+                    run: vi.fn().mockResolvedValue(''),
+                    hitMaxIterations: false,
+                    wasCancelled: true,
+                } as any,
+            });
+
+            const result = await step.execute(context);
+
+            expect(context.rewrittenAnalysis).toBeUndefined();
+            expect(result.budgetExhausted).toBeFalsy();
+            expect(result.summary).toContain('was cancelled');
         });
 
         it('filters tools to only allowed set', async () => {

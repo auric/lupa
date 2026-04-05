@@ -299,6 +299,7 @@ export class ConversationRunner {
                     if (
                         config.requiresExplicitCompletion &&
                         iteration === explicitWarningIteration &&
+                        explicitWarningIteration !== explicitUrgentIteration &&
                         !explicitCompletionWarned
                     ) {
                         explicitCompletionWarned = true;
