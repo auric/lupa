@@ -77,7 +77,6 @@ export function createZeroFindingChallengeStep(): PipelineStep {
             const wasCancelled = context.conversationRunner.wasCancelled;
             const hitMax = context.conversationRunner.hitMaxIterations;
             const hitRate = context.conversationRunner.hitRateLimit;
-            let summary: string | undefined;
 
             if (
                 (wasCancelled || hitMax || hitRate) &&
@@ -88,7 +87,7 @@ export function createZeroFindingChallengeStep(): PipelineStep {
                     : hitRate
                       ? 'hit rate limit'
                       : 'hit iteration limit';
-                summary = `Challenge inconclusive: conversation ended without new findings (${reason})`;
+                const summary = `Challenge inconclusive: conversation ended without new findings (${reason})`;
                 Log.warn(summary);
                 return emptyStepResult({
                     budgetExhausted: hitMax,
@@ -96,7 +95,7 @@ export function createZeroFindingChallengeStep(): PipelineStep {
                 });
             }
 
-            return emptyStepResult({ summary });
+            return emptyStepResult();
         },
     };
 }

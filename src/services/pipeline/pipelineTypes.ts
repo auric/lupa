@@ -36,7 +36,7 @@ export interface PipelineStepResult {
     budgetExhausted?: boolean;
 }
 
-/** Create a PipelineStepResult with empty arrays, overriding with provided fields. */
+/** DRY helper for steps that don't drop/downgrade findings. */
 export function emptyStepResult(
     overrides?: Partial<PipelineStepResult>
 ): PipelineStepResult {
