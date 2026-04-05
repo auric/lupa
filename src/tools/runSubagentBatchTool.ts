@@ -396,12 +396,28 @@ RULES:
                 : this.workspaceSettings.getRequestTimeoutSeconds() * 1000;
 
         const cancellationTokenSource = new vscode.CancellationTokenSource();
-        const parentCancellationDisposable =
-            sessionManager.registerSubagentCancellation(
-                cancellationTokenSource
-            );
+        let cancellationReason: 'parent' | 'timeout' | undefined;
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        const sessionParentCancellationDisposable = sessionManager
+            .getParentCancellationToken()
+            ?.onCancellationRequested(() => {
+                cancellationReason ??= 'parent';
+                if (timeoutHandle) {
+                    clearTimeout(timeoutHandle);
+                }
+                cancellationTokenSource.cancel();
+            });
+        const immediateParentCancellationDisposable =
+            context.cancellationToken.onCancellationRequested(() => {
+                cancellationReason ??= 'parent';
+                if (timeoutHandle) {
+                    clearTimeout(timeoutHandle);
+                }
+                cancellationTokenSource.cancel();
+            });
         let cancelledByTimeout = false;
-        const timeoutHandle = setTimeout(() => {
+        timeoutHandle = setTimeout(() => {
+            cancellationReason ??= 'timeout';
             cancelledByTimeout = true;
             cancellationTokenSource.cancel();
         }, timeoutMs);
@@ -429,6 +445,14 @@ RULES:
 
             clearTimeout(timeoutHandle);
 
+            const timedOut =
+                !result.success &&
+                result.error === 'cancelled' &&
+                (cancellationReason === 'timeout' || cancelledByTimeout);
+            const recursiveStateError = timedOut
+                ? SubagentErrors.timeout(timeoutMs)
+                : result.error;
+
             if (recursiveState && alloc.childAgentId) {
                 const filesExamined = RunSubagentBatchTool.extractFilesExamined(
                     result.toolCalls,
@@ -440,12 +464,12 @@ RULES:
                         [],
                         filesExamined
                     );
-                } else if (result.error === 'cancelled') {
+                } else if (recursiveStateError === 'cancelled') {
                     recursiveState.cancelAgent(alloc.childAgentId);
                 } else if (
-                    result.error === 'max_iterations' ||
-                    result.error === 'rate_limited' ||
-                    result.error === 'quota_exhausted'
+                    recursiveStateError === 'max_iterations' ||
+                    recursiveStateError === 'rate_limited' ||
+                    recursiveStateError === 'quota_exhausted'
                 ) {
                     recursiveState.completeAgent(
                         alloc.childAgentId,
@@ -455,16 +479,13 @@ RULES:
                 } else {
                     recursiveState.failAgent(
                         alloc.childAgentId,
-                        result.error ?? 'Unknown error'
+                        recursiveStateError ?? 'Unknown error'
                     );
                 }
             }
 
             if (!result.success && result.error === 'cancelled') {
-                if (
-                    cancelledByTimeout &&
-                    !context.cancellationToken.isCancellationRequested
-                ) {
+                if (timedOut) {
                     return {
                         status: 'failed',
                         error: SubagentErrors.timeout(timeoutMs),
@@ -580,7 +601,8 @@ RULES:
                 allocation: alloc,
             };
         } finally {
-            parentCancellationDisposable?.dispose();
+            immediateParentCancellationDisposable.dispose();
+            sessionParentCancellationDisposable?.dispose();
             cancellationTokenSource.dispose();
         }
     }

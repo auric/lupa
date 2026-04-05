@@ -63,6 +63,10 @@ export class SubagentSessionManager {
         this.parentCancellationToken = token;
     }
 
+    getParentCancellationToken(): vscode.CancellationToken | undefined {
+        return this.parentCancellationToken;
+    }
+
     /**
      * Register a subagent cancellation source so it mirrors the parent cancellation token.
      */

@@ -10,6 +10,7 @@ import type { ExecutionContext } from '../types/executionContext';
 import type { DiffHunk } from '../types/contextTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import {
+    createMockCancellationTokenSource,
     createMockWorkspaceSettings,
     createMockExecutionContext,
     createTestRecursiveState,
@@ -639,6 +640,73 @@ describe('RunSubagentBatchTool', () => {
             await expect(promise).rejects.toThrow(vscode.CancellationError);
         });
 
+        it('should cancel child tokens when the immediate parent context token fires', async () => {
+            const rootTokenSource = createMockCancellationTokenSource();
+            const immediateParentTokenSource =
+                createMockCancellationTokenSource();
+            sessionManager.setParentCancellationToken(rootTokenSource.token);
+
+            const childTokens: vscode.CancellationToken[] = [];
+            const resolvers: Array<(value: SubagentResult) => void> = [];
+            const executor = {
+                execute: vi
+                    .fn()
+                    .mockImplementation(
+                        (_task: unknown, token: vscode.CancellationToken) => {
+                            childTokens.push(token);
+                            return new Promise<SubagentResult>((resolve) => {
+                                resolvers.push(resolve);
+                            });
+                        }
+                    ),
+            } as unknown as SubagentExecutor;
+
+            const tool = new RunSubagentBatchTool(workspaceSettings);
+            const context = createBatchExecutionContext(
+                executor,
+                sessionManager,
+                {
+                    cancellationToken: immediateParentTokenSource.token,
+                }
+            );
+
+            const promise = tool.execute(
+                { tasks: [{ task: VALID_TASK }] },
+                context
+            );
+
+            expect(executor.execute).toHaveBeenCalledTimes(1);
+            expect(childTokens[0]!.isCancellationRequested).toBe(false);
+
+            immediateParentTokenSource.cancel();
+
+            expect(rootTokenSource.cancel).not.toHaveBeenCalled();
+            expect(childTokens[0]!.isCancellationRequested).toBe(true);
+
+            resolvers[0]!({
+                success: false,
+                response: '',
+                error: 'cancelled',
+                toolCallsMade: 0,
+                toolCalls: [],
+                executionTimeMs: 0,
+            });
+
+            await expect(promise).rejects.toThrow(vscode.CancellationError);
+
+            const rootListenerDisposable = vi.mocked(
+                rootTokenSource.token.onCancellationRequested
+            ).mock.results[0]?.value;
+            const immediateParentListenerDisposable = vi.mocked(
+                immediateParentTokenSource.token.onCancellationRequested
+            ).mock.results[0]?.value;
+
+            expect(rootListenerDisposable?.dispose).toHaveBeenCalledTimes(1);
+            expect(
+                immediateParentListenerDisposable?.dispose
+            ).toHaveBeenCalledTimes(1);
+        });
+
         it('should report individual subagent timeout as failed (not rethrown)', async () => {
             vi.useFakeTimers();
             try {
@@ -805,6 +873,156 @@ describe('RunSubagentBatchTool', () => {
             const rootNode = recursiveState.getNode(rootId)!;
             const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
             expect(childNode.status).toBe('cancelled');
+        });
+
+        it('should mark timed out child agents as failed, not cancelled', async () => {
+            vi.useFakeTimers();
+            try {
+                const shortTimeoutSettings = {
+                    ...createMockWorkspaceSettings(),
+                    getRequestTimeoutSeconds: () => 0.01,
+                } as WorkspaceSettingsService;
+                const { recursiveState, rootId } = createTestRecursiveState();
+                const rootTokenSource = createMockCancellationTokenSource();
+
+                const resolvers: Array<(value: SubagentResult) => void> = [];
+
+                const executor = {
+                    execute: vi.fn().mockImplementation(() => {
+                        return new Promise<SubagentResult>((resolve) => {
+                            resolvers.push(resolve);
+                        });
+                    }),
+                } as unknown as SubagentExecutor;
+
+                const tool = new RunSubagentBatchTool(shortTimeoutSettings);
+                const sm = new SubagentSessionManager(shortTimeoutSettings);
+                const context = createBatchExecutionContext(executor, sm, {
+                    cancellationToken: rootTokenSource.token,
+                    recursiveState,
+                    currentDepth: 0,
+                    currentAgentId: rootId,
+                });
+
+                const childAgentId = recursiveState.registerAgent(
+                    rootId,
+                    VALID_TASK,
+                    10
+                );
+                recursiveState.startAgent(childAgentId);
+
+                const promise = (tool as any).executeSubagent(
+                    {
+                        index: 0,
+                        task: VALID_TASK,
+                        context: undefined,
+                        subagentId: 1,
+                        childAgentId,
+                        childBudget: undefined,
+                    },
+                    context,
+                    executor,
+                    sm,
+                    recursiveState,
+                    0
+                );
+
+                await vi.advanceTimersByTimeAsync(50);
+                expect(rootTokenSource.token.isCancellationRequested).toBe(
+                    false
+                );
+
+                resolvers[0]!({
+                    success: false,
+                    error: 'cancelled',
+                    response: '',
+                    toolCallsMade: 0,
+                    toolCalls: [],
+                    executionTimeMs: 10,
+                    iterationsUsed: 0,
+                });
+
+                const outcome = await promise;
+                expect(outcome.status).toBe('failed');
+
+                const childNode = recursiveState.getNode(childAgentId)!;
+                expect(childNode.status).toBe('failed');
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('should keep parent-cancelled child agents cancelled even if timeout would fire later', async () => {
+            vi.useFakeTimers();
+            try {
+                const shortTimeoutSettings = {
+                    ...createMockWorkspaceSettings(),
+                    getRequestTimeoutSeconds: () => 0.01,
+                } as WorkspaceSettingsService;
+                const { recursiveState, rootId } = createTestRecursiveState();
+                const rootTokenSource = createMockCancellationTokenSource();
+
+                const resolvers: Array<(value: SubagentResult) => void> = [];
+                const executor = {
+                    execute: vi.fn().mockImplementation(() => {
+                        return new Promise<SubagentResult>((resolve) => {
+                            resolvers.push(resolve);
+                        });
+                    }),
+                } as unknown as SubagentExecutor;
+
+                const tool = new RunSubagentBatchTool(shortTimeoutSettings);
+                const sm = new SubagentSessionManager(shortTimeoutSettings);
+                const context = createBatchExecutionContext(executor, sm, {
+                    cancellationToken: rootTokenSource.token,
+                    recursiveState,
+                    currentDepth: 0,
+                    currentAgentId: rootId,
+                });
+
+                const childAgentId = recursiveState.registerAgent(
+                    rootId,
+                    VALID_TASK,
+                    10
+                );
+                recursiveState.startAgent(childAgentId);
+
+                const promise = (tool as any).executeSubagent(
+                    {
+                        index: 0,
+                        task: VALID_TASK,
+                        context: undefined,
+                        subagentId: 1,
+                        childAgentId,
+                        childBudget: undefined,
+                    },
+                    context,
+                    executor,
+                    sm,
+                    recursiveState,
+                    0
+                );
+
+                rootTokenSource.cancel();
+                await vi.advanceTimersByTimeAsync(50);
+
+                resolvers[0]!({
+                    success: false,
+                    error: 'cancelled',
+                    response: '',
+                    toolCallsMade: 0,
+                    toolCalls: [],
+                    executionTimeMs: 10,
+                    iterationsUsed: 0,
+                });
+
+                await expect(promise).rejects.toThrow(vscode.CancellationError);
+
+                const childNode = recursiveState.getNode(childAgentId)!;
+                expect(childNode.status).toBe('cancelled');
+            } finally {
+                vi.useRealTimers();
+            }
         });
 
         it('should skip tasks when canSpawnChild returns not allowed', async () => {
