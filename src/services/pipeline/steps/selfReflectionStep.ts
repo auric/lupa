@@ -39,7 +39,12 @@ export function createSelfReflectionStep(): PipelineStep {
                 preReflectionMessageCount
             );
 
-            context.selfReflectionScores = reflectionResult.scores;
+            // Only include scores for findings that survived the drop threshold.
+            // Dropped findings are removed from findingStore by runSelfReflection,
+            // so filter to those still present.
+            context.selfReflectionScores = reflectionResult.scores.filter(
+                (s) => context.findingStore.getById(s.findingId) !== undefined
+            );
 
             return {
                 findingsDropped: reflectionResult.dropped,
