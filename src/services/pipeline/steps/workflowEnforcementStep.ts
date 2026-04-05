@@ -102,11 +102,14 @@ export function createWorkflowEnforcementStep(): PipelineStep {
 
                 const wasCancelled = context.conversationRunner.wasCancelled;
                 const hitMax = context.conversationRunner.hitMaxIterations;
+                const hitRate = context.conversationRunner.hitRateLimit;
 
-                if (wasCancelled || hitMax) {
+                if (wasCancelled || hitMax || hitRate) {
                     const reason = wasCancelled
                         ? 'was cancelled'
-                        : 'hit iteration limit';
+                        : hitRate
+                          ? 'hit rate limit'
+                          : 'hit iteration limit';
                     Log.warn(`Workflow enforcement conversation ${reason}`);
                     return emptyStepResult({
                         budgetExhausted: hitMax,

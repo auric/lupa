@@ -115,6 +115,28 @@ describe('createRewriteStep', () => {
             expect(result.summary).toContain('was cancelled');
         });
 
+        it('preserves original analysis when rate limit is hit', async () => {
+            const context = createMockContext({
+                droppedTitles: ['Finding A'],
+                conversationRunner: {
+                    run: vi
+                        .fn()
+                        .mockResolvedValue(
+                            'Rate limited by the API after multiple retries.'
+                        ),
+                    hitMaxIterations: false,
+                    wasCancelled: false,
+                    hitRateLimit: true,
+                } as any,
+            });
+
+            const result = await step.execute(context);
+
+            expect(context.rewrittenAnalysis).toBeUndefined();
+            expect(result.budgetExhausted).toBeFalsy();
+            expect(result.summary).toContain('hit rate limit');
+        });
+
         it('filters tools to only allowed set', async () => {
             const context = createMockContext({
                 droppedTitles: ['Finding A'],
