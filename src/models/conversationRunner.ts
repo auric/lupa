@@ -165,7 +165,6 @@ export class ConversationRunner {
         return this._wasCancelled;
     }
 
-    /** Whether the last run() produced degraded results (error/fallback exit path). */
     get degraded(): boolean {
         return this._degraded;
     }

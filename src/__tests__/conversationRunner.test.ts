@@ -1305,6 +1305,103 @@ describe('ConversationRunner', () => {
         });
     });
 
+    describe('degraded flag', () => {
+        it('should set degraded=true and exitReason on consecutive errors exit', async () => {
+            const genericError = new Error('Persistent API failure');
+
+            const modelManager = {
+                sendRequest: vi.fn().mockRejectedValue(genericError),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 50,
+                tools: [],
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toContain('consecutive errors');
+            expect(runner.degraded).toBe(true);
+            expect(runner.exitReason).toBe('consecutive-errors');
+        });
+
+        it('should not set degraded on normal completion', async () => {
+            const modelManager = createMockModelManager([
+                { content: 'Final response', toolCalls: undefined },
+            ]);
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            expect(runner.degraded).toBe(false);
+            expect(runner.exitReason).toBeUndefined();
+        });
+
+        it('should reset degraded flag on new run()', async () => {
+            const genericError = new Error('Persistent API failure');
+
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    // First 3 calls: errors (triggers consecutive-errors exit)
+                    if (callCount <= 3) {
+                        return Promise.reject(genericError);
+                    }
+                    // After reset, return normal response
+                    return Promise.resolve({
+                        content: 'Recovered',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 50,
+                tools: [],
+            };
+
+            // First run hits degraded exit
+            await runner.run(config, conversation, createCancellationToken());
+            expect(runner.degraded).toBe(true);
+
+            // Second run completes normally — degraded is reset at start of run()
+            const conversation2 = new ConversationManager();
+            await runner.run(config, conversation2, createCancellationToken());
+            expect(runner.degraded).toBe(false);
+            expect(runner.exitReason).toBeUndefined();
+        });
+    });
+
     describe('Reset', () => {
         it('should reset internal state', () => {
             const modelManager = createMockModelManager([]);

@@ -109,6 +109,10 @@ export function createRewriteStep(): PipelineStep {
             }
 
             context.rewrittenAnalysis = rewriteResult;
+            context.selfReflectionScores = context.selfReflectionScores.filter(
+                (score) =>
+                    context.findingStore.getById(score.findingId) !== undefined
+            );
             commitPipelinePhaseState(context, rewriteResult);
 
             return emptyStepResult();

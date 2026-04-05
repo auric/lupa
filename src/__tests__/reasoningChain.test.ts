@@ -369,6 +369,63 @@ describe('ReasoningChain', () => {
         });
     });
 
+    describe('createSnapshot / restoreSnapshot', () => {
+        it('should restore hypotheses to snapshot state', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack']);
+
+            const snapshot = chain.createSnapshot();
+
+            chain.addCheckpoint('db', ['sql injection']);
+
+            expect(chain.getAllHypotheses()).toHaveLength(2);
+
+            chain.restoreSnapshot(snapshot);
+
+            expect(chain.getAllHypotheses()).toHaveLength(1);
+            expect(chain.getAllHypotheses()[0].text).toBe('timing attack');
+        });
+
+        it('should restore checkpoints and tool call tracking', () => {
+            const chain = new ReasoningChain();
+            chain.recordToolCall('find_usages');
+            chain.recordToolCall('read_file');
+            chain.addCheckpoint('first', ['risk1']);
+
+            const snapshot = chain.createSnapshot();
+
+            chain.recordToolCall('validate_claim');
+            chain.addCheckpoint('second', ['risk2']);
+
+            expect(chain.getCheckpointCount()).toBe(2);
+            expect(chain.getAllHypotheses()).toHaveLength(2);
+
+            chain.restoreSnapshot(snapshot);
+
+            expect(chain.getCheckpointCount()).toBe(1);
+            expect(chain.getAllHypotheses()).toHaveLength(1);
+            expect(chain.getToolCallsSinceLastCheckpoint()).toHaveLength(0);
+        });
+
+        it('should produce independent deep copies', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack']);
+
+            const snapshot = chain.createSnapshot();
+
+            // Modify original
+            chain.markConfirmed(1, 'found issue');
+            chain.addCheckpoint('db', ['sql injection']);
+
+            // Snapshot should be unaffected — verify by restoring
+            chain.restoreSnapshot(snapshot);
+
+            expect(chain.getAllHypotheses()).toHaveLength(1);
+            expect(chain.getAllHypotheses()[0].status).toBe('generated');
+            expect(chain.getCheckpointCount()).toBe(1);
+        });
+    });
+
     describe('revertToInvestigating', () => {
         it('reverts confirmed hypothesis to investigating', () => {
             const chain = new ReasoningChain();

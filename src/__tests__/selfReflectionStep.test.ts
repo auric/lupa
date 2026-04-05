@@ -221,6 +221,11 @@ describe('createSelfReflectionStep', () => {
 
             expect(context.selfReflectionScores).toHaveLength(2);
             expect(onToolCallComplete).toHaveBeenCalledOnce();
+
+            // Verify commitPipelinePhaseState effects
+            expect(context.lastCommittedReviewText).toBeDefined();
+            expect(context.lastCommittedFindingStoreSnapshot).toBeDefined();
+            expect(context.lastCommittedSelfReflectionScores).toBeDefined();
         });
 
         it('restores conversation after self-reflection', async () => {

@@ -130,9 +130,6 @@ describe('createWorkflowEnforcementStep', () => {
                 reasoningChain: new ReasoningChain(),
                 toolExecutor: {
                     getToolCallCount: () => toolCallBudget.value,
-                    setToolCallCount: (count: number) => {
-                        toolCallBudget.value = count;
-                    },
                 },
             } as any,
             calibrationProfile: {
@@ -167,8 +164,8 @@ describe('createWorkflowEnforcementStep', () => {
         expect(context.rewrittenAnalysis).toBe('Existing review text');
         expect(store.size).toBe(1);
         expect(store.getById(original.id)?.title).toBe('Existing finding');
-        expect(toolCallBudget.value).toBe(0);
-        expect(context.executionContext.toolCallCounts.size).toBe(0);
+        expect(toolCallBudget.value).toBe(2);
+        expect(context.executionContext.toolCallCounts.size).toBeGreaterThan(0);
         expect(context.executionContext.investigatedFiles?.size).toBe(0);
         expect(
             context.executionContext.reasoningChain?.getToolCallsSinceLastCheckpoint()

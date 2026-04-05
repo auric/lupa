@@ -71,8 +71,6 @@ export interface PipelinePhaseStateSnapshot {
     conversationHistory?: Message[];
     findingStoreSnapshot?: FindingStoreSnapshot;
     selfReflectionScores?: PipelineContext['selfReflectionScores'];
-    toolCallCounts: Map<string, number>;
-    totalToolCalls?: number;
     investigatedFiles?: Set<string>;
     completionReadiness?: PipelineContext['executionContext']['completionReadiness'];
     reasoningChainSnapshot?: ReasoningChainSnapshot;
@@ -142,11 +140,6 @@ export function capturePipelinePhaseState(
             options.selfReflectionScores !== undefined
                 ? structuredClone(options.selfReflectionScores)
                 : undefined,
-        toolCallCounts: context.executionContext.toolCallCounts
-            ? new Map(context.executionContext.toolCallCounts)
-            : new Map(),
-        totalToolCalls:
-            context.executionContext.toolExecutor?.getToolCallCount(),
         investigatedFiles: context.executionContext.investigatedFiles
             ? new Set(context.executionContext.investigatedFiles)
             : undefined,
@@ -182,17 +175,6 @@ export function restorePipelinePhaseState(
         );
     }
 
-    if (context.executionContext.toolCallCounts) {
-        context.executionContext.toolCallCounts.clear();
-        for (const [toolName, count] of snapshot.toolCallCounts) {
-            context.executionContext.toolCallCounts.set(toolName, count);
-        }
-    } else if (snapshot.toolCallCounts.size > 0) {
-        context.executionContext.toolCallCounts = new Map(
-            snapshot.toolCallCounts
-        );
-    }
-
     context.executionContext.investigatedFiles = snapshot.investigatedFiles
         ? new Set(snapshot.investigatedFiles)
         : undefined;
@@ -204,15 +186,6 @@ export function restorePipelinePhaseState(
     if (snapshot.reasoningChainSnapshot) {
         context.executionContext.reasoningChain?.restoreSnapshot(
             snapshot.reasoningChainSnapshot
-        );
-    }
-
-    if (
-        snapshot.totalToolCalls !== undefined &&
-        context.executionContext.toolExecutor
-    ) {
-        context.executionContext.toolExecutor.setToolCallCount(
-            snapshot.totalToolCalls
         );
     }
 }

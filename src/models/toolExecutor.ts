@@ -402,12 +402,14 @@ export class ToolExecutor {
             if (isCancellationError(error)) {
                 Log.debug('Parallel tool execution cancelled');
                 const DRAIN_TIMEOUT_MS = 10_000;
+                let drainTimer: ReturnType<typeof setTimeout>;
                 await Promise.race([
                     Promise.allSettled(executionPromises),
-                    new Promise<void>((resolve) =>
-                        setTimeout(resolve, DRAIN_TIMEOUT_MS)
-                    ),
+                    new Promise<void>((resolve) => {
+                        drainTimer = setTimeout(resolve, DRAIN_TIMEOUT_MS);
+                    }),
                 ]);
+                clearTimeout(drainTimer!);
                 throw error;
             }
 
@@ -463,10 +465,6 @@ export class ToolExecutor {
      */
     getToolCallCount(): number {
         return this.sharedCallCount.value;
-    }
-
-    setToolCallCount(count: number): void {
-        this.sharedCallCount.value = count;
     }
 
     /**

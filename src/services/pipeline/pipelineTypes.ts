@@ -39,7 +39,6 @@ export interface PipelineStepResult {
     budgetExhausted?: boolean;
 }
 
-/** DRY helper for steps that don't drop/downgrade findings. */
 export function emptyStepResult(
     overrides?: Partial<PipelineStepResult>
 ): PipelineStepResult {
@@ -69,7 +68,6 @@ export interface StepRecord {
     status: StepStatus;
     durationMs: number;
     result?: PipelineStepResult;
-    /** True when the step's LLM conversation exhausted its iteration budget. */
     budgetExhausted?: boolean;
 }
 
