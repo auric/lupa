@@ -1,6 +1,7 @@
 import { Log } from '../../loggingService';
 import { INVESTIGATION_TOOLS } from '../../../models/toolConstants';
 import { filterTools } from '../pipelineUtils';
+import { emptyStepResult } from '../pipelineTypes';
 import type {
     PipelineContext,
     PipelineStep,
@@ -83,15 +84,13 @@ export function createZeroFindingChallengeStep(): PipelineStep {
                     : 'hit iteration limit';
                 summary = `Challenge inconclusive: conversation ended without new findings (${reason})`;
                 Log.warn(summary);
+                return emptyStepResult({
+                    budgetExhausted: hitMax,
+                    summary,
+                });
             }
 
-            return {
-                findingsDropped: [],
-                findingsDowngraded: [],
-                toolCallRecords: [],
-                budgetExhausted: hitMax,
-                summary,
-            };
+            return emptyStepResult({ summary });
         },
     };
 }

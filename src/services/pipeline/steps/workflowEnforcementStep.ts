@@ -1,6 +1,7 @@
 import { Log } from '../../loggingService';
 import { INVESTIGATION_TOOLS } from '../../../models/toolConstants';
 import { filterTools } from '../pipelineUtils';
+import { emptyStepResult } from '../pipelineTypes';
 import type {
     PipelineContext,
     PipelineStep,
@@ -107,21 +108,14 @@ export function createWorkflowEnforcementStep(): PipelineStep {
                         ? 'was cancelled'
                         : 'hit iteration limit';
                     Log.warn(`Workflow enforcement conversation ${reason}`);
-                    return {
-                        findingsDropped: [],
-                        findingsDowngraded: [],
-                        toolCallRecords: [],
+                    return emptyStepResult({
                         budgetExhausted: hitMax,
                         summary: `Workflow enforcement incomplete: conversation ${reason}`,
-                    };
+                    });
                 }
             }
 
-            return {
-                findingsDropped: [],
-                findingsDowngraded: [],
-                toolCallRecords: [],
-            };
+            return emptyStepResult();
         },
     };
 }

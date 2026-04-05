@@ -36,6 +36,18 @@ export interface PipelineStepResult {
     budgetExhausted?: boolean;
 }
 
+/** Create a PipelineStepResult with empty arrays, overriding with provided fields. */
+export function emptyStepResult(
+    overrides?: Partial<PipelineStepResult>
+): PipelineStepResult {
+    return {
+        findingsDropped: [],
+        findingsDowngraded: [],
+        toolCallRecords: [],
+        ...overrides,
+    };
+}
+
 // ---------------------------------------------------------------------------
 // Record of a single step's execution (for telemetry / webview Phase UI)
 // ---------------------------------------------------------------------------

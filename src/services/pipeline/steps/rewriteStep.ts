@@ -1,4 +1,5 @@
 import { Log } from '../../loggingService';
+import { emptyStepResult } from '../pipelineTypes';
 import type {
     PipelineStep,
     PipelineContext,
@@ -78,27 +79,25 @@ export function createRewriteStep(): PipelineStep {
                 context.handler
             );
 
-            if (context.conversationRunner.hitMaxIterations) {
+            const wasCancelled = context.conversationRunner.wasCancelled;
+            const hitMax = context.conversationRunner.hitMaxIterations;
+
+            if (wasCancelled || hitMax) {
+                const reason = wasCancelled
+                    ? 'was cancelled'
+                    : 'hit iteration limit';
                 Log.warn(
-                    `Rewrite phase exhausted budget (${REWRITE_BUDGET} iterations) — preserving original analysis text`
+                    `Rewrite phase ${reason} — preserving original analysis text`
                 );
-                return {
-                    findingsDropped: [],
-                    findingsDowngraded: [],
-                    toolCallRecords: [],
-                    budgetExhausted: true,
-                    summary:
-                        'Rewrite incomplete: iteration budget exhausted. Original review preserved.',
-                };
+                return emptyStepResult({
+                    budgetExhausted: hitMax,
+                    summary: `Rewrite incomplete: conversation ${reason}. Original review preserved.`,
+                });
             }
 
             context.rewrittenAnalysis = rewriteResult;
 
-            return {
-                findingsDropped: [],
-                findingsDowngraded: [],
-                toolCallRecords: [],
-            };
+            return emptyStepResult();
         },
     };
 }
