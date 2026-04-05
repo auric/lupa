@@ -1,6 +1,10 @@
 import { Log } from '../../loggingService';
 import { INVESTIGATION_TOOLS } from '../../../models/toolConstants';
-import { filterTools, runGuardedConversationPhase } from '../pipelineUtils';
+import {
+    commitPipelinePhaseState,
+    filterTools,
+    runGuardedConversationPhase,
+} from '../pipelineUtils';
 import { emptyStepResult } from '../pipelineTypes';
 import type {
     PipelineContext,
@@ -84,12 +88,8 @@ export function createZeroFindingChallengeStep(): PipelineStep {
                 });
             }
 
-            if (completion.completed) {
-                context.rewrittenAnalysis = latestReview;
-                context.lastCommittedReviewText = latestReview;
-                context.lastCommittedFindingStoreSnapshot =
-                    context.findingStore.createSnapshot();
-            }
+            context.rewrittenAnalysis = latestReview;
+            commitPipelinePhaseState(context, latestReview);
 
             return emptyStepResult();
         },

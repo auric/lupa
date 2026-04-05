@@ -1,6 +1,10 @@
 import { Log } from '../../loggingService';
 import { INVESTIGATION_TOOLS } from '../../../models/toolConstants';
-import { filterTools, runGuardedConversationPhase } from '../pipelineUtils';
+import {
+    commitPipelinePhaseState,
+    filterTools,
+    runGuardedConversationPhase,
+} from '../pipelineUtils';
 import { emptyStepResult } from '../pipelineTypes';
 import type {
     PipelineContext,
@@ -111,9 +115,7 @@ export function createWorkflowEnforcementStep(): PipelineStep {
                 }
 
                 context.rewrittenAnalysis = latestReview;
-                context.lastCommittedReviewText = latestReview;
-                context.lastCommittedFindingStoreSnapshot =
-                    context.findingStore.createSnapshot();
+                commitPipelinePhaseState(context, latestReview);
             }
 
             return emptyStepResult();

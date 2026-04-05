@@ -1,5 +1,8 @@
 import { Log } from '../../loggingService';
-import { runGuardedConversationPhase } from '../pipelineUtils';
+import {
+    commitPipelinePhaseState,
+    runGuardedConversationPhase,
+} from '../pipelineUtils';
 import { emptyStepResult } from '../pipelineTypes';
 import type {
     PipelineStep,
@@ -106,12 +109,7 @@ export function createRewriteStep(): PipelineStep {
             }
 
             context.rewrittenAnalysis = rewriteResult;
-            context.lastCommittedReviewText = rewriteResult;
-            context.lastCommittedFindingStoreSnapshot =
-                context.findingStore.createSnapshot();
-            context.lastCommittedSelfReflectionScores = structuredClone(
-                context.selfReflectionScores
-            );
+            commitPipelinePhaseState(context, rewriteResult);
 
             return emptyStepResult();
         },

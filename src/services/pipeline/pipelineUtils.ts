@@ -151,13 +151,7 @@ export function capturePipelinePhaseState(
             ? new Set(context.executionContext.investigatedFiles)
             : undefined,
         completionReadiness: context.executionContext.completionReadiness
-            ? {
-                  ...context.executionContext.completionReadiness,
-                  uninvestigatedFiles: [
-                      ...context.executionContext.completionReadiness
-                          .uninvestigatedFiles,
-                  ],
-              }
+            ? structuredClone(context.executionContext.completionReadiness)
             : undefined,
         reasoningChainSnapshot:
             context.executionContext.reasoningChain?.createSnapshot(),
@@ -204,12 +198,7 @@ export function restorePipelinePhaseState(
         : undefined;
 
     context.executionContext.completionReadiness = snapshot.completionReadiness
-        ? {
-              ...snapshot.completionReadiness,
-              uninvestigatedFiles: [
-                  ...snapshot.completionReadiness.uninvestigatedFiles,
-              ],
-          }
+        ? structuredClone(snapshot.completionReadiness)
         : undefined;
 
     if (snapshot.reasoningChainSnapshot) {
@@ -228,6 +217,53 @@ export function restorePipelinePhaseState(
     }
 }
 
+export interface BufferedToolCallHandler {
+    handler: ToolCallHandler;
+    flushCompletions(): void;
+}
+
+export function createBufferedHandler(
+    source: ToolCallHandler
+): BufferedToolCallHandler {
+    const buffered: Parameters<
+        NonNullable<ToolCallHandler['onToolCallComplete']>
+    >[] = [];
+    return {
+        handler: {
+            onIterationStart: source.onIterationStart,
+            onToolCallStart: source.onToolCallStart,
+            onToolCallComplete: (...args) => {
+                buffered.push(args);
+            },
+            getContextStatusSuffix: source.getContextStatusSuffix,
+        },
+        flushCompletions() {
+            for (const args of buffered) {
+                source.onToolCallComplete?.(...args);
+            }
+        },
+    };
+}
+
+export function commitPipelinePhaseState(
+    context: Pick<
+        PipelineContext,
+        | 'findingStore'
+        | 'selfReflectionScores'
+        | 'lastCommittedReviewText'
+        | 'lastCommittedFindingStoreSnapshot'
+        | 'lastCommittedSelfReflectionScores'
+    >,
+    reviewText: string
+): void {
+    context.lastCommittedReviewText = reviewText;
+    context.lastCommittedFindingStoreSnapshot =
+        context.findingStore.createSnapshot();
+    context.lastCommittedSelfReflectionScores = structuredClone(
+        context.selfReflectionScores
+    );
+}
+
 export async function runGuardedConversationPhase(
     options: GuardedConversationPhaseOptions
 ): Promise<GuardedConversationPhaseResult> {
@@ -240,9 +276,9 @@ export async function runGuardedConversationPhase(
         rollbackConversationHistory,
     } = options;
 
-    const bufferedToolCallCompletions: Parameters<
-        NonNullable<ToolCallHandler['onToolCallComplete']>
-    >[] = [];
+    const { handler: phaseHandler, flushCompletions } = createBufferedHandler(
+        context.handler
+    );
 
     const rollbackState = capturePipelinePhaseState(context, {
         conversationHistory: rollbackConversationHistory,
@@ -251,15 +287,6 @@ export async function runGuardedConversationPhase(
 
     const rollbackPhaseState = () => {
         restorePipelinePhaseState(context, rollbackState);
-    };
-
-    const phaseHandler: ToolCallHandler = {
-        onIterationStart: context.handler.onIterationStart,
-        onToolCallStart: context.handler.onToolCallStart,
-        onToolCallComplete: (...args) => {
-            bufferedToolCallCompletions.push(args);
-        },
-        getContextStatusSuffix: context.handler.getContextStatusSuffix,
     };
 
     let latestReview: string;
@@ -289,9 +316,7 @@ export async function runGuardedConversationPhase(
     if (!completion.completed) {
         rollbackPhaseState();
     } else {
-        for (const completionArgs of bufferedToolCallCompletions) {
-            context.handler.onToolCallComplete?.(...completionArgs);
-        }
+        flushCompletions();
     }
 
     return { latestReview, completion };

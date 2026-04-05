@@ -3,11 +3,12 @@ import {
     runSelfReflection,
     type SelfReflectionResult,
 } from '../../selfReflectionScorer';
-import type { ToolCallHandler } from '../../../models/conversationRunner';
 import { emptyStepResult } from '../pipelineTypes';
 import {
     capturePipelinePhaseState,
     classifyConversationCompletion,
+    commitPipelinePhaseState,
+    createBufferedHandler,
     restoreConversationHistory,
     restorePipelinePhaseState,
 } from '../pipelineUtils';
@@ -40,17 +41,8 @@ export function createSelfReflectionStep(): PipelineStep {
                 findingStoreSnapshot: context.findingStore.createSnapshot(),
                 selfReflectionScores: context.selfReflectionScores,
             });
-            const bufferedToolCallCompletions: Parameters<
-                NonNullable<ToolCallHandler['onToolCallComplete']>
-            >[] = [];
-            const phaseHandler: ToolCallHandler = {
-                onIterationStart: context.handler.onIterationStart,
-                onToolCallStart: context.handler.onToolCallStart,
-                onToolCallComplete: (...args) => {
-                    bufferedToolCallCompletions.push(args);
-                },
-                getContextStatusSuffix: context.handler.getContextStatusSuffix,
-            };
+            const { handler: phaseHandler, flushCompletions } =
+                createBufferedHandler(context.handler);
 
             let reflectionResult: SelfReflectionResult;
             try {
@@ -94,9 +86,14 @@ export function createSelfReflectionStep(): PipelineStep {
                     context.findingStore.getById(score.findingId) !== undefined
             );
 
-            for (const completionArgs of bufferedToolCallCompletions) {
-                context.handler.onToolCallComplete?.(...completionArgs);
-            }
+            commitPipelinePhaseState(
+                context,
+                context.rewrittenAnalysis ??
+                    context.lastCommittedReviewText ??
+                    ''
+            );
+
+            flushCompletions();
 
             return {
                 findingsDropped: reflectionResult.dropped,

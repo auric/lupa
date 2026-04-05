@@ -415,10 +415,8 @@ RULES:
                 }
                 cancellationTokenSource.cancel();
             });
-        let cancelledByTimeout = false;
         timeoutHandle = setTimeout(() => {
             cancellationReason ??= 'timeout';
-            cancelledByTimeout = true;
             cancellationTokenSource.cancel();
         }, timeoutMs);
 
@@ -448,7 +446,7 @@ RULES:
             const timedOut =
                 !result.success &&
                 result.error === 'cancelled' &&
-                (cancellationReason === 'timeout' || cancelledByTimeout);
+                cancellationReason === 'timeout';
             const recursiveStateError = timedOut
                 ? SubagentErrors.timeout(timeoutMs)
                 : result.error;
@@ -582,7 +580,7 @@ RULES:
             }
 
             if (
-                cancelledByTimeout &&
+                cancellationReason === 'timeout' &&
                 !context.cancellationToken.isCancellationRequested
             ) {
                 return {

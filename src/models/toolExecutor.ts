@@ -401,7 +401,13 @@ export class ToolExecutor {
             // executeTool rethrows CancellationError, so it reaches here via Promise.all rejection.
             if (isCancellationError(error)) {
                 Log.debug('Parallel tool execution cancelled');
-                await Promise.allSettled(executionPromises);
+                const DRAIN_TIMEOUT_MS = 10_000;
+                await Promise.race([
+                    Promise.allSettled(executionPromises),
+                    new Promise<void>((resolve) =>
+                        setTimeout(resolve, DRAIN_TIMEOUT_MS)
+                    ),
+                ]);
                 throw error;
             }
 

@@ -272,6 +272,7 @@ export class ConversationRunner {
                     if (
                         !config.requiresExplicitCompletion &&
                         iteration === windDownIteration &&
+                        windDownIteration !== urgentWindDownIteration &&
                         !windDownNudged
                     ) {
                         windDownNudged = true;
