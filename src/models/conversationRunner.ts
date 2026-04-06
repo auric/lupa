@@ -118,6 +118,17 @@ interface HandleToolCallsResult {
  * - Manage iteration limits
  * - Validate tokens and clean up context when needed
  */
+export type ExitReason =
+    | 'completion-nudge-exhaustion'
+    | 'response-too-long'
+    | 'context-overflow'
+    | 'conversation-corruption'
+    | 'consecutive-errors'
+    | 'fatal-error'
+    | 'service-unavailable'
+    | 'quota-exhausted'
+    | 'rate-limited';
+
 export class ConversationRunner {
     private tokenValidator: TokenValidator | null = null;
     private currentExecutor!: ToolExecutor;
@@ -126,7 +137,7 @@ export class ConversationRunner {
     private _hitQuotaExhausted = false;
     private _wasCancelled = false;
     private _degraded = false;
-    private _exitReason: string | undefined;
+    private _exitReason: ExitReason | undefined;
     private _iterationsUsed = 0;
 
     /** Maximum number of consecutive rate-limit retries before giving up */
@@ -170,7 +181,7 @@ export class ConversationRunner {
     }
 
     /** Machine-readable reason for degraded exit, or undefined if run completed normally. */
-    get exitReason(): string | undefined {
+    get exitReason(): ExitReason | undefined {
         return this._exitReason;
     }
 
@@ -682,6 +693,8 @@ export class ConversationRunner {
                         );
                         this._hitQuotaExhausted = true;
                         this._hitRateLimit = true;
+                        this._degraded = true;
+                        this._exitReason = 'quota-exhausted';
                         return (
                             lastSubstantiveResponse ||
                             'Copilot monthly quota exhausted. Please wait for your quota to reset.'
@@ -703,6 +716,8 @@ export class ConversationRunner {
                                 `${logPrefix} Rate limit: exceeded ${ConversationRunner.MAX_RATE_LIMIT_RETRIES} retries, giving up`
                             );
                             this._hitRateLimit = true;
+                            this._degraded = true;
+                            this._exitReason = 'rate-limited';
                             return (
                                 lastSubstantiveResponse ||
                                 'Rate limited by the API after multiple retries. Please try again later.'
