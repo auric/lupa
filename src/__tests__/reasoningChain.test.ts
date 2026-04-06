@@ -392,6 +392,10 @@ describe('ReasoningChain', () => {
             chain.recordToolCall('read_file');
             chain.addCheckpoint('first', ['risk1']);
 
+            // Record tool calls after checkpoint so snapshot captures pending calls
+            chain.recordToolCall('search_for_pattern');
+            chain.recordToolCall('find_symbol');
+
             const snapshot = chain.createSnapshot();
 
             chain.recordToolCall('validate_claim');
@@ -399,12 +403,17 @@ describe('ReasoningChain', () => {
 
             expect(chain.getCheckpointCount()).toBe(2);
             expect(chain.getAllHypotheses()).toHaveLength(2);
+            expect(chain.getToolCallsSinceLastCheckpoint()).toHaveLength(0);
 
             chain.restoreSnapshot(snapshot);
 
             expect(chain.getCheckpointCount()).toBe(1);
             expect(chain.getAllHypotheses()).toHaveLength(1);
-            expect(chain.getToolCallsSinceLastCheckpoint()).toHaveLength(0);
+            expect(chain.getToolCallsSinceLastCheckpoint()).toHaveLength(2);
+            expect(chain.getToolCallsSinceLastCheckpoint()).toEqual([
+                'search_for_pattern',
+                'find_symbol',
+            ]);
         });
 
         it('should produce independent deep copies', () => {

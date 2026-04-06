@@ -220,32 +220,38 @@ export interface BufferedToolCallHandler {
 export function createBufferedHandler(
     source: ToolCallHandler
 ): BufferedToolCallHandler {
-    const buffered: Parameters<
-        NonNullable<ToolCallHandler['onToolCallComplete']>
-    >[] = [];
-    const bufferedStarts: Parameters<
-        NonNullable<ToolCallHandler['onToolCallStart']>
-    >[] = [];
+    const bufferedCallbacks: (
+        | {
+              type: 'start';
+              args: Parameters<NonNullable<ToolCallHandler['onToolCallStart']>>;
+          }
+        | {
+              type: 'complete';
+              args: Parameters<
+                  NonNullable<ToolCallHandler['onToolCallComplete']>
+              >;
+          }
+    )[] = [];
     return {
         handler: {
             onIterationStart: source.onIterationStart,
             onToolCallStart: (...args) => {
-                bufferedStarts.push(args);
+                bufferedCallbacks.push({ type: 'start', args });
             },
             onToolCallComplete: (...args) => {
-                buffered.push(args);
+                bufferedCallbacks.push({ type: 'complete', args });
             },
             getContextStatusSuffix: source.getContextStatusSuffix,
         },
         flushCompletions() {
-            for (const args of bufferedStarts) {
-                source.onToolCallStart?.(...args);
+            for (const entry of bufferedCallbacks) {
+                if (entry.type === 'start') {
+                    source.onToolCallStart?.(...entry.args);
+                } else {
+                    source.onToolCallComplete?.(...entry.args);
+                }
             }
-            bufferedStarts.length = 0;
-            for (const args of buffered) {
-                source.onToolCallComplete?.(...args);
-            }
-            buffered.length = 0;
+            bufferedCallbacks.length = 0;
         },
     };
 }

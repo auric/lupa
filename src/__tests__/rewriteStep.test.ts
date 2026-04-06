@@ -65,7 +65,10 @@ function createMockContext(
             { name: 'retract_finding', getVSCodeTool: vi.fn() },
             { name: 'read_file', getVSCodeTool: vi.fn() },
         ] as any,
-        handler: {} as any,
+        handler: {
+            onToolCallStart: vi.fn(),
+            onToolCallComplete: vi.fn(),
+        } as any,
         findingValidator: {} as any,
         ...overrides,
     };

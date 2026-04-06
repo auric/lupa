@@ -1,4 +1,5 @@
 import { Log } from '../../loggingService';
+import { dismissHypothesesForDroppedFinding } from '../pipelineUtils';
 import type {
     PipelineContext,
     PipelineStep,
@@ -36,6 +37,11 @@ export function createFindingValidationStep(): PipelineStep {
                 if (v.verdict === 'drop') {
                     findingsDropped.push(v.finding.title);
                     context.findingStore.remove(v.finding.id);
+                    dismissHypothesesForDroppedFinding(
+                        v.finding.id,
+                        context.executionContext.reasoningChain,
+                        'Finding dropped by finding validation'
+                    );
                 } else if (v.verdict === 'downgrade' && v.downgradedSeverity) {
                     findingsDowngraded.push(v.finding.title);
                     context.findingStore.updateSeverity(
