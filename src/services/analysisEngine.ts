@@ -413,7 +413,10 @@ export class AnalysisEngine implements vscode.Disposable {
                 input.token,
                 handler
             );
-            analysisCompleted = !conversationRunner.wasCancelled;
+            analysisCompleted =
+                !conversationRunner.wasCancelled &&
+                !conversationRunner.hitQuotaExhausted &&
+                !conversationRunner.hitRateLimit;
             mainAnalysisWasCancelled = conversationRunner.wasCancelled;
             mainAnalysisIterationsUsed = conversationRunner.iterationsUsed;
 

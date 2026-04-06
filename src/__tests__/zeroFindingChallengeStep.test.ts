@@ -127,6 +127,7 @@ describe('createZeroFindingChallengeStep', () => {
                 }),
                 hitMaxIterations: true,
                 wasCancelled: false,
+                hitRateLimit: false,
                 hitQuotaExhausted: false,
                 degraded: false,
                 exitReason: undefined,

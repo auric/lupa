@@ -836,8 +836,8 @@ export class ConversationRunner {
                         );
                     }
 
-                    const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${getErrorMessage(error)}`;
-                    Log.error(errorMessage, error);
+                    const llmErrorMessage = `Error in iteration ${iteration}: ${getErrorMessage(error)}`;
+                    Log.error(`${logPrefix} ${llmErrorMessage}`, error);
 
                     // Re-throw service unavailable errors to be handled by caller
                     if (
@@ -869,7 +869,7 @@ export class ConversationRunner {
                     }
 
                     conversation.addAssistantMessage(
-                        `I encountered an error: ${errorMessage}. Let me try to continue.`
+                        `I encountered an error: ${llmErrorMessage}. Let me try to continue.`
                     );
 
                     // An error on the final iteration is intentionally treated as max-iterations:
@@ -877,7 +877,7 @@ export class ConversationRunner {
                     // (with partial findings included via the error message).
                     if (iteration >= config.maxIterations) {
                         this._hitMaxIterations = true;
-                        return errorMessage;
+                        return lastSubstantiveResponse || llmErrorMessage;
                     }
                 }
             }
@@ -893,11 +893,6 @@ export class ConversationRunner {
         } finally {
             executionContext.toolExecutor = previousToolExecutor;
         }
-    }
-
-    private isFatalModelError(error: unknown): boolean {
-        const result = this.detectFatalError(error);
-        return result !== null;
     }
 
     /**

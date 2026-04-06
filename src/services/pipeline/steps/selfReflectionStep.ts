@@ -82,13 +82,11 @@ export function createSelfReflectionStep(): PipelineStep {
                 preReflectionHistory
             );
 
-            context.selfReflectionScores = reflectionResult.scores.filter(
-                (score) =>
-                    context.findingStore.getById(score.findingId) !== undefined
-            );
-
+            const kept: typeof reflectionResult.scores = [];
             for (const score of reflectionResult.scores) {
-                if (!context.findingStore.getById(score.findingId)) {
+                if (context.findingStore.getById(score.findingId)) {
+                    kept.push(score);
+                } else {
                     dismissHypothesesForDroppedFinding(
                         score.findingId,
                         context.executionContext.reasoningChain,
@@ -96,6 +94,7 @@ export function createSelfReflectionStep(): PipelineStep {
                     );
                 }
             }
+            context.selfReflectionScores = kept;
 
             commitPipelinePhaseState(
                 context,

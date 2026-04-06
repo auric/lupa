@@ -57,7 +57,10 @@ function createMockContext(
             run: vi.fn().mockResolvedValue('Rewritten review text'),
             hitMaxIterations: false,
             wasCancelled: false,
+            hitRateLimit: false,
             hitQuotaExhausted: false,
+            degraded: false,
+            exitReason: undefined,
         } as any,
         systemPrompt: 'test prompt',
         availableTools: [
@@ -134,7 +137,10 @@ describe('createRewriteStep', () => {
                     run: vi.fn().mockResolvedValue('Partial garbage text'),
                     hitMaxIterations: true,
                     wasCancelled: false,
+                    hitRateLimit: false,
                     hitQuotaExhausted: false,
+                    degraded: false,
+                    exitReason: undefined,
                 } as any,
             });
 
@@ -153,7 +159,10 @@ describe('createRewriteStep', () => {
                     run: vi.fn().mockResolvedValue(''),
                     hitMaxIterations: false,
                     wasCancelled: true,
+                    hitRateLimit: false,
                     hitQuotaExhausted: false,
+                    degraded: false,
+                    exitReason: undefined,
                 } as any,
             });
 
@@ -178,6 +187,8 @@ describe('createRewriteStep', () => {
                     wasCancelled: false,
                     hitRateLimit: true,
                     hitQuotaExhausted: false,
+                    degraded: true,
+                    exitReason: 'rate-limited',
                 } as any,
             });
 
@@ -209,6 +220,9 @@ describe('createRewriteStep', () => {
                     hitMaxIterations: false,
                     wasCancelled: false,
                     hitRateLimit: true,
+                    hitQuotaExhausted: false,
+                    degraded: true,
+                    exitReason: 'rate-limited',
                 } as any,
             });
 
@@ -262,6 +276,9 @@ describe('createRewriteStep', () => {
                     hitMaxIterations: true,
                     wasCancelled: false,
                     hitRateLimit: false,
+                    hitQuotaExhausted: false,
+                    degraded: false,
+                    exitReason: undefined,
                 } as any,
             });
 
