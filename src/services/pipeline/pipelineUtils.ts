@@ -25,6 +25,7 @@ type ConversationRunnerCompletionState = Pick<
     | 'wasCancelled'
     | 'hitMaxIterations'
     | 'hitRateLimit'
+    | 'hitQuotaExhausted'
     | 'degraded'
     | 'exitReason'
 >;
@@ -111,6 +112,7 @@ export function classifyConversationCompletion(
         !runner.wasCancelled &&
         !runner.hitMaxIterations &&
         !runner.hitRateLimit &&
+        !runner.hitQuotaExhausted &&
         !runner.degraded
     ) {
         return {
@@ -125,14 +127,16 @@ export function classifyConversationCompletion(
 
     return {
         completed: false,
-        budgetExhausted: runner.hitMaxIterations,
+        budgetExhausted: runner.hitMaxIterations || runner.hitQuotaExhausted,
         reason: runner.wasCancelled
             ? 'was cancelled'
-            : runner.hitRateLimit
-              ? 'hit rate limit'
-              : runner.hitMaxIterations
-                ? 'hit iteration limit'
-                : `exited abnormally (${abnormalExitReason})`,
+            : runner.hitQuotaExhausted
+              ? 'quota exhausted'
+              : runner.hitRateLimit
+                ? 'hit rate limit'
+                : runner.hitMaxIterations
+                  ? 'hit iteration limit'
+                  : `exited abnormally (${abnormalExitReason})`,
     };
 }
 
@@ -219,16 +223,25 @@ export function createBufferedHandler(
     const buffered: Parameters<
         NonNullable<ToolCallHandler['onToolCallComplete']>
     >[] = [];
+    const bufferedStarts: Parameters<
+        NonNullable<ToolCallHandler['onToolCallStart']>
+    >[] = [];
     return {
         handler: {
             onIterationStart: source.onIterationStart,
-            onToolCallStart: source.onToolCallStart,
+            onToolCallStart: (...args) => {
+                bufferedStarts.push(args);
+            },
             onToolCallComplete: (...args) => {
                 buffered.push(args);
             },
             getContextStatusSuffix: source.getContextStatusSuffix,
         },
         flushCompletions() {
+            for (const args of bufferedStarts) {
+                source.onToolCallStart?.(...args);
+            }
+            bufferedStarts.length = 0;
             for (const args of buffered) {
                 source.onToolCallComplete?.(...args);
             }

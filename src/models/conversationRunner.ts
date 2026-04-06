@@ -337,7 +337,8 @@ export class ConversationRunner {
                         conversation.addUserMessage(
                             `⚠️ URGENT: Only ${remaining} iteration(s) remaining out of ${config.maxIterations}. ` +
                                 `You MUST call submit_review NOW. If you do not submit before the budget runs out, ` +
-                                `your work will not be saved. Call submit_review immediately with your current results.`
+                                `the review phase will be rolled back to the last checkpoint and your analysis in this phase will be discarded. ` +
+                                `Call submit_review immediately with your current results.`
                         );
                         Log.info(
                             `${logPrefix} Explicit-completion urgent warning at iteration ${iteration}/${config.maxIterations}`
@@ -811,6 +812,8 @@ export class ConversationRunner {
                             `${logPrefix} Fatal API error [${fatalError.code}]: ${fatalError.message}`,
                             error
                         );
+                        this._degraded = true;
+                        this._exitReason = 'fatal-error';
                         vscode.window.showErrorMessage(fatalError.message);
                         throw new CopilotApiError(
                             fatalError.message,
@@ -826,6 +829,8 @@ export class ConversationRunner {
                         error instanceof Error &&
                         error.message.includes('service unavailable')
                     ) {
+                        this._degraded = true;
+                        this._exitReason = 'service-unavailable';
                         throw error;
                     }
 
