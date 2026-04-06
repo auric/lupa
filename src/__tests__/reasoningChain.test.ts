@@ -459,4 +459,82 @@ describe('ReasoningChain', () => {
             expect(chain.getAllHypotheses()[0].status).toBe('dismissed');
         });
     });
+
+    describe('dismissConfirmedForFinding', () => {
+        it('dismisses a confirmed hypothesis linked to the specified finding', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('error handling', ['missing null check']);
+            chain.markConfirmed(1, 'confirmed', 'finding-1');
+
+            chain.dismissConfirmedForFinding(
+                'finding-1',
+                'Finding dropped by evidence audit'
+            );
+
+            const h = chain.getAllHypotheses()[0];
+            expect(h.status).toBe('dismissed');
+            expect(h.resolutionNote).toBe('Finding dropped by evidence audit');
+            expect(h.confirmedByFindingId).toBeUndefined();
+        });
+
+        it('does not dismiss hypotheses linked to other findings', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('errors', ['null check', 'type coercion']);
+            chain.markConfirmed(1, 'confirmed', 'finding-1');
+            chain.markConfirmed(2, 'confirmed', 'finding-2');
+
+            chain.dismissConfirmedForFinding('finding-1', 'dropped');
+
+            expect(chain.getAllHypotheses()[0].status).toBe('dismissed');
+            expect(chain.getAllHypotheses()[1].status).toBe('confirmed');
+            expect(chain.getAllHypotheses()[1].confirmedByFindingId).toBe(
+                'finding-2'
+            );
+        });
+
+        it('does not dismiss non-confirmed hypotheses', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['risk1', 'risk2', 'risk3']);
+            // risk1 stays generated, risk2 is investigating, risk3 is dismissed
+            chain.markInvestigating([2]);
+            chain.markDismissed(3, 'already dismissed');
+
+            chain.dismissConfirmedForFinding('finding-1', 'dropped');
+
+            expect(chain.getAllHypotheses()[0].status).toBe('generated');
+            expect(chain.getAllHypotheses()[1].status).toBe('investigating');
+            expect(chain.getAllHypotheses()[2].status).toBe('dismissed');
+        });
+
+        it('is a no-op when no hypotheses match the finding ID', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('auth', ['timing attack']);
+            chain.markConfirmed(1, 'confirmed', 'finding-99');
+
+            chain.dismissConfirmedForFinding('finding-1', 'dropped');
+
+            expect(chain.getAllHypotheses()[0].status).toBe('confirmed');
+            expect(chain.getAllHypotheses()[0].confirmedByFindingId).toBe(
+                'finding-99'
+            );
+        });
+
+        it('is a no-op on an empty chain', () => {
+            const chain = new ReasoningChain();
+            chain.dismissConfirmedForFinding('finding-1', 'dropped');
+            expect(chain.getAllHypotheses()).toHaveLength(0);
+        });
+
+        it('dismisses multiple hypotheses confirmed by the same finding', () => {
+            const chain = new ReasoningChain();
+            chain.addCheckpoint('errors', ['null check', 'type error']);
+            chain.markConfirmed(1, 'confirmed', 'finding-1');
+            chain.markConfirmed(2, 'also confirmed', 'finding-1');
+
+            chain.dismissConfirmedForFinding('finding-1', 'dropped by scoring');
+
+            expect(chain.getAllHypotheses()[0].status).toBe('dismissed');
+            expect(chain.getAllHypotheses()[1].status).toBe('dismissed');
+        });
+    });
 });

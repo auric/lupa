@@ -199,6 +199,21 @@ export class ReasoningChain {
         }
     }
 
+    /** Dismiss any hypothesis confirmed by a specific finding that was dropped by the pipeline. */
+    dismissConfirmedForFinding(findingId: string, reason: string): void {
+        for (const h of this.hypotheses) {
+            if (
+                h.status === 'confirmed' &&
+                h.confirmedByFindingId === findingId
+            ) {
+                h.status = 'dismissed';
+                h.lastUpdatedAtCheckpoint = this.getCurrentCheckpointNumber();
+                h.resolutionNote = reason;
+                h.confirmedByFindingId = undefined;
+            }
+        }
+    }
+
     /** Revert a confirmed hypothesis back to investigating (e.g., when finding is retracted) */
     revertToInvestigating(hypothesisId: number, note?: string): void {
         const h = this.hypotheses.find((h) => h.id === hypothesisId);

@@ -1,4 +1,5 @@
 import { AdversarialVerifier } from '../../adversarialVerifier';
+import { dismissHypothesesForDroppedFinding } from '../pipelineUtils';
 import type {
     PipelineContext,
     PipelineStep,
@@ -18,6 +19,10 @@ export function createAdversarialVerificationStep(): PipelineStep {
         },
 
         async execute(context: PipelineContext): Promise<PipelineStepResult> {
+            const findingIdsBefore = new Set(
+                context.findingStore.getAll().map((f) => f.id)
+            );
+
             const adversarialVerifier = new AdversarialVerifier();
             const adversarialResult = await adversarialVerifier.verify(
                 context.findingStore,
@@ -29,6 +34,16 @@ export function createAdversarialVerificationStep(): PipelineStep {
                     ? (msg) => context.progressCallback!(msg, 0.5)
                     : undefined
             );
+
+            for (const id of findingIdsBefore) {
+                if (!context.findingStore.getById(id)) {
+                    dismissHypothesesForDroppedFinding(
+                        id,
+                        context.executionContext.reasoningChain,
+                        'Finding refuted by adversarial verification'
+                    );
+                }
+            }
 
             return {
                 findingsDropped: adversarialResult.refuted,

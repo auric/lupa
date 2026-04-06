@@ -1,7 +1,10 @@
 import { Log } from '../../loggingService';
 import { scoreFinding } from '../../findingScorer';
 import type { ScoringContext } from '../../findingScorer';
-import { downgradeSeverity } from '../pipelineUtils';
+import {
+    dismissHypothesesForDroppedFinding,
+    downgradeSeverity,
+} from '../pipelineUtils';
 import type {
     PipelineContext,
     PipelineStep,
@@ -62,6 +65,11 @@ export function createFindingScoringStep(): PipelineStep {
                     if (finding) {
                         findingsDropped.push(finding.title);
                         context.findingStore.remove(score.findingId);
+                        dismissHypothesesForDroppedFinding(
+                            score.findingId,
+                            context.executionContext.reasoningChain,
+                            'Finding dropped by finding scoring'
+                        );
                         Log.info(
                             `FindingScorer: dropped "${finding.title}" (score: ${score.overallScore})`
                         );

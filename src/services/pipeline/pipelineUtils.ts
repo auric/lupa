@@ -4,7 +4,10 @@ import type {
 } from '../../models/conversationRunner';
 import type { ConversationManager } from '../../models/conversationManager';
 import type { FindingStoreSnapshot } from '../../sessions/findingStore';
-import type { ReasoningChainSnapshot } from '../../sessions/reasoningChain';
+import type {
+    ReasoningChain,
+    ReasoningChainSnapshot,
+} from '../../sessions/reasoningChain';
 import type { ITool } from '../../tools/ITool';
 import type { Message } from '../../types/conversationTypes';
 import type { FindingSeverity } from '../../types/findingTypes';
@@ -74,6 +77,21 @@ export interface PipelinePhaseStateSnapshot {
     investigatedFiles?: Set<string>;
     completionReadiness?: PipelineContext['executionContext']['completionReadiness'];
     reasoningChainSnapshot?: ReasoningChainSnapshot;
+}
+
+/**
+ * When a pipeline step drops a finding, dismiss any confirmed hypotheses linked to it.
+ * Prevents orphaned confirmed hypotheses from blocking submit_review in later phases.
+ */
+export function dismissHypothesesForDroppedFinding(
+    findingId: string,
+    reasoningChain: ReasoningChain | undefined,
+    reason: string
+): void {
+    if (!reasoningChain) {
+        return;
+    }
+    reasoningChain.dismissConfirmedForFinding(findingId, reason);
 }
 
 export function downgradeSeverity(

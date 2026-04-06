@@ -9,6 +9,7 @@ import {
     classifyConversationCompletion,
     commitPipelinePhaseState,
     createBufferedHandler,
+    dismissHypothesesForDroppedFinding,
     restoreConversationHistory,
     restorePipelinePhaseState,
 } from '../pipelineUtils';
@@ -85,6 +86,16 @@ export function createSelfReflectionStep(): PipelineStep {
                 (score) =>
                     context.findingStore.getById(score.findingId) !== undefined
             );
+
+            for (const score of reflectionResult.scores) {
+                if (!context.findingStore.getById(score.findingId)) {
+                    dismissHypothesesForDroppedFinding(
+                        score.findingId,
+                        context.executionContext.reasoningChain,
+                        'Finding dropped by self-reflection scoring'
+                    );
+                }
+            }
 
             commitPipelinePhaseState(
                 context,
