@@ -3112,9 +3112,11 @@ describe('ConversationRunner', () => {
                             content: null,
                             toolCalls: [
                                 {
-                                    name: 'test_tool',
-                                    callId: '1',
-                                    input: {},
+                                    id: 'call_1',
+                                    function: {
+                                        name: 'test_tool',
+                                        arguments: '{}',
+                                    },
                                 },
                             ],
                         });

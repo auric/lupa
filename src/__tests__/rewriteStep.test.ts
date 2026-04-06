@@ -57,6 +57,7 @@ function createMockContext(
             run: vi.fn().mockResolvedValue('Rewritten review text'),
             hitMaxIterations: false,
             wasCancelled: false,
+            hitQuotaExhausted: false,
         } as any,
         systemPrompt: 'test prompt',
         availableTools: [
@@ -128,16 +129,18 @@ describe('createRewriteStep', () => {
         it('preserves original analysis when budget is exhausted', async () => {
             const context = createMockContext({
                 droppedTitles: ['Finding A'],
+                lastCommittedReviewText: 'Original analysis text',
                 conversationRunner: {
                     run: vi.fn().mockResolvedValue('Partial garbage text'),
                     hitMaxIterations: true,
                     wasCancelled: false,
+                    hitQuotaExhausted: false,
                 } as any,
             });
 
             const result = await step.execute(context);
 
-            expect(context.rewrittenAnalysis).toBeUndefined();
+            expect(context.rewrittenAnalysis).toBe('Original analysis text');
             expect(result.budgetExhausted).toBe(true);
             expect(result.summary).toContain('hit iteration limit');
         });
@@ -145,16 +148,18 @@ describe('createRewriteStep', () => {
         it('preserves original analysis when conversation is cancelled', async () => {
             const context = createMockContext({
                 droppedTitles: ['Finding A'],
+                lastCommittedReviewText: 'Original analysis text',
                 conversationRunner: {
                     run: vi.fn().mockResolvedValue(''),
                     hitMaxIterations: false,
                     wasCancelled: true,
+                    hitQuotaExhausted: false,
                 } as any,
             });
 
             const result = await step.execute(context);
 
-            expect(context.rewrittenAnalysis).toBeUndefined();
+            expect(context.rewrittenAnalysis).toBe('Original analysis text');
             expect(result.budgetExhausted).toBeFalsy();
             expect(result.summary).toContain('was cancelled');
         });
@@ -162,6 +167,7 @@ describe('createRewriteStep', () => {
         it('preserves original analysis when rate limit is hit', async () => {
             const context = createMockContext({
                 droppedTitles: ['Finding A'],
+                lastCommittedReviewText: 'Original analysis text',
                 conversationRunner: {
                     run: vi
                         .fn()
@@ -171,12 +177,13 @@ describe('createRewriteStep', () => {
                     hitMaxIterations: false,
                     wasCancelled: false,
                     hitRateLimit: true,
+                    hitQuotaExhausted: false,
                 } as any,
             });
 
             const result = await step.execute(context);
 
-            expect(context.rewrittenAnalysis).toBeUndefined();
+            expect(context.rewrittenAnalysis).toBe('Original analysis text');
             expect(result.budgetExhausted).toBeFalsy();
             expect(result.summary).toContain('hit rate limit');
         });

@@ -54,6 +54,7 @@ function createMockContext(
             hitMaxIterations: false,
             wasCancelled: false,
             hitRateLimit: false,
+            hitQuotaExhausted: false,
             degraded: false,
             exitReason: undefined,
         } as any,
@@ -124,9 +125,9 @@ describe('createZeroFindingChallengeStep', () => {
                     );
                     return 'Partial challenge review';
                 }),
-                hitMaxIterations: false,
+                hitMaxIterations: true,
                 wasCancelled: false,
-                hitRateLimit: true,
+                hitQuotaExhausted: false,
                 degraded: false,
                 exitReason: undefined,
             } as any,
@@ -137,7 +138,7 @@ describe('createZeroFindingChallengeStep', () => {
         expect(context.rewrittenAnalysis).toBe('Existing review text');
         expect(context.executionContext.investigatedFiles?.size).toBe(0);
         expect(store.size).toBe(0);
-        expect(result.summary).toContain('hit rate limit');
+        expect(result.summary).toContain('hit iteration limit');
         expect(result.summary).toContain(
             'Original zero-finding state preserved'
         );

@@ -67,6 +67,7 @@ function createMockContext(
             hitMaxIterations: false,
             wasCancelled: false,
             hitRateLimit: false,
+            hitQuotaExhausted: false,
             degraded: false,
             exitReason: undefined,
         } as any,

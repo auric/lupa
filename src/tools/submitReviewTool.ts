@@ -67,8 +67,8 @@ export class SubmitReviewTool extends BaseTool {
                     .join('\n  ');
                 return toolError(
                     `Review rejected: your reasoning chain has ${confirmed.length} CONFIRMED hypothesis(es) but ZERO recorded findings:\n  ${hypothesisList}\n\n` +
-                        'Each confirmed hypothesis must be resolved before submitting. ' +
-                        'For each one: call record_finding to record it as a finding, or call record_finding then retract_finding to dismiss the hypothesis.'
+                        'Each confirmed hypothesis must have a corresponding recorded finding. ' +
+                        'Use record_finding to record each confirmed hypothesis as a finding, then call submit_review again.'
                 );
             }
 
