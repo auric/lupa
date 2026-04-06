@@ -360,9 +360,10 @@ export class ToolExecutor {
      * Execute multiple tools in parallel.
      *
      * Cancellation behavior: When any tool throws CancellationError, Promise.all rejects
-     * immediately. Before propagating that error, we wait for the remaining in-flight
-     * tool executions to settle so they cannot mutate shared execution state after the
-     * caller has already rolled back. Cancellation remains cooperative—tools observe the
+     * immediately. Before propagating that error, we make a best-effort attempt to wait
+     * for the remaining in-flight tool executions to settle (up to an internal timeout),
+     * to reduce the chance of shared state mutations after the caller has rolled back.
+     * Cancellation remains cooperative—tools observe the
      * shared cancellation token and clean up their own resources (e.g., ripgrep kills
      * child processes, withCancellableTimeout races against the token).
      *

@@ -43,7 +43,7 @@ describe('classifyConversationCompletion', () => {
         expect(result.reason).toBe('hit iteration limit');
     });
 
-    it('returns budgetExhausted for hitRateLimit', () => {
+    it('returns non-budget-exhausted result for hitRateLimit', () => {
         const result = classifyConversationCompletion(
             makeRunner({ hitRateLimit: true })
         );
@@ -151,7 +151,7 @@ describe('createBufferedHandler', () => {
         expect(source.onToolCallStart).toHaveBeenCalledTimes(2);
         expect(source.onToolCallComplete).toHaveBeenCalledTimes(2);
 
-        // Verify all starts are flushed before any completions by tracking call order
+        // Verify starts and completions are flushed in chronological order
         const callOrder: string[] = [];
         const source2 = {
             onToolCallStart: vi.fn(() => callOrder.push('start')),

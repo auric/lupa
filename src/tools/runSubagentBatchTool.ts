@@ -318,13 +318,6 @@ RULES:
 
         // Check for parent cancellation — if the parent was cancelled, propagate
         if (context.cancellationToken.isCancellationRequested) {
-            // Update recursive state for any allocations
-            for (const alloc of allocations) {
-                if (recursiveState && alloc.childAgentId) {
-                    // Only cancel agents not already completed/failed by the settled results
-                    // But since parent is cancelled, we rethrow regardless
-                }
-            }
             throw new vscode.CancellationError();
         }
 
