@@ -1222,6 +1222,7 @@ export class ConversationRunner {
      */
     reset(): void {
         this.tokenValidator = null;
+        this._iterationsUsed = 0;
         this._hitMaxIterations = false;
         this._hitRateLimit = false;
         this._hitQuotaExhausted = false;

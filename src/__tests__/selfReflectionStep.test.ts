@@ -364,6 +364,7 @@ describe('createSelfReflectionStep', () => {
                     hitMaxIterations: true,
                     wasCancelled: false,
                     hitRateLimit: false,
+                    hitQuotaExhausted: false,
                     degraded: false,
                     exitReason: undefined,
                 } as any,

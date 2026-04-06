@@ -875,7 +875,7 @@ describe('RunSubagentBatchTool', () => {
             expect(childNode.status).toBe('cancelled');
         });
 
-        it('should mark timed out child agents as failed, not cancelled', async () => {
+        it('should mark timed out child agents as completed with partial results, not cancelled', async () => {
             vi.useFakeTimers();
             try {
                 const shortTimeoutSettings = {
@@ -946,7 +946,7 @@ describe('RunSubagentBatchTool', () => {
                 expect(outcome.status).toBe('failed');
 
                 const childNode = recursiveState.getNode(childAgentId)!;
-                expect(childNode.status).toBe('failed');
+                expect(childNode.status).toBe('completed');
             } finally {
                 vi.useRealTimers();
             }

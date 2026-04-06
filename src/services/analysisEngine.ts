@@ -456,6 +456,13 @@ export class AnalysisEngine implements vscode.Disposable {
                     2
                 );
                 Log.info('Analysis completed successfully');
+            } else if (
+                conversationRunner.hitQuotaExhausted ||
+                conversationRunner.hitRateLimit
+            ) {
+                Log.warn(
+                    'Analysis ended due to API quota or rate limit exhaustion'
+                );
             } else {
                 Log.info('Analysis was cancelled by user');
             }
@@ -476,6 +483,11 @@ export class AnalysisEngine implements vscode.Disposable {
                     recursiveState.completeAgent('root');
                 } else if (analysisError) {
                     recursiveState.failAgent('root', analysisError);
+                } else if (
+                    conversationRunner.hitQuotaExhausted ||
+                    conversationRunner.hitRateLimit
+                ) {
+                    recursiveState.completeAgent('root');
                 } else {
                     recursiveState.cancelAgent('root');
                 }

@@ -458,6 +458,7 @@ RULES:
                 } else if (recursiveStateError === 'cancelled') {
                     recursiveState.cancelAgent(alloc.childAgentId);
                 } else if (
+                    timedOut ||
                     recursiveStateError === 'max_iterations' ||
                     recursiveStateError === 'rate_limited' ||
                     recursiveStateError === 'quota_exhausted'
@@ -727,10 +728,7 @@ RULES:
                 continue;
             }
 
-            const result =
-                outcome.status === 'completed'
-                    ? outcome.result
-                    : outcome.result;
+            const result = outcome.result;
 
             if (!result) {
                 continue;
