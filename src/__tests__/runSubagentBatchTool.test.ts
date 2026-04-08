@@ -520,7 +520,7 @@ describe('RunSubagentBatchTool', () => {
                 context
             );
 
-            expect(result.data).toContain('FAILED');
+            expect(result.data).toContain('DEGRADED');
             expect(result.data).toContain('Partial findings');
             expect(result.data).toContain('Found 3 issues');
         });
@@ -543,7 +543,7 @@ describe('RunSubagentBatchTool', () => {
                 context
             );
 
-            expect(result.data).toContain('FAILED');
+            expect(result.data).toContain('DEGRADED');
             expect(result.data).toContain('Partial rate-limited findings');
         });
 

@@ -28,7 +28,8 @@ import type { DiffHunk } from '../types/contextTypes';
 
 /**
  * ExitReason values that indicate a degraded but partially-useful subagent exit.
- * These preserve partial response text and should not be treated as hard failures.
+ * These preserve partial response text and are returned with status 'degraded'
+ * (not 'failed') so consumers can present partial findings appropriately.
  */
 const DEGRADED_EXIT_REASONS = new Set<ExitReason>([
     'completion-nudge-exhaustion',
@@ -56,6 +57,13 @@ type TaskOutcome =
           result: SubagentResult;
           subagentId: number;
           allocation: TaskAllocation;
+      }
+    | {
+          status: 'degraded';
+          error: string;
+          subagentId: number;
+          allocation: TaskAllocation;
+          result: SubagentResult;
       }
     | {
           status: 'failed';
@@ -378,8 +386,13 @@ RULES:
         const completedCount = outcomes.filter(
             (o) => o.status === 'completed'
         ).length;
+        const degradedCount = outcomes.filter(
+            (o) => o.status === 'degraded'
+        ).length;
         const resultText = this.formatOutcomes(outcomes, tasks);
-        const header = `## Batch Results: ${completedCount}/${tasks.length} subagents completed\n\n`;
+        const countSuffix =
+            degradedCount > 0 ? ` (${degradedCount} degraded)` : '';
+        const header = `## Batch Results: ${completedCount}/${tasks.length} subagents completed${countSuffix}\n\n`;
 
         return toolSuccess(header + resultText, combinedMetadata);
     }
@@ -513,7 +526,7 @@ RULES:
                 );
                 const partial = result.response?.trim();
                 return {
-                    status: 'failed',
+                    status: 'degraded',
                     error: partial
                         ? `${msg}\n\nPartial findings:\n${partial}`
                         : msg,
@@ -527,7 +540,7 @@ RULES:
                 const msg = SubagentErrors.rateLimited(result.toolCallsMade);
                 const partial = result.response?.trim();
                 return {
-                    status: 'failed',
+                    status: 'degraded',
                     error: partial
                         ? `${msg}\n\nPartial findings:\n${partial}`
                         : msg,
@@ -541,7 +554,7 @@ RULES:
                 const msg = `Subagent #${alloc.subagentId} stopped: monthly Copilot quota exhausted after ${result.toolCallsMade} tool calls.`;
                 const partial = result.response?.trim();
                 return {
-                    status: 'failed',
+                    status: 'degraded',
                     error: partial
                         ? `${msg}\n\nPartial findings:\n${partial}`
                         : msg,
@@ -559,7 +572,7 @@ RULES:
                 const msg = `Subagent #${alloc.subagentId} exited in degraded state (${reason}) after ${result.toolCallsMade} tool calls.`;
                 const partial = result.response?.trim();
                 return {
-                    status: 'failed',
+                    status: 'degraded',
                     error: partial
                         ? `${msg}\n\nPartial findings:\n${partial}`
                         : msg,
@@ -685,6 +698,16 @@ RULES:
                     `---\n\n`;
                 const response = outcome.result.response;
                 const text = header + response + auditLine;
+                rawParts.push({
+                    text,
+                    truncatable: true,
+                    responseStart: header.length,
+                    responseEnd: header.length + response.length,
+                });
+            } else if (outcome.status === 'degraded') {
+                const header = `### Subagent #${outcome.subagentId} — DEGRADED (partial results)\n\n`;
+                const response = outcome.error;
+                const text = header + response;
                 rawParts.push({
                     text,
                     truncatable: true,
