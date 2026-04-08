@@ -114,7 +114,6 @@ describe('PostAnalysisPipeline score reconciliation', () => {
                 makeScore(f1.id, f1.title),
                 makeScore(f2.id, f2.title),
             ];
-            // No rewrite — rewrittenAnalysis stays undefined
         });
 
         const result = await pipeline.run(options as never);
@@ -137,7 +136,7 @@ describe('PostAnalysisPipeline score reconciliation', () => {
         expect(result.selfReflectionScores[0].findingId).toBe(f1.id);
     });
 
-    it('filters out scores for findings not mentioned in rewritten review', async () => {
+    it('filters scores when pipeline step removes findings from store', async () => {
         const store = new FindingStore();
         const f1 = recordFinding(store, { title: 'Null pointer dereference' });
         const f2 = recordFinding(store, { title: 'Memory exhaustion in loop' });
@@ -147,9 +146,8 @@ describe('PostAnalysisPipeline score reconciliation', () => {
                 makeScore(f1.id, f1.title),
                 makeScore(f2.id, f2.title),
             ];
-            // Rewrite mentions f1 (null + dereference) but not f2
-            ctx.rewrittenAnalysis =
-                'The PR has a null pointer dereference bug in the handler that must be fixed.';
+            // Simulate a pipeline step removing f2 from the store
+            store.remove(f2.id);
         });
 
         const result = await pipeline.run(options as never);
@@ -157,79 +155,17 @@ describe('PostAnalysisPipeline score reconciliation', () => {
         expect(result.selfReflectionScores[0].findingId).toBe(f1.id);
     });
 
-    it('requires at least 2 title words to match in rewritten review', async () => {
+    it('returns empty scores when all findings are removed from store', async () => {
         const store = new FindingStore();
-        const f1 = recordFinding(store, { title: 'Memory exhaustion in loop' });
+        const f1 = recordFinding(store, { title: 'Null pointer dereference' });
 
         const options = createMinimalOptions(store, (ctx) => {
             ctx.selfReflectionScores = [makeScore(f1.id, f1.title)];
-            // Only "memory" appears — not enough (need 2 of [memory, exhaustion, loop])
-            ctx.rewrittenAnalysis =
-                'The PR has good memory management and no issues were found.';
+            // Simulate pipeline step removing all findings
+            store.remove(f1.id);
         });
 
         const result = await pipeline.run(options as never);
         expect(result.selfReflectionScores).toHaveLength(0);
-    });
-
-    it('keeps score when at least 2 title words match in rewritten review', async () => {
-        const store = new FindingStore();
-        const f1 = recordFinding(store, { title: 'Memory exhaustion in loop' });
-
-        const options = createMinimalOptions(store, (ctx) => {
-            ctx.selfReflectionScores = [makeScore(f1.id, f1.title)];
-            // "memory" + "loop" appear — 2 of 3 words match
-            ctx.rewrittenAnalysis =
-                'Found a memory issue caused by the infinite loop in the processor.';
-        });
-
-        const result = await pipeline.run(options as never);
-        expect(result.selfReflectionScores).toHaveLength(1);
-    });
-
-    it('keeps score for single-word title when that word matches', async () => {
-        const store = new FindingStore();
-        const f1 = recordFinding(store, { title: 'Deadlock' });
-
-        const options = createMinimalOptions(store, (ctx) => {
-            ctx.selfReflectionScores = [makeScore(f1.id, f1.title)];
-            // Single word title: min(2, 1) = 1, "deadlock" matches
-            ctx.rewrittenAnalysis =
-                'The code has a deadlock issue in the synchronization module.';
-        });
-
-        const result = await pipeline.run(options as never);
-        expect(result.selfReflectionScores).toHaveLength(1);
-    });
-
-    it('ignores short words (< 3 chars) in title matching', async () => {
-        const store = new FindingStore();
-        // Title: "No XSS in form" — words >= 3 chars: ["xss", "form"]
-        const f1 = recordFinding(store, { title: 'No XSS in form' });
-
-        const options = createMinimalOptions(store, (ctx) => {
-            ctx.selfReflectionScores = [makeScore(f1.id, f1.title)];
-            // Both "xss" and "form" appear → 2 of 2 → passes min(2, 2) = 2
-            ctx.rewrittenAnalysis =
-                'Found an XSS vulnerability in the login form.';
-        });
-
-        const result = await pipeline.run(options as never);
-        expect(result.selfReflectionScores).toHaveLength(1);
-    });
-
-    it('keeps score when all title words are below length threshold', async () => {
-        const store = new FindingStore();
-        // All words < 3 chars → titleWords is empty → heuristic can't validate → keeps score
-        const f1 = recordFinding(store, { title: 'It is OK' });
-
-        const options = createMinimalOptions(store, (ctx) => {
-            ctx.selfReflectionScores = [makeScore(f1.id, f1.title)];
-            ctx.rewrittenAnalysis =
-                'The code looks fine with no issues detected.';
-        });
-
-        const result = await pipeline.run(options as never);
-        expect(result.selfReflectionScores).toHaveLength(1);
     });
 });

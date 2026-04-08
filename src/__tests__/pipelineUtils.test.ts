@@ -4,7 +4,10 @@ import {
     createBufferedHandler,
     dismissHypothesesForDroppedFinding,
     isTitleMentionedInText,
+    reconcileFindingStoreWithReview,
 } from '../services/pipeline/pipelineUtils';
+import { FindingStore } from '../sessions/findingStore';
+import type { RecordedFinding } from '../types/findingTypes';
 import type { ToolCallHandler } from '../models/conversationRunner';
 
 import type { ExitReason } from '../models/conversationRunner';
@@ -312,5 +315,129 @@ describe('isTitleMentionedInText', () => {
                 'XSS vulnerability in the form handler'
             )
         ).toBe(true);
+    });
+});
+
+function recordFinding(
+    store: FindingStore,
+    partial: Partial<
+        Omit<RecordedFinding, 'id' | 'timestamp' | 'lspValidation'>
+    >
+): RecordedFinding {
+    return store.record({
+        agentId: partial.agentId ?? 'agent-1',
+        severity: partial.severity ?? 'HIGH',
+        category: partial.category ?? 'logic_error',
+        title: partial.title ?? 'Default title',
+        file: partial.file ?? 'src/index.ts',
+        lineRange: partial.lineRange ?? [1, 5],
+        description: partial.description ?? 'desc',
+        affectedComponent: partial.affectedComponent ?? 'Component',
+        failureMechanism: partial.failureMechanism ?? 'wrong_return_value',
+        supportingToolCalls: partial.supportingToolCalls ?? ['read_file'],
+        disproof: partial.disproof ?? {
+            attempted: true,
+            method: 'test',
+            result: 'confirmed',
+        },
+        verifiableClaims: partial.verifiableClaims ?? [],
+    });
+}
+
+describe('reconcileFindingStoreWithReview', () => {
+    it('removes findings not mentioned in review text', () => {
+        const store = new FindingStore();
+        const f1 = recordFinding(store, {
+            title: 'Null pointer dereference',
+            file: 'src/handler.ts',
+        });
+        const f2 = recordFinding(store, {
+            title: 'Memory exhaustion in loop',
+            file: 'src/cache.ts',
+        });
+
+        const reviewText =
+            'The PR has a null pointer dereference bug in the handler.';
+        const dropped = reconcileFindingStoreWithReview(
+            store,
+            reviewText,
+            undefined
+        );
+
+        expect(dropped).toEqual([f2.title]);
+        expect(store.getById(f1.id)).toBeDefined();
+        expect(store.getById(f2.id)).toBeUndefined();
+    });
+
+    it('keeps findings mentioned by file path even if title is absent', () => {
+        const store = new FindingStore();
+        const f1 = recordFinding(store, {
+            title: 'Obscure issue',
+            file: 'src/utils/parser.ts',
+        });
+
+        const reviewText =
+            'Found an issue in src/utils/parser.ts that needs attention.';
+        const dropped = reconcileFindingStoreWithReview(
+            store,
+            reviewText,
+            undefined
+        );
+
+        expect(dropped).toHaveLength(0);
+        expect(store.getById(f1.id)).toBeDefined();
+    });
+
+    it('dismisses hypotheses for removed findings', () => {
+        const store = new FindingStore();
+        const f1 = recordFinding(store, {
+            title: 'Memory exhaustion in loop',
+            file: 'src/cache.ts',
+        });
+
+        const mockChain = {
+            dismissConfirmedForFinding: vi.fn(),
+        };
+
+        const reviewText = 'No issues found. The code is correct.';
+        reconcileFindingStoreWithReview(store, reviewText, mockChain as never);
+
+        expect(mockChain.dismissConfirmedForFinding).toHaveBeenCalledWith(
+            f1.id,
+            'Finding silently omitted from rewritten review'
+        );
+    });
+
+    it('returns empty array when all findings are mentioned', () => {
+        const store = new FindingStore();
+        recordFinding(store, {
+            title: 'Null pointer dereference',
+            file: 'src/handler.ts',
+        });
+        recordFinding(store, {
+            title: 'SQL injection risk',
+            file: 'src/db.ts',
+        });
+
+        const reviewText =
+            'Found null pointer dereference and SQL injection risk in the code.';
+        const dropped = reconcileFindingStoreWithReview(
+            store,
+            reviewText,
+            undefined
+        );
+
+        expect(dropped).toHaveLength(0);
+        expect(store.size).toBe(2);
+    });
+
+    it('handles empty store gracefully', () => {
+        const store = new FindingStore();
+        const dropped = reconcileFindingStoreWithReview(
+            store,
+            'Some review text',
+            undefined
+        );
+        expect(dropped).toHaveLength(0);
     });
 });

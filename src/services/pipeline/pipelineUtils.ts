@@ -3,7 +3,10 @@ import type {
     ToolCallHandler,
 } from '../../models/conversationRunner';
 import type { ConversationManager } from '../../models/conversationManager';
-import type { FindingStoreSnapshot } from '../../sessions/findingStore';
+import type {
+    FindingStore,
+    FindingStoreSnapshot,
+} from '../../sessions/findingStore';
 import type {
     ReasoningChain,
     ReasoningChainSnapshot,
@@ -11,6 +14,7 @@ import type {
 import type { ITool } from '../../tools/ITool';
 import type { Message } from '../../types/conversationTypes';
 import type { FindingSeverity } from '../../types/findingTypes';
+import { Log } from '../loggingService';
 import type { PipelineContext } from './pipelineTypes';
 
 const SEVERITY_ORDER: readonly FindingSeverity[] = [
@@ -339,6 +343,43 @@ export async function runGuardedConversationPhase(
 export function filterTools(tools: ITool[], excludeNames: string[]): ITool[] {
     const excluded = new Set(excludeNames);
     return tools.filter((t) => !excluded.has(t.name));
+}
+
+/**
+ * After a successful rewrite, remove findings from the store that the LLM
+ * silently omitted without calling retract_finding. Prevents the findingStore
+ * from containing findings that aren't in the review text the user will see.
+ */
+export function reconcileFindingStoreWithReview(
+    findingStore: FindingStore,
+    reviewText: string,
+    reasoningChain: ReasoningChain | undefined
+): string[] {
+    const reconciledTitles: string[] = [];
+    for (const finding of findingStore.getAll()) {
+        const titleMentioned = isTitleMentionedInText(
+            finding.title,
+            reviewText
+        );
+        const fileMentioned = reviewText
+            .toLowerCase()
+            .includes(finding.file.toLowerCase());
+        if (!titleMentioned && !fileMentioned) {
+            reconciledTitles.push(finding.title);
+            findingStore.remove(finding.id);
+            dismissHypothesesForDroppedFinding(
+                finding.id,
+                reasoningChain,
+                'Finding silently omitted from rewritten review'
+            );
+        }
+    }
+    if (reconciledTitles.length > 0) {
+        Log.warn(
+            `Reconciled ${reconciledTitles.length} finding(s) silently omitted from review: ${reconciledTitles.join(', ')}`
+        );
+    }
+    return reconciledTitles;
 }
 
 const MIN_TITLE_WORD_LENGTH = 3;

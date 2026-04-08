@@ -108,21 +108,45 @@ describe('createRewriteStep', () => {
 
     describe('execute', () => {
         it('sets rewrittenAnalysis on successful completion', async () => {
+            const store = new FindingStore();
+            const finding = store.record(
+                makeFinding({
+                    title: 'Authentication bypass',
+                    file: 'src/auth.ts',
+                })
+            );
+
             const context = createMockContext({
                 droppedTitles: ['Finding A'],
+                findingStore: store,
                 selfReflectionScores: [
                     {
-                        findingId: 'finding-1',
-                        title: 'Finding A',
+                        findingId: finding.id,
+                        title: 'Authentication bypass',
                         score: 8,
                         rationale: 'Verified',
                     },
                 ],
+                conversationRunner: {
+                    run: vi
+                        .fn()
+                        .mockResolvedValue(
+                            'Review: authentication bypass vulnerability in src/auth.ts'
+                        ),
+                    hitMaxIterations: false,
+                    wasCancelled: false,
+                    hitRateLimit: false,
+                    hitQuotaExhausted: false,
+                    degraded: false,
+                    exitReason: undefined,
+                } as any,
             });
 
             await step.execute(context);
 
-            expect(context.rewrittenAnalysis).toBe('Rewritten review text');
+            expect(context.rewrittenAnalysis).toBe(
+                'Review: authentication bypass vulnerability in src/auth.ts'
+            );
             expect(context.lastCommittedSelfReflectionScores).toEqual(
                 context.selfReflectionScores
             );
@@ -387,6 +411,124 @@ describe('createRewriteStep', () => {
             const message = addMessage.mock.calls[0][0];
             expect(message).toContain('Severity reduced');
             expect(message).toContain('downgraded');
+        });
+
+        it('removes findings silently omitted from successful rewrite', async () => {
+            const store = new FindingStore();
+            const mentioned = store.record(
+                makeFinding({
+                    title: 'Authentication bypass vulnerability',
+                    file: 'src/auth.ts',
+                })
+            );
+            const omitted = store.record(
+                makeFinding({
+                    title: 'Missing input validation',
+                    file: 'src/validate.ts',
+                })
+            );
+
+            const context = createMockContext({
+                droppedTitles: ['Some other finding'],
+                findingStore: store,
+                conversationRunner: {
+                    run: vi
+                        .fn()
+                        .mockResolvedValue(
+                            'Review: Found authentication bypass vulnerability in src/auth.ts'
+                        ),
+                    hitMaxIterations: false,
+                    wasCancelled: false,
+                    hitRateLimit: false,
+                    hitQuotaExhausted: false,
+                    degraded: false,
+                    exitReason: undefined,
+                } as any,
+            });
+
+            await step.execute(context);
+
+            expect(store.size).toBe(1);
+            expect(store.getById(mentioned.id)).toBeDefined();
+            expect(store.getById(omitted.id)).toBeUndefined();
+        });
+
+        it('keeps findings mentioned by file path in successful rewrite', async () => {
+            const store = new FindingStore();
+            const byFile = store.record(
+                makeFinding({
+                    title: 'XYZ issue',
+                    file: 'src/special/handler.ts',
+                })
+            );
+            const omitted = store.record(
+                makeFinding({
+                    title: 'ABC issue',
+                    file: 'src/other.ts',
+                })
+            );
+
+            const context = createMockContext({
+                droppedTitles: ['Dropped finding'],
+                findingStore: store,
+                conversationRunner: {
+                    run: vi
+                        .fn()
+                        .mockResolvedValue(
+                            'Issues found in src/special/handler.ts with potential impact'
+                        ),
+                    hitMaxIterations: false,
+                    wasCancelled: false,
+                    hitRateLimit: false,
+                    hitQuotaExhausted: false,
+                    degraded: false,
+                    exitReason: undefined,
+                } as any,
+            });
+
+            await step.execute(context);
+
+            expect(store.getById(byFile.id)).toBeDefined();
+            expect(store.getById(omitted.id)).toBeUndefined();
+        });
+
+        it('does not reconcile findings when rewrite exits abnormally', async () => {
+            const store = new FindingStore();
+            store.record(
+                makeFinding({
+                    title: 'Some important finding',
+                    file: 'src/foo.ts',
+                })
+            );
+            store.record(
+                makeFinding({
+                    title: 'Another critical finding',
+                    file: 'src/bar.ts',
+                })
+            );
+
+            const context = createMockContext({
+                droppedTitles: ['Dropped finding'],
+                findingStore: store,
+                conversationRunner: {
+                    run: vi
+                        .fn()
+                        .mockResolvedValue(
+                            'Partial text without any finding references'
+                        ),
+                    hitMaxIterations: true,
+                    wasCancelled: false,
+                    hitRateLimit: false,
+                    hitQuotaExhausted: false,
+                    degraded: false,
+                    exitReason: undefined,
+                } as any,
+            });
+
+            await step.execute(context);
+
+            // Store should be rolled back to pre-rewrite state, not reconciled
+            expect(store.size).toBe(2);
         });
     });
 });

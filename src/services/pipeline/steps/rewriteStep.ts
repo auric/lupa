@@ -1,6 +1,7 @@
 import { Log } from '../../loggingService';
 import {
     commitPipelinePhaseState,
+    reconcileFindingStoreWithReview,
     runGuardedConversationPhase,
 } from '../pipelineUtils';
 import { emptyStepResult } from '../pipelineTypes';
@@ -114,10 +115,17 @@ export function createRewriteStep(): PipelineStep {
             }
 
             context.rewrittenAnalysis = rewriteResult;
-            context.selfReflectionScores = context.selfReflectionScores.filter(
-                (score) =>
-                    context.findingStore.getById(score.findingId) !== undefined
+
+            // Root-cause fix: remove findings the LLM silently omitted
+            // from the store itself, not just from the score list.
+            // Scores are then naturally filtered by the findingStore check
+            // in commitPipelinePhaseState.
+            reconcileFindingStoreWithReview(
+                context.findingStore,
+                rewriteResult,
+                context.executionContext.reasoningChain
             );
+
             commitPipelinePhaseState(context, rewriteResult);
 
             return emptyStepResult();

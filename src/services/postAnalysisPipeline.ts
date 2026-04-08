@@ -25,7 +25,6 @@ import {
     createSelfReflectionStep,
     createRewriteStep,
 } from './pipeline/pipeline';
-import { isTitleMentionedInText } from './pipeline/pipelineUtils';
 
 export interface PostAnalysisPipelineOptions {
     findingStore: FindingStore;
@@ -86,20 +85,12 @@ export class PostAnalysisPipeline {
 
         const stepRecords = await runPipeline(steps, context);
 
-        // Reconcile: drop scores for removed findings or findings not mentioned in review
+        // Defense-in-depth: drop scores for findings no longer in the store.
+        // The rewrite step reconciles the store against the review text (root fix),
+        // but this filter catches any remaining orphaned scores from other steps.
         const reconciledScores = context.selfReflectionScores.filter(
-            (score) => {
-                if (!context.findingStore.getById(score.findingId)) {
-                    return false;
-                }
-                if (!context.rewrittenAnalysis) {
-                    return true;
-                }
-                return isTitleMentionedInText(
-                    score.title,
-                    context.rewrittenAnalysis
-                );
-            }
+            (score) =>
+                context.findingStore.getById(score.findingId) !== undefined
         );
 
         return {
