@@ -356,14 +356,13 @@ export function reconcileFindingStoreWithReview(
     reasoningChain: ReasoningChain | undefined
 ): string[] {
     const reconciledTitles: string[] = [];
+    const reviewLower = reviewText.toLowerCase();
     for (const finding of findingStore.getAll()) {
         const titleMentioned = isTitleMentionedInText(
             finding.title,
-            reviewText
+            reviewLower
         );
-        const fileMentioned = reviewText
-            .toLowerCase()
-            .includes(finding.file.toLowerCase());
+        const fileMentioned = reviewLower.includes(finding.file.toLowerCase());
         if (!titleMentioned && !fileMentioned) {
             reconciledTitles.push(finding.title);
             findingStore.remove(finding.id);
