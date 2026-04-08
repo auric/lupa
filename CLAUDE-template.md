@@ -1,21 +1,10 @@
 # CLAUDE.md
 
-## Lupa
-
-**Lupa** is a VS Code extension that performs comprehensive pull request analysis using GitHub Copilot models. It uses a tool-calling architecture where the LLM dynamically requests context via LSP-based tools, enabling deep code understanding without pre-loading entire codebases.
-
-**Stack**: TypeScript · VS Code Extension API · Vite · Vitest · React 19 · shadcn/ui · Tailwind CSS v4
-
-> **Technical reference**: See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture, code conventions, timeout patterns, error handling, and testing guidelines. Read it when implementing features or debugging—don't memorize it.
-
-```bash
-npm run check-types    # Fast type checking (~2s), prefer for validation
-npm run build          # Full build (~30s), use sparingly
-npm run test           # Run all tests (output is massive—read last ~50 lines only)
-npx vitest run src/__tests__/file.test.ts  # Single test file
-```
-
----
+<!--
+  Language-agnostic agent behavior template.
+  Drop this into any project's root as CLAUDE.md, then add a project-specific
+  section at the top with your stack, build commands, and codebase conventions.
+-->
 
 ## Subagent-First Workflow
 
@@ -35,10 +24,10 @@ Each subagent gets a **fresh context window**. It can read files, search code, m
 
 1. **Receive task** → Understand what's being asked. Ask clarifying questions if ambiguous.
 2. **Plan** → Break the work into logical chunks. Use sequential thinking for complex design decisions.
-3. **Research via subagents** → Delegate codebase exploration, API research, pattern discovery to parallel subagents. Each subagent should have a focused question to answer.
+3. **Research via subagents** → Delegate codebase exploration, API research, pattern discovery to subagents. Each subagent should have a focused question to answer.
 4. **Synthesize** → Read subagent results. Refine your plan based on what they found.
 5. **Implement via subagents** → Delegate implementation of each chunk to subagents with specific, detailed instructions. Include relevant context they need (file paths, patterns to follow, interfaces to implement).
-6. **Verify** → Run `npm run check-types` and relevant tests. Review subagent output for correctness.
+6. **Verify** → Run the project's type checker, linter, and relevant tests. Review subagent output for correctness.
 7. **Commit** → Make a git commit for the meaningful chunk of work (see Commit Discipline below).
 8. **Repeat** → Move to the next chunk.
 
@@ -79,7 +68,7 @@ I am not always right. Neither are you. But we both strive for accuracy and the 
 
 ### Research Before Guessing
 
-When you encounter something you don't know — a library API, a framework pattern, a VS Code behavior — **research it before implementing**. Never guess at API signatures or behavior.
+When you encounter something you don't know — a library API, a framework pattern, a platform behavior — **research it before implementing**. Never guess at API signatures or behavior.
 
 - **DeepWiki MCP** for library/framework questions (e.g., `vitest-dev/vitest`, `microsoft/vscode`). If you don't know the repo name, **ask the user**.
 - **Tavily web search** for recent changes, new patterns, or general knowledge
@@ -102,16 +91,13 @@ Don't ask unnecessary questions. If the answer is obvious from context or the co
 
 ## Code Quality
 
-Write production-ready TypeScript. These standards are non-negotiable:
+Write production-ready code. These standards are non-negotiable:
 
 - **DRY, SOLID, properly typed** — no shortcuts
 - **Comments only when intent is non-obvious** — never comment obvious code
 - **Named constants** — no magic numbers or strings
 - **No empty catch blocks** — always handle errors meaningfully
-- **Follow existing patterns** — read the codebase before writing new code; see [ARCHITECTURE.md](ARCHITECTURE.md)
-- **Use `Log` from `loggingService.ts`** — not `console.log` (exception: webview code)
-- **Use `toolSuccess()`/`toolError()`** — for tool return values
-- **Prefer `param: string | undefined`** over `param?: string` for explicit nullability
+- **Follow existing patterns** — read the codebase before writing new code
 
 ### Anti-Patterns
 
@@ -128,7 +114,7 @@ Never produce: excessive comments on obvious code, over-abstraction for hypothet
 This is a mandatory part of your workflow for any multi-step task:
 
 1. Implement a logical chunk of work
-2. Run `npm run check-types` — must pass
+2. Run the project's type checker / linter — must pass
 3. Run relevant tests if you changed behavior
 4. Run `git add <changed-files> && git commit -m "descriptive message"` — **do this yourself, right now**. **Never use `git add -A` or `git add .`** — only stage files you actually changed to avoid committing unrelated/untracked files.
 5. Move to the next chunk — repeat from step 1
@@ -144,9 +130,9 @@ This is a mandatory part of your workflow for any multi-step task:
 
 Write clear messages that explain WHAT changed and WHY. Examples:
 
-- `feat: add subagent session limits to prevent runaway spawning`
-- `refactor: extract timeout logic into withCancellableTimeout helper`
-- `fix: prevent CancellationTokenSource leak in RunSubagentTool`
+- `feat: add session limits to prevent runaway spawning`
+- `refactor: extract timeout logic into reusable helper`
+- `fix: prevent resource leak in background task cleanup`
 
 ### What NOT to Do
 
@@ -161,8 +147,8 @@ Write clear messages that explain WHAT changed and WHY. Examples:
 
 Before finalizing any implementation:
 
-1. Run `npm run check-types` — must pass
-2. Run relevant test files — not the full suite unless necessary (output is massive)
+1. Run the project's type checker / linter — must pass
+2. Run relevant test files — not the full suite unless necessary
 3. Review that changes follow existing codebase patterns
 4. Ask: would a new team member understand this code without explanation?
 5. Ask: is there anything that could be removed without losing functionality?
