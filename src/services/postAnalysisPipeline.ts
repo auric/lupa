@@ -85,11 +85,18 @@ export class PostAnalysisPipeline {
 
         const stepRecords = await runPipeline(steps, context);
 
+        // Final reconciliation: filter out scores for findings that were dropped
+        // during later pipeline steps but whose scores weren't cleaned up
+        const reconciledScores = context.selfReflectionScores.filter(
+            (score) =>
+                context.findingStore.getById(score.findingId) !== undefined
+        );
+
         return {
             droppedTitles: context.droppedTitles,
             rewrittenAnalysis: context.rewrittenAnalysis,
             additionalToolCallRecords: context.additionalToolCallRecords,
-            selfReflectionScores: context.selfReflectionScores,
+            selfReflectionScores: reconciledScores,
             stepRecords,
         };
     }

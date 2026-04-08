@@ -96,14 +96,14 @@ export function createSelfReflectionStep(): PipelineStep {
             }
             context.selfReflectionScores = kept;
 
+            flushCompletions();
+
             commitPipelinePhaseState(
                 context,
                 context.rewrittenAnalysis ??
                     context.lastCommittedReviewText ??
                     ''
             );
-
-            flushCompletions();
 
             return {
                 findingsDropped: reflectionResult.dropped,

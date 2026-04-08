@@ -590,6 +590,26 @@ RULES:
         } catch (error) {
             clearTimeout(timeoutHandle);
 
+            // Timeout-induced CancellationError: return as timeout failure, not parent cancellation
+            if (
+                isCancellationError(error) &&
+                cancellationReason === 'timeout' &&
+                !context.cancellationToken.isCancellationRequested
+            ) {
+                if (recursiveState && alloc.childAgentId) {
+                    recursiveState.failAgent(
+                        alloc.childAgentId,
+                        SubagentErrors.timeout(timeoutMs)
+                    );
+                }
+                return {
+                    status: 'failed',
+                    error: SubagentErrors.timeout(timeoutMs),
+                    subagentId: alloc.subagentId,
+                    allocation: alloc,
+                };
+            }
+
             if (recursiveState && alloc.childAgentId) {
                 if (isCancellationError(error)) {
                     recursiveState.cancelAgent(alloc.childAgentId);

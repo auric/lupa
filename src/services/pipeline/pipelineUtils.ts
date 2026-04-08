@@ -271,7 +271,10 @@ export function commitPipelinePhaseState(
     context.lastCommittedFindingStoreSnapshot =
         context.findingStore.createSnapshot();
     context.lastCommittedSelfReflectionScores = structuredClone(
-        context.selfReflectionScores
+        context.selfReflectionScores.filter(
+            (score) =>
+                context.findingStore.getById(score.findingId) !== undefined
+        )
     );
 }
 
