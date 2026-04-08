@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { isTitleMentionedInText } from '../services/pipeline/pipelineUtils';
 
 /**
  * Explicit completion signal for PR review analysis.
@@ -85,19 +86,12 @@ export class SubmitReviewTool extends BaseTool {
             const findings = store.getAll();
             const reviewLower = args.review_content.toLowerCase();
 
-            // Check if any recorded finding is completely absent from review text.
-            // Require multiple title words to match to prevent false positives from
-            // common words (e.g., "exhaustion" matching incidentally in an approval).
+            // Check if any recorded finding is completely absent from review text
             const missingFindings = findings.filter((f) => {
-                const titleWords = f.title
-                    .toLowerCase()
-                    .split(/\s+/)
-                    .filter((w) => w.length >= 3);
-                const matchingWordCount = titleWords.filter((word) =>
-                    reviewLower.includes(word)
-                ).length;
-                const titleMentioned =
-                    matchingWordCount >= Math.min(2, titleWords.length);
+                const titleMentioned = isTitleMentionedInText(
+                    f.title,
+                    reviewLower
+                );
                 const fileMentioned = reviewLower.includes(
                     f.file.toLowerCase()
                 );

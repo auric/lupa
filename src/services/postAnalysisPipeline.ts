@@ -25,6 +25,7 @@ import {
     createSelfReflectionStep,
     createRewriteStep,
 } from './pipeline/pipeline';
+import { isTitleMentionedInText } from './pipeline/pipelineUtils';
 
 export interface PostAnalysisPipelineOptions {
     findingStore: FindingStore;
@@ -85,34 +86,19 @@ export class PostAnalysisPipeline {
 
         const stepRecords = await runPipeline(steps, context);
 
-        // Final reconciliation: filter out scores for findings that were dropped
-        // during later pipeline steps but whose scores weren't cleaned up.
-        // Also filter out scores for findings that exist in the store but are not
-        // substantively mentioned in the final review text — this prevents showing
-        // confidence scores for issues the rewrite LLM silently omitted.
-        const finalReviewText = (
-            context.rewrittenAnalysis ??
-            context.lastCommittedReviewText ??
-            ''
-        ).toLowerCase();
+        // Reconcile: drop scores for removed findings or findings not mentioned in review
         const reconciledScores = context.selfReflectionScores.filter(
             (score) => {
                 if (!context.findingStore.getById(score.findingId)) {
                     return false;
                 }
-                // If no rewrite happened, keep all scores for existing findings
                 if (!context.rewrittenAnalysis) {
                     return true;
                 }
-                // Verify the finding is actually discussed in the review text
-                const titleWords = score.title
-                    .toLowerCase()
-                    .split(/\s+/)
-                    .filter((w) => w.length >= 3);
-                const matchingWordCount = titleWords.filter((w) =>
-                    finalReviewText.includes(w)
-                ).length;
-                return matchingWordCount >= Math.min(2, titleWords.length);
+                return isTitleMentionedInText(
+                    score.title,
+                    context.rewrittenAnalysis
+                );
             }
         );
 

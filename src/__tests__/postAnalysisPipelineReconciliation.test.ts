@@ -217,4 +217,19 @@ describe('PostAnalysisPipeline score reconciliation', () => {
         const result = await pipeline.run(options as never);
         expect(result.selfReflectionScores).toHaveLength(1);
     });
+
+    it('keeps score when all title words are below length threshold', async () => {
+        const store = new FindingStore();
+        // All words < 3 chars → titleWords is empty → heuristic can't validate → keeps score
+        const f1 = recordFinding(store, { title: 'It is OK' });
+
+        const options = createMinimalOptions(store, (ctx) => {
+            ctx.selfReflectionScores = [makeScore(f1.id, f1.title)];
+            ctx.rewrittenAnalysis =
+                'The code looks fine with no issues detected.';
+        });
+
+        const result = await pipeline.run(options as never);
+        expect(result.selfReflectionScores).toHaveLength(1);
+    });
 });

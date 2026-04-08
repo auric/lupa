@@ -340,3 +340,26 @@ export function filterTools(tools: ITool[], excludeNames: string[]): ITool[] {
     const excluded = new Set(excludeNames);
     return tools.filter((t) => !excluded.has(t.name));
 }
+
+const MIN_TITLE_WORD_LENGTH = 3;
+const MIN_MATCHING_WORDS = 2;
+
+/**
+ * Checks whether a finding title is substantively mentioned in review text.
+ * Uses word-matching heuristic: requires at least 2 title words (>= 3 chars)
+ * to appear in the text, preventing false positives from single common words.
+ */
+export function isTitleMentionedInText(title: string, text: string): boolean {
+    const titleWords = title
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w.length >= MIN_TITLE_WORD_LENGTH);
+    if (titleWords.length === 0) {
+        return true;
+    }
+    const textLower = text.toLowerCase();
+    const matchingWordCount = titleWords.filter((w) =>
+        textLower.includes(w)
+    ).length;
+    return matchingWordCount >= Math.min(MIN_MATCHING_WORDS, titleWords.length);
+}

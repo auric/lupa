@@ -3,6 +3,7 @@ import {
     classifyConversationCompletion,
     createBufferedHandler,
     dismissHypothesesForDroppedFinding,
+    isTitleMentionedInText,
 } from '../services/pipeline/pipelineUtils';
 import type { ToolCallHandler } from '../models/conversationRunner';
 
@@ -248,5 +249,68 @@ describe('dismissHypothesesForDroppedFinding', () => {
                 'dropped'
             )
         ).not.toThrow();
+    });
+});
+
+describe('isTitleMentionedInText', () => {
+    it('returns true when enough title words match in text', () => {
+        expect(
+            isTitleMentionedInText(
+                'Null pointer dereference in handler',
+                'Found a null pointer issue in the request handler'
+            )
+        ).toBe(true);
+    });
+
+    it('returns false when too few title words match', () => {
+        expect(
+            isTitleMentionedInText(
+                'Null pointer dereference in handler',
+                'The code looks fine with no issues detected'
+            )
+        ).toBe(false);
+    });
+
+    it('returns true for single-word title when word matches', () => {
+        expect(
+            isTitleMentionedInText('Deadlock', 'Found a deadlock in the code')
+        ).toBe(true);
+    });
+
+    it('returns false for single-word title when word is absent', () => {
+        expect(
+            isTitleMentionedInText(
+                'Deadlock',
+                'The code is correct and approved'
+            )
+        ).toBe(false);
+    });
+
+    it('returns true when all title words are below length threshold', () => {
+        expect(
+            isTitleMentionedInText(
+                'It is OK',
+                'Anything at all — no matchable words'
+            )
+        ).toBe(true);
+    });
+
+    it('is case-insensitive', () => {
+        expect(
+            isTitleMentionedInText(
+                'SQL Injection vulnerability',
+                'Found an SQL INJECTION in the login form'
+            )
+        ).toBe(true);
+    });
+
+    it('filters short words from matching', () => {
+        // "No" and "in" are < 3 chars, filtered out. "XSS" and "form" remain.
+        expect(
+            isTitleMentionedInText(
+                'No XSS in form',
+                'XSS vulnerability in the form handler'
+            )
+        ).toBe(true);
     });
 });
