@@ -243,7 +243,7 @@ describe('createRewriteStep', () => {
 
         it('restores the last committed review state when rewrite cannot finish', async () => {
             const committedStore = new FindingStore();
-            const committed = committedStore.record(
+            committedStore.record(
                 makeFinding({ title: 'Committed finding', severity: 'HIGH' })
             );
 

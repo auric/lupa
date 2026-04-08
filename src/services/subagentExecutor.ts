@@ -534,7 +534,7 @@ export class SubagentExecutor {
                     toolCalls,
                     executionTimeMs: duration,
                     iterationsUsed: conversationRunner.iterationsUsed,
-                    error: conversationRunner.exitReason!,
+                    error: conversationRunner.exitReason ?? 'unknown',
                 };
             }
 
