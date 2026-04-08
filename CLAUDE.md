@@ -45,7 +45,6 @@ Each subagent gets a **fresh context window**. It can read files, search code, m
 ### Subagent Rules
 
 - **Always use general-purpose subagents** — never use `Explore` subagents for implementation work
-- **Always specify Claude Opus 4.6 model** for subagents
 - **Never delegate the entire task** to one subagent — break it up
 - **Provide rich context** in subagent prompts: file paths, function signatures, patterns to follow, what the code should do
 - **Verify subagent output** — they can make mistakes too, especially on complex logic
