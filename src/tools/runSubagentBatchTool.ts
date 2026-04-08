@@ -705,9 +705,14 @@ RULES:
                     responseEnd: header.length + response.length,
                 });
             } else if (outcome.status === 'degraded') {
-                const header = `### Subagent #${outcome.subagentId} — DEGRADED (partial results)\n\n`;
+                const audit = buildInvestigationAudit(outcome.result.toolCalls);
+                const auditLine = formatCompactAudit(audit);
+                const header =
+                    `### Subagent #${outcome.subagentId} — DEGRADED (partial results)\n\n` +
+                    `**Tool calls made:** ${outcome.result.toolCallsMade}\n\n` +
+                    `---\n\n`;
                 const response = outcome.error;
-                const text = header + response;
+                const text = header + response + auditLine;
                 rawParts.push({
                     text,
                     truncatable: true,
