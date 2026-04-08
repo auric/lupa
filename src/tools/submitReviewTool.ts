@@ -85,16 +85,19 @@ export class SubmitReviewTool extends BaseTool {
             const findings = store.getAll();
             const reviewLower = args.review_content.toLowerCase();
 
-            // Check if any recorded finding is completely absent from review text
+            // Check if any recorded finding is completely absent from review text.
+            // Require multiple title words to match to prevent false positives from
+            // common words (e.g., "exhaustion" matching incidentally in an approval).
             const missingFindings = findings.filter((f) => {
-                // Check if the finding's title or file is mentioned in the review
                 const titleWords = f.title
                     .toLowerCase()
                     .split(/\s+/)
                     .filter((w) => w.length >= 3);
-                const titleMentioned = titleWords.some((word) =>
+                const matchingWordCount = titleWords.filter((word) =>
                     reviewLower.includes(word)
-                );
+                ).length;
+                const titleMentioned =
+                    matchingWordCount >= Math.min(2, titleWords.length);
                 const fileMentioned = reviewLower.includes(
                     f.file.toLowerCase()
                 );
