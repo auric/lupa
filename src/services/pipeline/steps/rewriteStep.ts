@@ -63,11 +63,16 @@ export function createRewriteStep(): PipelineStep {
             }
             parts.push('Then call submit_review.');
 
+            // Ensure rollback target reflects current finding store
+            // (programmatic steps may have dropped findings since pipeline creation)
+            context.lastCommittedFindingStoreSnapshot =
+                context.findingStore.createSnapshot();
+
             const rollbackConversationHistory =
                 context.conversationManager.getHistory();
             const rollbackFindingSnapshot =
-                context.lastCommittedFindingStoreSnapshot ??
-                context.findingStore.createSnapshot();
+                context.lastCommittedFindingStoreSnapshot;
+
             const rollbackReviewText = context.lastCommittedReviewText;
             const rollbackSelfReflectionScores = structuredClone(
                 context.lastCommittedSelfReflectionScores ?? []

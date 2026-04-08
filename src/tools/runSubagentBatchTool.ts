@@ -36,8 +36,6 @@ const DEGRADED_EXIT_REASONS = new Set<ExitReason>([
     'context-overflow',
     'conversation-corruption',
     'consecutive-errors',
-    'fatal-error',
-    'service-unavailable',
 ]);
 
 const MAX_TASK_LABEL_LENGTH = 80;
@@ -557,7 +555,7 @@ RULES:
                 !result.success &&
                 DEGRADED_EXIT_REASONS.has(result.error as ExitReason)
             ) {
-                const reason = result.error ?? 'degraded';
+                const reason = result.error;
                 const msg = `Subagent #${alloc.subagentId} exited in degraded state (${reason}) after ${result.toolCallsMade} tool calls.`;
                 const partial = result.response?.trim();
                 return {

@@ -287,7 +287,9 @@ describe('createRewriteStep', () => {
             expect(context.rewrittenAnalysis).toBe('Committed review text');
             expect(store.size).toBe(1);
             expect(store.getAll()[0]?.title).toBe('Committed finding');
-            expect(store.getById(committed.id)?.severity).toBe('HIGH');
+            // Snapshot is refreshed to current store state before rewrite,
+            // so rollback restores post-programmatic-step severity (LOW), not stale committed (HIGH)
+            expect(store.getById(downgraded.id)?.severity).toBe('LOW');
             expect(context.selfReflectionScores).toEqual([]);
             expect(result.summary).toContain('hit iteration limit');
         });

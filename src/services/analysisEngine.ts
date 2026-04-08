@@ -416,7 +416,8 @@ export class AnalysisEngine implements vscode.Disposable {
             analysisCompleted =
                 !conversationRunner.wasCancelled &&
                 !conversationRunner.hitQuotaExhausted &&
-                !conversationRunner.hitRateLimit;
+                !conversationRunner.hitRateLimit &&
+                !conversationRunner.degraded;
             mainAnalysisWasCancelled = conversationRunner.wasCancelled;
             mainAnalysisIterationsUsed = conversationRunner.iterationsUsed;
 
@@ -463,6 +464,10 @@ export class AnalysisEngine implements vscode.Disposable {
                 Log.warn(
                     'Analysis ended due to API quota or rate limit exhaustion'
                 );
+            } else if (conversationRunner.degraded) {
+                Log.warn(
+                    `Analysis ended in degraded state: ${conversationRunner.exitReason}`
+                );
             } else {
                 Log.info('Analysis was cancelled by user');
             }
@@ -488,6 +493,11 @@ export class AnalysisEngine implements vscode.Disposable {
                     conversationRunner.hitRateLimit
                 ) {
                     recursiveState.completeAgent('root');
+                } else if (conversationRunner.degraded) {
+                    recursiveState.failAgent(
+                        'root',
+                        conversationRunner.exitReason ?? 'degraded'
+                    );
                 } else {
                     recursiveState.cancelAgent('root');
                 }
