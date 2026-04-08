@@ -35,7 +35,7 @@ export interface PipelineStepResult {
     findingsDowngraded: string[];
     toolCallRecords: ToolCallRecord[];
     summary?: string;
-    /** True when the step ran out of iteration budget before completing. */
+    /** True when the step could not complete because its conversation budget was exhausted (iteration limit or API quota). */
     budgetExhausted?: boolean;
 }
 

@@ -2,6 +2,7 @@ import * as z from 'zod';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { SubagentLimits, SubagentErrors } from '../models/toolConstants';
+import type { ExitReason } from '../models/conversationRunner';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
 import type { SubagentResult } from '../types/modelTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
@@ -24,6 +25,20 @@ import { getErrorMessage } from '../utils/errorUtils';
 import * as path from 'path';
 import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { DiffHunk } from '../types/contextTypes';
+
+/**
+ * ExitReason values that indicate a degraded but partially-useful subagent exit.
+ * These preserve partial response text and should not be treated as hard failures.
+ */
+const DEGRADED_EXIT_REASONS = new Set<ExitReason>([
+    'completion-nudge-exhaustion',
+    'response-too-long',
+    'context-overflow',
+    'conversation-corruption',
+    'consecutive-errors',
+    'fatal-error',
+    'service-unavailable',
+]);
 
 const MAX_TASK_LABEL_LENGTH = 80;
 const MAX_SUBAGENT_RESPONSE_CHARS = 150_000;
@@ -461,7 +476,8 @@ RULES:
                     timedOut ||
                     recursiveStateError === 'max_iterations' ||
                     recursiveStateError === 'rate_limited' ||
-                    recursiveStateError === 'quota_exhausted'
+                    recursiveStateError === 'quota_exhausted' ||
+                    DEGRADED_EXIT_REASONS.has(recursiveStateError as ExitReason)
                 ) {
                     recursiveState.completeAgent(
                         alloc.childAgentId,
@@ -525,6 +541,24 @@ RULES:
 
             if (!result.success && result.error === 'quota_exhausted') {
                 const msg = `Subagent #${alloc.subagentId} stopped: monthly Copilot quota exhausted after ${result.toolCallsMade} tool calls.`;
+                const partial = result.response?.trim();
+                return {
+                    status: 'failed',
+                    error: partial
+                        ? `${msg}\n\nPartial findings:\n${partial}`
+                        : msg,
+                    subagentId: alloc.subagentId,
+                    allocation: alloc,
+                    result,
+                };
+            }
+
+            if (
+                !result.success &&
+                DEGRADED_EXIT_REASONS.has(result.error as ExitReason)
+            ) {
+                const reason = result.error ?? 'degraded';
+                const msg = `Subagent #${alloc.subagentId} exited in degraded state (${reason}) after ${result.toolCallsMade} tool calls.`;
                 const partial = result.response?.trim();
                 return {
                     status: 'failed',
