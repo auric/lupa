@@ -1429,5 +1429,43 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain('notInOutput');
         });
+
+        it('triggers on positive-framing behavior patterns', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    title: 'someFunction incorrectly handles edge case',
+                    affectedComponent: 'someFunction()',
+                    description:
+                        'someFunction incorrectly handles the empty array edge case',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function otherFunc() { return []; }',
+                }),
+                // find_usages mentions someFunction so Step 7 (claim-vs-output) passes
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'someFunction',
+                    },
+                    result: '2 references found for someFunction',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // "incorrectly handles" matches FUNCTION_BEHAVIOR_PATTERN (positive framing)
+            // someFunction is in find_usages output (Step 7 passes),
+            // but NOT in read_file output → Step 8 triggers
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+            expect(result.entries[0]!.reason).toContain(
+                'function name not found in read_file or diff output'
+            );
+        });
     });
 });

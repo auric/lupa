@@ -58,7 +58,7 @@ const NO_CALLERS_PATTERN =
  * Pattern matching findings that claim something about a function's internal behavior.
  */
 const FUNCTION_BEHAVIOR_PATTERN =
-    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly)\s+(?:handle|check|validate|verify|sanitize|escape|guard|protect|catch|throw|return|log|close|release|dispose|clean|clear|free|initialize|init|deserialize|parse|process|encode|decode)\b/;
+    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly)\s+(?:handle|check|validate|verify|sanitize|escape|guard|protect|catch|throw|return|log|close|release|dispose|clean|clear|free|initialize|init|deserialize|parse|process|encode|decode)\w*\b/;
 
 /**
  * Global search tools that don't target a specific file but may mention
