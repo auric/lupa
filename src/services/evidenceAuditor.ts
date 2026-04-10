@@ -10,6 +10,7 @@ import {
 
 const DEPTH_THRESHOLD_HIGH = 4;
 const DEPTH_THRESHOLD_MEDIUM = 2;
+const MIN_IDENTIFIER_LENGTH = 3;
 
 const DELETION_LANGUAGE_PATTERN =
     /\b(deleted|removed|no longer|was removed|was deleted|dropped|eliminated|got rid of)\b/i;
@@ -66,18 +67,6 @@ const NO_CALLERS_PATTERN =
  */
 const FUNCTION_BEHAVIOR_PATTERN =
     /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!ic)|clos|releas|dispos|clean|clear(?!ly)|free(?!z)|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
-
-/**
- * Tool argument keys that reference symbols (not file paths).
- * Used to avoid matching file paths that happen to contain the identifier.
- */
-const SYMBOL_ARG_KEYS = [
-    'symbol_name',
-    'name',
-    'name_path',
-    'pattern',
-    'query',
-] as const;
 
 export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade' | 'weak-evidence';
 
@@ -281,7 +270,9 @@ export class EvidenceAuditor {
         findingFile: string,
         toolCallRecords: ToolCallRecord[]
     ): ToolCallRecord[] {
-        const normalizedTarget = findingFile.replace(/\\/g, '/');
+        const normalizedTarget = findingFile
+            .replace(/\\/g, '/')
+            .replace(/^\.\//, '');
 
         return toolCallRecords.filter((tc) => {
             if (!tc.success) {
@@ -290,7 +281,9 @@ export class EvidenceAuditor {
 
             const files = extractFilesFromArgs(tc.arguments);
             return files.some((f) => {
-                const normalizedFile = f.replace(/\\/g, '/');
+                const normalizedFile = f
+                    .replace(/\\/g, '/')
+                    .replace(/^\.\//, '');
                 return (
                     normalizedFile === normalizedTarget ||
                     normalizedFile.endsWith(normalizedTarget) ||
@@ -329,7 +322,23 @@ export class EvidenceAuditor {
             const normalizedResult = tc.result
                 .replace(/\\/g, '/')
                 .replace(/\.\/(?=\w)/g, '');
-            return normalizedResult.includes(normalizedTarget);
+            // Require a path boundary after the match to prevent
+            // prefix false positives (e.g. 'src/foo.ts' matching 'src/foo.tsx')
+            const idx = normalizedResult.indexOf(normalizedTarget);
+            if (idx === -1) {
+                return false;
+            }
+            const afterMatch = idx + normalizedTarget.length;
+            if (afterMatch >= normalizedResult.length) {
+                return true; // Match at end of string
+            }
+            const nextChar = normalizedResult[afterMatch]!;
+            return (
+                nextChar === ':' ||
+                nextChar === ' ' ||
+                nextChar === '\n' ||
+                nextChar === '\r'
+            );
         });
     }
 
@@ -503,19 +512,6 @@ export class EvidenceAuditor {
 
         // Check if the primary identifier appears in any tool output
         if (outputText.includes(primaryIdentifier)) {
-            return null;
-        }
-
-        // Also check tool arguments — if a tool was specifically called with this symbol, it's evidence
-        const inArguments = fileSupportingCalls.some((tc) =>
-            SYMBOL_ARG_KEYS.some((key) => {
-                const val = tc.arguments[key];
-                return (
-                    typeof val === 'string' && val.includes(primaryIdentifier)
-                );
-            })
-        );
-        if (inArguments) {
             return null;
         }
 
@@ -768,7 +764,7 @@ export function extractPrimaryIdentifier(
 
     // Strip trailing parenthesized content (handles both () and (args))
     const cleaned = affectedComponent.replace(/\(.*\)$/, '').trim();
-    if (cleaned.length < 3) {
+    if (cleaned.length < MIN_IDENTIFIER_LENGTH) {
         return undefined;
     }
 
@@ -778,7 +774,7 @@ export function extractPrimaryIdentifier(
 
     // If the last part is too short, skip the check rather than
     // searching for the full dotted string (which includes a literal dot)
-    return last.length >= 3 ? last : undefined;
+    return last.length >= MIN_IDENTIFIER_LENGTH ? last : undefined;
 }
 
 /**

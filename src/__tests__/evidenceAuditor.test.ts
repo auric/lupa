@@ -651,6 +651,44 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.verdict).not.toBe('drop');
         });
 
+        it('does not false-drop when title has deletion language but finding is not about deletion', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'Dropped parameter in processOrder breaks callers',
+                    affectedComponent: 'processOrder()',
+                    description:
+                        'The processOrder function signature changed, removing the discount parameter',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function processOrder(items) { return items.length; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'processOrder',
+                    },
+                    result: '3 references found in checkout.ts, cart.ts',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- function processOrder(items, discount)\n+ function processOrder(items)',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // Should NOT be dropped: although title says "Dropped", find_usages found references
+            expect(result.entries[0]!.verdict).toBe('keep');
+            expect(result.dropped).toBe(0);
+        });
+
         it('keeps test-coverage findings even with deletion language and zero references', () => {
             const findings = [
                 createTestFinding({
@@ -727,6 +765,30 @@ describe('EvidenceAuditor', () => {
             );
         });
 
+        it('does not match search_for_pattern result for path prefix (foo.ts vs foo.tsx)', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/foo.ts',
+                    affectedComponent: 'someFunction()',
+                    severity: 'HIGH',
+                    verificationEvidence:
+                        'Used search_for_pattern to find usages',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'search_for_pattern',
+                    arguments: { pattern: 'something' },
+                    result: 'src/foo.tsx:10: const x = something;',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // search_for_pattern matched foo.tsx, NOT foo.ts — should NOT count as evidence
+            expect(result.entries[0]!.verdict).toBe('drop');
+        });
+
         it('does not extract non-investigation tools from evidence text', () => {
             const findings = [
                 createTestFinding({
@@ -792,6 +854,35 @@ describe('EvidenceAuditor', () => {
                 'search_for_pattern'
             );
             expect(result.kept).toBe(1);
+        });
+
+        it('matches tool calls with ./ prefix in file arguments', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/foo.ts',
+                    affectedComponent: 'someFunction()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: './src/foo.ts' },
+                    result: 'function someFunction() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['./src/foo.ts'] },
+                    result: '+ someFunction change',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('keep');
+            expect(
+                result.entries[0]!.supportingToolCallIds.length
+            ).toBeGreaterThan(0);
         });
     });
 });
@@ -1090,6 +1181,43 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
         const result = auditor.audit(findings, records);
 
         expect(result.entries[0]!.verdict).toBe('keep');
+    });
+
+    it('flags weak-evidence when identifier appears only in tool arguments, not output', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'HIGH',
+                affectedComponent: 'processOrder()',
+                description: 'processOrder does not validate input',
+            }),
+        ];
+        const records = [
+            createToolCallRecord({
+                toolName: 'find_usages',
+                arguments: {
+                    file_path: 'src/foo.ts',
+                    symbol_name: 'processOrder',
+                },
+                result: '0 results found',
+            }),
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: 'export function doStuff() { return 1; }',
+            }),
+            createToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/foo.ts'] },
+                result: '+ doStuff update',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        // Tool was called WITH the identifier but output doesn't contain it
+        // → should flag as weak-evidence (argument-only evidence is insufficient)
+        expect(result.weakEvidence).toBe(1);
+        expect(result.entries[0]!.verdict).toBe('weak-evidence');
     });
 
     it('skips weak-evidence check for LOW severity findings', () => {
