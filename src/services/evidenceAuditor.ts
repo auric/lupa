@@ -291,13 +291,17 @@ export class EvidenceAuditor {
      * mention the finding's file. These tools don't have a file_path argument
      * so they can't be matched by `findToolCallsForFile`, but their results
      * may reference the file, making them valid supporting evidence.
+     *
+     * Only matches when the full relative path appears in the result text.
+     * Bare filename matching (e.g. just "helper.ts") is intentionally avoided
+     * because same-named files in different directories would produce false matches,
+     * masking fabrication detection.
      */
     private findGlobalSearchCallsMentioningFile(
         findingFile: string,
         toolCallRecords: ToolCallRecord[]
     ): ToolCallRecord[] {
         const normalizedTarget = findingFile.replace(/\\/g, '/');
-        const fileName = normalizedTarget.split('/').pop() ?? normalizedTarget;
 
         return toolCallRecords.filter((tc) => {
             if (!tc.success || typeof tc.result !== 'string') {
@@ -307,10 +311,7 @@ export class EvidenceAuditor {
                 return false;
             }
             const normalizedResult = tc.result.replace(/\\/g, '/');
-            return (
-                normalizedResult.includes(normalizedTarget) ||
-                normalizedResult.includes(fileName)
-            );
+            return normalizedResult.includes(normalizedTarget);
         });
     }
 

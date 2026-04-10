@@ -701,6 +701,31 @@ describe('EvidenceAuditor', () => {
             expect(result.kept).toBe(1);
         });
 
+        it('does not match search_for_pattern by bare filename (prevents false evidence from same-named files)', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    file: 'src/utils/helper.ts',
+                    description: 'search_for_pattern found issue',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'search_for_pattern',
+                    arguments: { pattern: 'helper', code_files_only: true },
+                    // Result mentions a DIFFERENT helper.ts, not the finding's file
+                    result: 'src/other/helper.ts:10: export function helper() {',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // search_for_pattern result mentions different path → NOT supporting evidence
+            expect(result.entries[0]!.actualToolsOnFile).not.toContain(
+                'search_for_pattern'
+            );
+        });
+
         it('does not extract non-investigation tools from evidence text', () => {
             const findings = [
                 createTestFinding({
