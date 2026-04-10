@@ -1,6 +1,11 @@
 import { Log } from '../../loggingService';
 import { INVESTIGATION_TOOLS } from '../../../models/toolConstants';
-import { filterTools } from '../pipelineUtils';
+import {
+    commitPipelinePhaseState,
+    filterTools,
+    runGuardedConversationPhase,
+} from '../pipelineUtils';
+import { emptyStepResult } from '../pipelineTypes';
 import type {
     PipelineContext,
     PipelineStep,
@@ -43,6 +48,11 @@ export function createZeroFindingChallengeStep(): PipelineStep {
                 ? '• You do NOT have direct investigation tools. Use run_subagent_batch to delegate investigation of skipped files to subagents'
                 : '• If you skipped files, investigate them now with get_file_diff and find_symbol';
 
+            const rollbackConversationHistory =
+                context.conversationManager.getHistory();
+            const rollbackFindingSnapshot =
+                context.findingStore.createSnapshot();
+
             context.conversationManager.addUserMessage(
                 `ZERO FINDINGS ALERT — You reviewed ${context.parsedDiff.length} changed files ` +
                     `(investigated ${investigatedCount} via tools) and recorded 0 findings. ` +
@@ -59,38 +69,29 @@ export function createZeroFindingChallengeStep(): PipelineStep {
                 'retract_finding',
             ]);
 
-            await context.conversationRunner.run(
-                {
-                    systemPrompt: context.systemPrompt,
+            const { latestReview, completion } =
+                await runGuardedConversationPhase({
+                    context,
+                    label: 'Zero-Finding Challenge',
                     maxIterations: CHALLENGE_BUDGET,
                     tools,
-                    disabledToolNames: context.disabledToolNames,
-                    label: 'Zero-Finding Challenge',
-                    requiresExplicitCompletion: true,
-                },
-                context.conversationManager,
-                context.executionContext.cancellationToken,
-                context.handler
-            );
+                    rollbackFindingStoreToSnapshot: rollbackFindingSnapshot,
+                    rollbackConversationHistory,
+                });
 
-            const wasCancelled = context.conversationRunner.wasCancelled;
-            const hitMax = context.conversationRunner.hitMaxIterations;
-            let summary: string | undefined;
-
-            if ((wasCancelled || hitMax) && context.findingStore.size === 0) {
-                const reason = wasCancelled
-                    ? 'was cancelled'
-                    : 'hit iteration limit';
-                summary = `Challenge inconclusive: conversation ended without new findings (${reason})`;
+            if (!completion.completed) {
+                const summary = `Challenge incomplete: conversation ${completion.reason}. Original zero-finding state preserved.`;
                 Log.warn(summary);
+                return emptyStepResult({
+                    budgetExhausted: completion.budgetExhausted,
+                    summary,
+                });
             }
 
-            return {
-                findingsDropped: [],
-                findingsDowngraded: [],
-                toolCallRecords: [],
-                summary,
-            };
+            context.rewrittenAnalysis = latestReview;
+            commitPipelinePhaseState(context, latestReview);
+
+            return emptyStepResult();
         },
     };
 }

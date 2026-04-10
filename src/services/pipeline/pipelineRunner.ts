@@ -91,6 +91,7 @@ export async function runPipeline(
             status: 'executed',
             durationMs,
             result,
+            budgetExhausted: result.budgetExhausted,
         });
 
         Log.info(

@@ -118,6 +118,17 @@ interface HandleToolCallsResult {
  * - Manage iteration limits
  * - Validate tokens and clean up context when needed
  */
+export type ExitReason =
+    | 'completion-nudge-exhaustion'
+    | 'response-too-long'
+    | 'context-overflow'
+    | 'conversation-corruption'
+    | 'consecutive-errors'
+    | 'fatal-error'
+    | 'service-unavailable'
+    | 'quota-exhausted'
+    | 'rate-limited';
+
 export class ConversationRunner {
     private tokenValidator: TokenValidator | null = null;
     private currentExecutor!: ToolExecutor;
@@ -125,6 +136,8 @@ export class ConversationRunner {
     private _hitRateLimit = false;
     private _hitQuotaExhausted = false;
     private _wasCancelled = false;
+    private _degraded = false;
+    private _exitReason: ExitReason | undefined;
     private _iterationsUsed = 0;
 
     /** Maximum number of consecutive rate-limit retries before giving up */
@@ -163,6 +176,15 @@ export class ConversationRunner {
         return this._wasCancelled;
     }
 
+    get degraded(): boolean {
+        return this._degraded;
+    }
+
+    /** Machine-readable reason for degraded exit, or undefined if run completed normally. */
+    get exitReason(): ExitReason | undefined {
+        return this._exitReason;
+    }
+
     /** Number of iterations (LLM turns) used in the last run(). */
     get iterationsUsed(): number {
         return this._iterationsUsed;
@@ -187,14 +209,24 @@ export class ConversationRunner {
         let windDownInjected = false;
         let windDownNudged = false;
         let urgentWindDownNudged = false;
+        let explicitCompletionWarned = false;
+        let explicitCompletionUrgent = false;
         const WIND_DOWN_THRESHOLD = 0.85;
         const URGENT_WIND_DOWN_THRESHOLD = 0.92;
+        const EXPLICIT_COMPLETION_WARNING_THRESHOLD = 0.8;
+        const EXPLICIT_COMPLETION_URGENT_THRESHOLD = 0.92;
         const FINAL_BUFFER_ITERATIONS = 2;
         const windDownIteration = Math.floor(
             config.maxIterations * WIND_DOWN_THRESHOLD
         );
         const urgentWindDownIteration = Math.floor(
             config.maxIterations * URGENT_WIND_DOWN_THRESHOLD
+        );
+        const explicitWarningIteration = Math.floor(
+            config.maxIterations * EXPLICIT_COMPLETION_WARNING_THRESHOLD
+        );
+        const explicitUrgentIteration = Math.floor(
+            config.maxIterations * EXPLICIT_COMPLETION_URGENT_THRESHOLD
         );
         // Only buffer multiple final iterations when budget is large enough
         // to justify the overhead (>10 iterations).
@@ -208,6 +240,8 @@ export class ConversationRunner {
         this._hitRateLimit = false;
         this._hitQuotaExhausted = false;
         this._wasCancelled = false;
+        this._degraded = false;
+        this._exitReason = undefined;
         this._iterationsUsed = 0;
         const toolNamesCalled = new Set<string>();
 
@@ -248,6 +282,7 @@ export class ConversationRunner {
                     if (
                         !config.requiresExplicitCompletion &&
                         iteration === windDownIteration &&
+                        windDownIteration !== urgentWindDownIteration &&
                         !windDownNudged
                     ) {
                         windDownNudged = true;
@@ -280,6 +315,44 @@ export class ConversationRunner {
                         );
                         Log.info(
                             `${logPrefix} Urgent wind-down nudge injected at iteration ${iteration}/${config.maxIterations}`
+                        );
+                    }
+
+                    // Budget-awareness nudges for explicit-completion conversations.
+                    // Unlike subagent wind-down, we never remove tools — the LLM
+                    // needs them (e.g. submit_review) to complete its task.
+                    if (
+                        config.requiresExplicitCompletion &&
+                        iteration === explicitWarningIteration &&
+                        explicitWarningIteration !== explicitUrgentIteration &&
+                        !explicitCompletionWarned
+                    ) {
+                        explicitCompletionWarned = true;
+                        const remaining = config.maxIterations - iteration;
+                        conversation.addUserMessage(
+                            `Budget warning: You have used ${iteration} of ${config.maxIterations} iterations (${remaining} remaining). ` +
+                                `Finalize your current work and call submit_review soon to ensure your progress is saved.`
+                        );
+                        Log.info(
+                            `${logPrefix} Explicit-completion budget warning at iteration ${iteration}/${config.maxIterations}`
+                        );
+                    }
+
+                    if (
+                        config.requiresExplicitCompletion &&
+                        iteration === explicitUrgentIteration &&
+                        !explicitCompletionUrgent
+                    ) {
+                        explicitCompletionUrgent = true;
+                        const remaining = config.maxIterations - iteration;
+                        conversation.addUserMessage(
+                            `⚠️ URGENT: Only ${remaining} iteration(s) remaining out of ${config.maxIterations}. ` +
+                                `You MUST call submit_review NOW. If you do not submit before the budget runs out, ` +
+                                `the review phase will be rolled back to the last checkpoint and your analysis in this phase will be discarded. ` +
+                                `Call submit_review immediately with your current results.`
+                        );
+                        Log.info(
+                            `${logPrefix} Explicit-completion urgent warning at iteration ${iteration}/${config.maxIterations}`
                         );
                     }
 
@@ -515,6 +588,9 @@ export class ConversationRunner {
                                 `${logPrefix} Model did not call submit_review after ${MAX_COMPLETION_NUDGES} nudges. Accepting response as final.`
                             );
 
+                            this._degraded = true;
+                            this._exitReason = 'completion-nudge-exhaustion';
+
                             // Try to extract review content from malformed tool call attempts
                             const extractedReview =
                                 extractReviewFromMalformedToolCall(
@@ -617,6 +693,8 @@ export class ConversationRunner {
                         );
                         this._hitQuotaExhausted = true;
                         this._hitRateLimit = true;
+                        this._degraded = true;
+                        this._exitReason = 'quota-exhausted';
                         return (
                             lastSubstantiveResponse ||
                             'Copilot monthly quota exhausted. Please wait for your quota to reset.'
@@ -638,6 +716,8 @@ export class ConversationRunner {
                                 `${logPrefix} Rate limit: exceeded ${ConversationRunner.MAX_RATE_LIMIT_RETRIES} retries, giving up`
                             );
                             this._hitRateLimit = true;
+                            this._degraded = true;
+                            this._exitReason = 'rate-limited';
                             return (
                                 lastSubstantiveResponse ||
                                 'Rate limited by the API after multiple retries. Please try again later.'
@@ -683,6 +763,8 @@ export class ConversationRunner {
                             Log.error(
                                 `${logPrefix} Response too long: exceeded ${ConversationRunner.MAX_RESPONSE_TOO_LONG_RETRIES} retries, giving up`
                             );
+                            this._degraded = true;
+                            this._exitReason = 'response-too-long';
                             return (
                                 lastSubstantiveResponse ||
                                 'The model consistently generated responses that exceeded the maximum length. ' +
@@ -716,6 +798,8 @@ export class ConversationRunner {
                         Log.error(
                             `${logPrefix} Context overflow at iteration ${iteration} — stopping to prevent token spiral`
                         );
+                        this._degraded = true;
+                        this._exitReason = 'context-overflow';
                         return (
                             lastSubstantiveResponse ||
                             "The conversation exceeded the model's context limit. Partial results may be available."
@@ -729,6 +813,8 @@ export class ConversationRunner {
                         Log.error(
                             `${logPrefix} Conversation history corrupted (orphaned tool messages) — stopping`
                         );
+                        this._degraded = true;
+                        this._exitReason = 'conversation-corruption';
                         return (
                             lastSubstantiveResponse ||
                             'The conversation history became corrupted. Partial results may be available.'
@@ -741,6 +827,8 @@ export class ConversationRunner {
                             `${logPrefix} Fatal API error [${fatalError.code}]: ${fatalError.message}`,
                             error
                         );
+                        this._degraded = true;
+                        this._exitReason = 'fatal-error';
                         vscode.window.showErrorMessage(fatalError.message);
                         throw new CopilotApiError(
                             fatalError.message,
@@ -748,14 +836,16 @@ export class ConversationRunner {
                         );
                     }
 
-                    const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${getErrorMessage(error)}`;
-                    Log.error(errorMessage, error);
+                    const llmErrorMessage = `Error in iteration ${iteration}: ${getErrorMessage(error)}`;
+                    Log.error(`${logPrefix} ${llmErrorMessage}`, error);
 
                     // Re-throw service unavailable errors to be handled by caller
                     if (
                         error instanceof Error &&
                         error.message.includes('service unavailable')
                     ) {
+                        this._degraded = true;
+                        this._exitReason = 'service-unavailable';
                         throw error;
                     }
 
@@ -770,6 +860,8 @@ export class ConversationRunner {
                         Log.error(
                             `${logPrefix} ${consecutiveErrors} consecutive errors — stopping to prevent infinite error loop`
                         );
+                        this._degraded = true;
+                        this._exitReason = 'consecutive-errors';
                         return (
                             lastSubstantiveResponse ||
                             `Stopped after ${consecutiveErrors} consecutive errors. Last error: ${getErrorMessage(error)}`
@@ -777,7 +869,7 @@ export class ConversationRunner {
                     }
 
                     conversation.addAssistantMessage(
-                        `I encountered an error: ${errorMessage}. Let me try to continue.`
+                        `I encountered an error: ${llmErrorMessage}. Let me try to continue.`
                     );
 
                     // An error on the final iteration is intentionally treated as max-iterations:
@@ -785,7 +877,7 @@ export class ConversationRunner {
                     // (with partial findings included via the error message).
                     if (iteration >= config.maxIterations) {
                         this._hitMaxIterations = true;
-                        return errorMessage;
+                        return lastSubstantiveResponse || llmErrorMessage;
                     }
                 }
             }
@@ -801,11 +893,6 @@ export class ConversationRunner {
         } finally {
             executionContext.toolExecutor = previousToolExecutor;
         }
-    }
-
-    private isFatalModelError(error: unknown): boolean {
-        const result = this.detectFatalError(error);
-        return result !== null;
     }
 
     /**
@@ -1135,9 +1222,12 @@ export class ConversationRunner {
      */
     reset(): void {
         this.tokenValidator = null;
+        this._iterationsUsed = 0;
         this._hitMaxIterations = false;
         this._hitRateLimit = false;
         this._hitQuotaExhausted = false;
         this._wasCancelled = false;
+        this._degraded = false;
+        this._exitReason = undefined;
     }
 }

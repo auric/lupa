@@ -413,7 +413,11 @@ export class AnalysisEngine implements vscode.Disposable {
                 input.token,
                 handler
             );
-            analysisCompleted = !conversationRunner.wasCancelled;
+            analysisCompleted =
+                !conversationRunner.wasCancelled &&
+                !conversationRunner.hitQuotaExhausted &&
+                !conversationRunner.hitRateLimit &&
+                !conversationRunner.degraded;
             mainAnalysisWasCancelled = conversationRunner.wasCancelled;
             mainAnalysisIterationsUsed = conversationRunner.iterationsUsed;
 
@@ -424,6 +428,7 @@ export class AnalysisEngine implements vscode.Disposable {
                 const pipelineResult = await pipeline.run({
                     findingStore,
                     toolCallRecords,
+                    initialAnalysisText: analysisText,
                     executionContext,
                     parsedDiff,
                     calibrationProfile,
@@ -452,6 +457,17 @@ export class AnalysisEngine implements vscode.Disposable {
                     2
                 );
                 Log.info('Analysis completed successfully');
+            } else if (
+                conversationRunner.hitQuotaExhausted ||
+                conversationRunner.hitRateLimit
+            ) {
+                Log.warn(
+                    'Analysis ended due to API quota or rate limit exhaustion'
+                );
+            } else if (conversationRunner.degraded) {
+                Log.warn(
+                    `Analysis ended in degraded state: ${conversationRunner.exitReason}`
+                );
             } else {
                 Log.info('Analysis was cancelled by user');
             }
@@ -472,6 +488,16 @@ export class AnalysisEngine implements vscode.Disposable {
                     recursiveState.completeAgent('root');
                 } else if (analysisError) {
                     recursiveState.failAgent('root', analysisError);
+                } else if (
+                    conversationRunner.hitQuotaExhausted ||
+                    conversationRunner.hitRateLimit
+                ) {
+                    recursiveState.completeAgent('root');
+                } else if (conversationRunner.degraded) {
+                    recursiveState.failAgent(
+                        'root',
+                        conversationRunner.exitReason ?? 'degraded'
+                    );
                 } else {
                     recursiveState.cancelAgent('root');
                 }

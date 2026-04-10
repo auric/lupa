@@ -4,6 +4,11 @@ import type {
     FindingSeverity,
 } from '../types/findingTypes';
 
+export interface FindingStoreSnapshot {
+    findings: RecordedFinding[];
+    nextId: number;
+}
+
 export class FindingStore {
     private findings = new Map<string, RecordedFinding>();
     private nextId = 1;
@@ -49,6 +54,23 @@ export class FindingStore {
 
     getAll(): RecordedFinding[] {
         return [...this.findings.values()];
+    }
+
+    createSnapshot(): FindingStoreSnapshot {
+        return {
+            findings: structuredClone(this.getAll()),
+            nextId: this.nextId,
+        };
+    }
+
+    restoreSnapshot(snapshot: FindingStoreSnapshot): void {
+        this.findings = new Map(
+            structuredClone(snapshot.findings).map((finding) => [
+                finding.id,
+                finding,
+            ])
+        );
+        this.nextId = snapshot.nextId;
     }
 
     getBySeverity(severity: FindingSeverity): RecordedFinding[] {

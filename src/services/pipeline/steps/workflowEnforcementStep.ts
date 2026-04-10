@@ -1,6 +1,11 @@
 import { Log } from '../../loggingService';
 import { INVESTIGATION_TOOLS } from '../../../models/toolConstants';
-import { filterTools } from '../pipelineUtils';
+import {
+    commitPipelinePhaseState,
+    filterTools,
+    runGuardedConversationPhase,
+} from '../pipelineUtils';
+import { emptyStepResult } from '../pipelineTypes';
 import type {
     PipelineContext,
     PipelineStep,
@@ -75,6 +80,10 @@ export function createWorkflowEnforcementStep(): PipelineStep {
                     `Workflow enforcement: ${workflowGaps.length} gap(s) detected, re-entering for completion`
                 );
                 const findingCount = context.findingStore.size;
+                const rollbackConversationHistory =
+                    context.conversationManager.getHistory();
+                const rollbackFindingSnapshot =
+                    context.findingStore.createSnapshot();
                 context.conversationManager.addUserMessage(
                     `WORKFLOW INCOMPLETE — you recorded ${findingCount} finding(s) but skipped required steps:\n` +
                         workflowGaps.map((g) => `• ${g}`).join('\n') +
@@ -85,42 +94,31 @@ export function createWorkflowEnforcementStep(): PipelineStep {
                     'retract_finding',
                 ]);
 
-                await context.conversationRunner.run(
-                    {
-                        systemPrompt: context.systemPrompt,
+                const { latestReview, completion } =
+                    await runGuardedConversationPhase({
+                        context,
+                        label: 'Workflow Completion',
                         maxIterations: WORKFLOW_BUDGET,
                         tools,
-                        disabledToolNames: context.disabledToolNames,
-                        label: 'Workflow Completion',
-                        requiresExplicitCompletion: true,
-                    },
-                    context.conversationManager,
-                    context.executionContext.cancellationToken,
-                    context.handler
-                );
+                        rollbackFindingStoreToSnapshot: rollbackFindingSnapshot,
+                        rollbackConversationHistory,
+                    });
 
-                const wasCancelled = context.conversationRunner.wasCancelled;
-                const hitMax = context.conversationRunner.hitMaxIterations;
-
-                if (wasCancelled || hitMax) {
-                    const reason = wasCancelled
-                        ? 'was cancelled'
-                        : 'hit iteration limit';
-                    Log.warn(`Workflow enforcement conversation ${reason}`);
-                    return {
-                        findingsDropped: [],
-                        findingsDowngraded: [],
-                        toolCallRecords: [],
-                        summary: `Workflow enforcement incomplete: conversation ${reason}`,
-                    };
+                if (!completion.completed) {
+                    Log.warn(
+                        `Workflow enforcement conversation ${completion.reason}`
+                    );
+                    return emptyStepResult({
+                        budgetExhausted: completion.budgetExhausted,
+                        summary: `Workflow enforcement incomplete: conversation ${completion.reason}. Original review state preserved.`,
+                    });
                 }
+
+                context.rewrittenAnalysis = latestReview;
+                commitPipelinePhaseState(context, latestReview);
             }
 
-            return {
-                findingsDropped: [],
-                findingsDowngraded: [],
-                toolCallRecords: [],
-            };
+            return emptyStepResult();
         },
     };
 }

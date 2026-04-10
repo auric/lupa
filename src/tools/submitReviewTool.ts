@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { isTitleMentionedInText } from '../services/pipeline/pipelineUtils';
 
 /**
  * Explicit completion signal for PR review analysis.
@@ -67,8 +68,8 @@ export class SubmitReviewTool extends BaseTool {
                     .join('\n  ');
                 return toolError(
                     `Review rejected: your reasoning chain has ${confirmed.length} CONFIRMED hypothesis(es) but ZERO recorded findings:\n  ${hypothesisList}\n\n` +
-                        'Confirmed hypotheses must be recorded with record_finding before submitting. ' +
-                        'Either record each confirmed hypothesis as a finding, or call think to re-evaluate and dismiss them.'
+                        'Each confirmed hypothesis must have a corresponding recorded finding. ' +
+                        'Use record_finding to record each confirmed hypothesis as a finding, then call submit_review again.'
                 );
             }
 
@@ -87,13 +88,9 @@ export class SubmitReviewTool extends BaseTool {
 
             // Check if any recorded finding is completely absent from review text
             const missingFindings = findings.filter((f) => {
-                // Check if the finding's title or file is mentioned in the review
-                const titleWords = f.title
-                    .toLowerCase()
-                    .split(/\s+/)
-                    .filter((w) => w.length >= 3);
-                const titleMentioned = titleWords.some((word) =>
-                    reviewLower.includes(word)
+                const titleMentioned = isTitleMentionedInText(
+                    f.title,
+                    reviewLower
                 );
                 const fileMentioned = reviewLower.includes(
                     f.file.toLowerCase()

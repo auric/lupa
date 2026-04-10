@@ -1,5 +1,8 @@
 import { EvidenceAuditor } from '../../evidenceAuditor';
-import { downgradeSeverity } from '../pipelineUtils';
+import {
+    dismissHypothesesForDroppedFinding,
+    downgradeSeverity,
+} from '../pipelineUtils';
 import type {
     PipelineContext,
     PipelineStep,
@@ -35,6 +38,11 @@ export function createEvidenceAuditStep(): PipelineStep {
                 if (entry.verdict === 'drop') {
                     findingsDropped.push(entry.finding.title);
                     context.findingStore.remove(entry.finding.id);
+                    dismissHypothesesForDroppedFinding(
+                        entry.finding.id,
+                        context.executionContext.reasoningChain,
+                        'Finding dropped by evidence audit'
+                    );
                 } else if (entry.verdict === 'downgrade') {
                     const newSeverity = downgradeSeverity(
                         entry.finding.severity

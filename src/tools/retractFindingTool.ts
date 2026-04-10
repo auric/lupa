@@ -36,7 +36,7 @@ export class RetractFindingTool extends BaseTool {
         const existing = store.getById(args.finding_id);
         if (!existing) {
             return toolError(
-                `Finding "${args.finding_id}" not found. Use query or check finding IDs from previous record_finding calls.`
+                `Finding "${args.finding_id}" not found. Check finding IDs from your previous record_finding calls.`
             );
         }
 

@@ -1,9 +1,23 @@
+import { Log } from '../../loggingService';
+import {
+    runSelfReflection,
+    type SelfReflectionResult,
+} from '../../selfReflectionScorer';
+import { emptyStepResult } from '../pipelineTypes';
+import {
+    capturePipelinePhaseState,
+    classifyConversationCompletion,
+    commitPipelinePhaseState,
+    createBufferedHandler,
+    dismissHypothesesForDroppedFinding,
+    restoreConversationHistory,
+    restorePipelinePhaseState,
+} from '../pipelineUtils';
 import type {
-    PipelineStep,
     PipelineContext,
+    PipelineStep,
     PipelineStepResult,
 } from '../pipelineTypes';
-import { runSelfReflection } from '../../selfReflectionScorer';
 
 export function createSelfReflectionStep(): PipelineStep {
     return {
@@ -21,25 +35,75 @@ export function createSelfReflectionStep(): PipelineStep {
         async execute(context: PipelineContext): Promise<PipelineStepResult> {
             context.progressCallback?.('Self-reflection scoring...', 0.75);
 
-            const preReflectionMessageCount =
-                context.conversationManager.getMessageCount();
-
-            const reflectionResult = await runSelfReflection({
-                findingStore: context.findingStore,
-                parsedDiff: context.parsedDiff,
-                calibrationProfile: context.calibrationProfile,
-                conversationManager: context.conversationManager,
-                conversationRunner: context.conversationRunner,
-                systemPrompt: context.systemPrompt,
-                token: context.executionContext.cancellationToken,
-                handler: context.handler,
+            const preReflectionHistory =
+                context.conversationManager.getHistory();
+            const rollbackState = capturePipelinePhaseState(context, {
+                conversationHistory: preReflectionHistory,
+                findingStoreSnapshot: context.findingStore.createSnapshot(),
+                selfReflectionScores: context.selfReflectionScores,
             });
+            const { handler: phaseHandler, flushCompletions } =
+                createBufferedHandler(context.handler);
 
-            context.conversationManager.truncateToMessageCount(
-                preReflectionMessageCount
+            let reflectionResult: SelfReflectionResult;
+            try {
+                reflectionResult = await runSelfReflection({
+                    findingStore: context.findingStore,
+                    parsedDiff: context.parsedDiff,
+                    calibrationProfile: context.calibrationProfile,
+                    conversationManager: context.conversationManager,
+                    conversationRunner: context.conversationRunner,
+                    systemPrompt: context.systemPrompt,
+                    token: context.executionContext.cancellationToken,
+                    handler: phaseHandler,
+                });
+            } catch (error) {
+                restorePipelinePhaseState(context, rollbackState);
+                throw error;
+            }
+
+            const completion = classifyConversationCompletion(
+                context.conversationRunner
+            );
+            if (!completion.completed) {
+                restorePipelinePhaseState(context, rollbackState);
+                Log.warn(
+                    `Self-reflection scoring ${completion.reason} — preserving original self-reflection state`
+                );
+
+                return emptyStepResult({
+                    budgetExhausted: completion.budgetExhausted,
+                    summary: `Self-reflection incomplete: conversation ${completion.reason}. Original self-reflection state preserved.`,
+                });
+            }
+
+            restoreConversationHistory(
+                context.conversationManager,
+                preReflectionHistory
             );
 
-            context.selfReflectionScores = reflectionResult.scores;
+            const kept: typeof reflectionResult.scores = [];
+            for (const score of reflectionResult.scores) {
+                if (context.findingStore.getById(score.findingId)) {
+                    kept.push(score);
+                } else {
+                    dismissHypothesesForDroppedFinding(
+                        score.findingId,
+                        context.executionContext.reasoningChain,
+                        'Finding dropped by self-reflection scoring'
+                    );
+                }
+            }
+            context.selfReflectionScores = kept;
+
+            flushCompletions();
+
+            commitPipelinePhaseState(
+                context,
+                context.rewrittenAnalysis ??
+                    context.lastCommittedReviewText ??
+                    ''
+            );
 
             return {
                 findingsDropped: reflectionResult.dropped,

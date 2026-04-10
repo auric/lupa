@@ -1,5 +1,8 @@
 import type { ToolCallRecord } from '../../types/toolCallTypes';
-import type { FindingStore } from '../../sessions/findingStore';
+import type {
+    FindingStore,
+    FindingStoreSnapshot,
+} from '../../sessions/findingStore';
 import type { ExecutionContext } from '../../types/executionContext';
 import type { DiffHunk } from '../../types/contextTypes';
 import type { ModelCalibrationProfile } from '../../models/modelCalibration';
@@ -32,6 +35,19 @@ export interface PipelineStepResult {
     findingsDowngraded: string[];
     toolCallRecords: ToolCallRecord[];
     summary?: string;
+    /** True when the step could not complete because its conversation budget was exhausted (iteration limit or API quota). */
+    budgetExhausted?: boolean;
+}
+
+export function emptyStepResult(
+    overrides?: Partial<PipelineStepResult>
+): PipelineStepResult {
+    return {
+        findingsDropped: [],
+        findingsDowngraded: [],
+        toolCallRecords: [],
+        ...overrides,
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -52,6 +68,7 @@ export interface StepRecord {
     status: StepStatus;
     durationMs: number;
     result?: PipelineStepResult;
+    budgetExhausted?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +99,9 @@ export interface PipelineContext {
     additionalToolCallRecords: ToolCallRecord[];
     selfReflectionScores: SelfReflectionScore[];
     rewrittenAnalysis: string | undefined;
+    lastCommittedReviewText?: string;
+    lastCommittedFindingStoreSnapshot?: FindingStoreSnapshot;
+    lastCommittedSelfReflectionScores?: SelfReflectionScore[];
 }
 
 // ---------------------------------------------------------------------------

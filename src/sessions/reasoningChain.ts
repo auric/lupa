@@ -46,6 +46,13 @@ export interface ThinkCheckpoint {
     readonly investigationToolCount: number;
 }
 
+export interface ReasoningChainSnapshot {
+    hypotheses: TrackedHypothesis[];
+    checkpoints: ThinkCheckpoint[];
+    nextHypothesisId: number;
+    toolCallsSinceLastCheckpoint: string[];
+}
+
 /**
  * Tools considered "investigation" tools for evidence-aware gating.
  * Used to auto-transition hypotheses (generated→investigating) and count evidence gathering.
@@ -192,6 +199,21 @@ export class ReasoningChain {
         }
     }
 
+    /** Dismiss any hypothesis confirmed by a specific finding that was dropped by the pipeline. */
+    dismissConfirmedForFinding(findingId: string, reason: string): void {
+        for (const h of this.hypotheses) {
+            if (
+                h.status === 'confirmed' &&
+                h.confirmedByFindingId === findingId
+            ) {
+                h.status = 'dismissed';
+                h.lastUpdatedAtCheckpoint = this.getCurrentCheckpointNumber();
+                h.resolutionNote = reason;
+                h.confirmedByFindingId = undefined;
+            }
+        }
+    }
+
     /** Revert a confirmed hypothesis back to investigating (e.g., when finding is retracted) */
     revertToInvestigating(hypothesisId: number, note?: string): void {
         const h = this.hypotheses.find((h) => h.id === hypothesisId);
@@ -225,6 +247,23 @@ export class ReasoningChain {
         return this.hypotheses.filter(
             (h) => h.status === 'generated' || h.status === 'investigating'
         );
+    }
+
+    createSnapshot(): ReasoningChainSnapshot {
+        return structuredClone({
+            hypotheses: this.hypotheses,
+            checkpoints: this.checkpoints,
+            nextHypothesisId: this.nextHypothesisId,
+            toolCallsSinceLastCheckpoint: this.toolCallsSinceLastCheckpoint,
+        });
+    }
+
+    restoreSnapshot(snapshot: ReasoningChainSnapshot): void {
+        const clone = structuredClone(snapshot);
+        this.hypotheses = clone.hypotheses;
+        this.checkpoints = clone.checkpoints;
+        this.nextHypothesisId = clone.nextHypothesisId;
+        this.toolCallsSinceLastCheckpoint = clone.toolCallsSinceLastCheckpoint;
     }
 
     /** Get all tracked hypotheses */

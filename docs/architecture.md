@@ -445,7 +445,7 @@ Subagents enable delegated investigations with isolated context. Each analysis c
 
 ### Subagent Cancellation Model
 
-Each subagent gets its own `CancellationTokenSource` (local variable in `RunSubagentBatchTool.execute()`, never an instance field) to prevent cross-cancellation between parallel subagents. The token is linked to the parent analysis token via `SubagentSessionManager.registerSubagentCancellation()`.
+Each subagent gets its own `CancellationTokenSource` (local variable in `RunSubagentBatchTool.executeSubagent()`, never an instance field) to prevent cross-cancellation between parallel subagents. The token is linked to both the root analysis token via `SubagentSessionManager.getParentCancellationToken()` and the immediate parent's `ExecutionContext.cancellationToken` via local `onCancellationRequested` listeners, both disposed in the `finally` block.
 
 **Initialization order**: `SubagentSessionManager.setParentCancellationToken()` must be called early in the analysis flow (before any tool execution) to ensure subagent cancellation propagation works. See `AnalysisEngine.analyze()` for the pattern.
 

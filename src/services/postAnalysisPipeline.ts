@@ -29,6 +29,7 @@ import {
 export interface PostAnalysisPipelineOptions {
     findingStore: FindingStore;
     toolCallRecords: ToolCallRecord[];
+    initialAnalysisText: string;
     executionContext: ExecutionContext;
     parsedDiff: DiffHunk[];
     calibrationProfile: ModelCalibrationProfile;
@@ -76,15 +77,27 @@ export class PostAnalysisPipeline {
             additionalToolCallRecords: [] as ToolCallRecord[],
             selfReflectionScores: [] as SelfReflectionScore[],
             rewrittenAnalysis: undefined as string | undefined,
+            lastCommittedReviewText: options.initialAnalysisText,
+            lastCommittedFindingStoreSnapshot:
+                options.findingStore.createSnapshot(),
+            lastCommittedSelfReflectionScores: [] as SelfReflectionScore[],
         };
 
         const stepRecords = await runPipeline(steps, context);
+
+        // Defense-in-depth: drop scores for findings no longer in the store.
+        // The rewrite step reconciles the store against the review text (root fix),
+        // but this filter catches any remaining orphaned scores from other steps.
+        const reconciledScores = context.selfReflectionScores.filter(
+            (score) =>
+                context.findingStore.getById(score.findingId) !== undefined
+        );
 
         return {
             droppedTitles: context.droppedTitles,
             rewrittenAnalysis: context.rewrittenAnalysis,
             additionalToolCallRecords: context.additionalToolCallRecords,
-            selfReflectionScores: context.selfReflectionScores,
+            selfReflectionScores: reconciledScores,
             stepRecords,
         };
     }

@@ -2,6 +2,7 @@ import * as z from 'zod';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { SubagentLimits, SubagentErrors } from '../models/toolConstants';
+import type { ExitReason } from '../models/conversationRunner';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
 import type { SubagentResult } from '../types/modelTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
@@ -25,6 +26,19 @@ import * as path from 'path';
 import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { DiffHunk } from '../types/contextTypes';
 
+/**
+ * ExitReason values that indicate a degraded but partially-useful subagent exit.
+ * These preserve partial response text and are returned with status 'degraded'
+ * (not 'failed') so consumers can present partial findings appropriately.
+ */
+const DEGRADED_EXIT_REASONS = new Set<ExitReason>([
+    'completion-nudge-exhaustion',
+    'response-too-long',
+    'context-overflow',
+    'conversation-corruption',
+    'consecutive-errors',
+]);
+
 const MAX_TASK_LABEL_LENGTH = 80;
 const MAX_SUBAGENT_RESPONSE_CHARS = 150_000;
 
@@ -43,6 +57,13 @@ type TaskOutcome =
           result: SubagentResult;
           subagentId: number;
           allocation: TaskAllocation;
+      }
+    | {
+          status: 'degraded';
+          error: string;
+          subagentId: number;
+          allocation: TaskAllocation;
+          result: SubagentResult;
       }
     | {
           status: 'failed';
@@ -318,13 +339,6 @@ RULES:
 
         // Check for parent cancellation — if the parent was cancelled, propagate
         if (context.cancellationToken.isCancellationRequested) {
-            // Update recursive state for any allocations
-            for (const alloc of allocations) {
-                if (recursiveState && alloc.childAgentId) {
-                    // Only cancel agents not already completed/failed by the settled results
-                    // But since parent is cancelled, we rethrow regardless
-                }
-            }
             throw new vscode.CancellationError();
         }
 
@@ -372,8 +386,13 @@ RULES:
         const completedCount = outcomes.filter(
             (o) => o.status === 'completed'
         ).length;
+        const degradedCount = outcomes.filter(
+            (o) => o.status === 'degraded'
+        ).length;
         const resultText = this.formatOutcomes(outcomes, tasks);
-        const header = `## Batch Results: ${completedCount}/${tasks.length} subagents completed\n\n`;
+        const countSuffix =
+            degradedCount > 0 ? ` (${degradedCount} degraded)` : '';
+        const header = `## Batch Results: ${completedCount}/${tasks.length} subagents completed${countSuffix}\n\n`;
 
         return toolSuccess(header + resultText, combinedMetadata);
     }
@@ -396,13 +415,27 @@ RULES:
                 : this.workspaceSettings.getRequestTimeoutSeconds() * 1000;
 
         const cancellationTokenSource = new vscode.CancellationTokenSource();
-        const parentCancellationDisposable =
-            sessionManager.registerSubagentCancellation(
-                cancellationTokenSource
-            );
-        let cancelledByTimeout = false;
-        const timeoutHandle = setTimeout(() => {
-            cancelledByTimeout = true;
+        let cancellationReason: 'parent' | 'timeout' | undefined;
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        const sessionParentCancellationDisposable = sessionManager
+            .getParentCancellationToken()
+            ?.onCancellationRequested(() => {
+                cancellationReason ??= 'parent';
+                if (timeoutHandle) {
+                    clearTimeout(timeoutHandle);
+                }
+                cancellationTokenSource.cancel();
+            });
+        const immediateParentCancellationDisposable =
+            context.cancellationToken.onCancellationRequested(() => {
+                cancellationReason ??= 'parent';
+                if (timeoutHandle) {
+                    clearTimeout(timeoutHandle);
+                }
+                cancellationTokenSource.cancel();
+            });
+        timeoutHandle = setTimeout(() => {
+            cancellationReason ??= 'timeout';
             cancellationTokenSource.cancel();
         }, timeoutMs);
 
@@ -429,6 +462,15 @@ RULES:
 
             clearTimeout(timeoutHandle);
 
+            const timedOut =
+                !result.success &&
+                result.error === 'cancelled' &&
+                cancellationReason === 'timeout' &&
+                !context.cancellationToken.isCancellationRequested;
+            const recursiveStateError = timedOut
+                ? SubagentErrors.timeout(timeoutMs)
+                : result.error;
+
             if (recursiveState && alloc.childAgentId) {
                 const filesExamined = RunSubagentBatchTool.extractFilesExamined(
                     result.toolCalls,
@@ -440,12 +482,14 @@ RULES:
                         [],
                         filesExamined
                     );
-                } else if (result.error === 'cancelled') {
+                } else if (recursiveStateError === 'cancelled') {
                     recursiveState.cancelAgent(alloc.childAgentId);
                 } else if (
-                    result.error === 'max_iterations' ||
-                    result.error === 'rate_limited' ||
-                    result.error === 'quota_exhausted'
+                    timedOut ||
+                    recursiveStateError === 'max_iterations' ||
+                    recursiveStateError === 'rate_limited' ||
+                    recursiveStateError === 'quota_exhausted' ||
+                    DEGRADED_EXIT_REASONS.has(recursiveStateError as ExitReason)
                 ) {
                     recursiveState.completeAgent(
                         alloc.childAgentId,
@@ -455,16 +499,13 @@ RULES:
                 } else {
                     recursiveState.failAgent(
                         alloc.childAgentId,
-                        result.error ?? 'Unknown error'
+                        recursiveStateError ?? 'Unknown error'
                     );
                 }
             }
 
             if (!result.success && result.error === 'cancelled') {
-                if (
-                    cancelledByTimeout &&
-                    !context.cancellationToken.isCancellationRequested
-                ) {
+                if (timedOut) {
                     return {
                         status: 'failed',
                         error: SubagentErrors.timeout(timeoutMs),
@@ -486,7 +527,7 @@ RULES:
                 );
                 const partial = result.response?.trim();
                 return {
-                    status: 'failed',
+                    status: 'degraded',
                     error: partial
                         ? `${msg}\n\nPartial findings:\n${partial}`
                         : msg,
@@ -500,7 +541,7 @@ RULES:
                 const msg = SubagentErrors.rateLimited(result.toolCallsMade);
                 const partial = result.response?.trim();
                 return {
-                    status: 'failed',
+                    status: 'degraded',
                     error: partial
                         ? `${msg}\n\nPartial findings:\n${partial}`
                         : msg,
@@ -514,7 +555,25 @@ RULES:
                 const msg = `Subagent #${alloc.subagentId} stopped: monthly Copilot quota exhausted after ${result.toolCallsMade} tool calls.`;
                 const partial = result.response?.trim();
                 return {
-                    status: 'failed',
+                    status: 'degraded',
+                    error: partial
+                        ? `${msg}\n\nPartial findings:\n${partial}`
+                        : msg,
+                    subagentId: alloc.subagentId,
+                    allocation: alloc,
+                    result,
+                };
+            }
+
+            if (
+                !result.success &&
+                DEGRADED_EXIT_REASONS.has(result.error as ExitReason)
+            ) {
+                const reason = result.error;
+                const msg = `Subagent #${alloc.subagentId} exited in degraded state (${reason}) after ${result.toolCallsMade} tool calls.`;
+                const partial = result.response?.trim();
+                return {
+                    status: 'degraded',
                     error: partial
                         ? `${msg}\n\nPartial findings:\n${partial}`
                         : msg,
@@ -545,6 +604,26 @@ RULES:
         } catch (error) {
             clearTimeout(timeoutHandle);
 
+            // Timeout-induced CancellationError: return as timeout failure, not parent cancellation
+            if (
+                isCancellationError(error) &&
+                cancellationReason === 'timeout' &&
+                !context.cancellationToken.isCancellationRequested
+            ) {
+                if (recursiveState && alloc.childAgentId) {
+                    recursiveState.failAgent(
+                        alloc.childAgentId,
+                        SubagentErrors.timeout(timeoutMs)
+                    );
+                }
+                return {
+                    status: 'failed',
+                    error: SubagentErrors.timeout(timeoutMs),
+                    subagentId: alloc.subagentId,
+                    allocation: alloc,
+                };
+            }
+
             if (recursiveState && alloc.childAgentId) {
                 if (isCancellationError(error)) {
                     recursiveState.cancelAgent(alloc.childAgentId);
@@ -561,7 +640,7 @@ RULES:
             }
 
             if (
-                cancelledByTimeout &&
+                cancellationReason === 'timeout' &&
                 !context.cancellationToken.isCancellationRequested
             ) {
                 return {
@@ -580,7 +659,8 @@ RULES:
                 allocation: alloc,
             };
         } finally {
-            parentCancellationDisposable?.dispose();
+            immediateParentCancellationDisposable.dispose();
+            sessionParentCancellationDisposable?.dispose();
             cancellationTokenSource.dispose();
         }
     }
@@ -618,6 +698,21 @@ RULES:
                     `**Tool calls made:** ${outcome.result.toolCallsMade}\n\n` +
                     `---\n\n`;
                 const response = outcome.result.response;
+                const text = header + response + auditLine;
+                rawParts.push({
+                    text,
+                    truncatable: true,
+                    responseStart: header.length,
+                    responseEnd: header.length + response.length,
+                });
+            } else if (outcome.status === 'degraded') {
+                const audit = buildInvestigationAudit(outcome.result.toolCalls);
+                const auditLine = formatCompactAudit(audit);
+                const header =
+                    `### Subagent #${outcome.subagentId} — DEGRADED (partial results)\n\n` +
+                    `**Tool calls made:** ${outcome.result.toolCallsMade}\n\n` +
+                    `---\n\n`;
+                const response = outcome.error;
                 const text = header + response + auditLine;
                 rawParts.push({
                     text,
@@ -714,10 +809,7 @@ RULES:
                 continue;
             }
 
-            const result =
-                outcome.status === 'completed'
-                    ? outcome.result
-                    : outcome.result;
+            const result = outcome.result;
 
             if (!result) {
                 continue;

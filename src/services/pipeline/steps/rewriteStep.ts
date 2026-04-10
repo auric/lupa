@@ -1,4 +1,10 @@
 import { Log } from '../../loggingService';
+import {
+    commitPipelinePhaseState,
+    reconcileFindingStoreWithReview,
+    runGuardedConversationPhase,
+} from '../pipelineUtils';
+import { emptyStepResult } from '../pipelineTypes';
 import type {
     PipelineStep,
     PipelineContext,
@@ -58,31 +64,71 @@ export function createRewriteStep(): PipelineStep {
             }
             parts.push('Then call submit_review.');
 
+            // Ensure rollback target reflects current finding store
+            // (programmatic steps may have dropped findings since pipeline creation)
+            context.lastCommittedFindingStoreSnapshot =
+                context.findingStore.createSnapshot();
+
+            const rollbackConversationHistory =
+                context.conversationManager.getHistory();
+            const rollbackFindingSnapshot =
+                context.lastCommittedFindingStoreSnapshot;
+
+            const rollbackReviewText = context.lastCommittedReviewText;
+            const rollbackSelfReflectionScores = structuredClone(
+                context.lastCommittedSelfReflectionScores ?? []
+            );
             context.conversationManager.addUserMessage(parts.join(' '));
 
             const rewriteTools = context.availableTools.filter((t) =>
                 REWRITE_ALLOWED_TOOLS.has(t.name)
             );
 
-            context.rewrittenAnalysis = await context.conversationRunner.run(
-                {
-                    systemPrompt: context.systemPrompt,
-                    maxIterations: REWRITE_BUDGET,
-                    tools: rewriteTools,
-                    disabledToolNames: context.disabledToolNames,
-                    label: 'Rewrite Phase',
-                    requiresExplicitCompletion: true,
-                },
-                context.conversationManager,
-                context.executionContext.cancellationToken,
-                context.handler
+            let rewriteResult: string;
+            let completion;
+            try {
+                ({ latestReview: rewriteResult, completion } =
+                    await runGuardedConversationPhase({
+                        context,
+                        label: 'Rewrite Phase',
+                        maxIterations: REWRITE_BUDGET,
+                        tools: rewriteTools,
+                        rollbackFindingStoreToSnapshot: rollbackFindingSnapshot,
+                        rollbackConversationHistory,
+                    }));
+            } catch (error) {
+                context.rewrittenAnalysis = rollbackReviewText;
+                context.selfReflectionScores = rollbackSelfReflectionScores;
+                throw error;
+            }
+
+            if (!completion.completed) {
+                context.rewrittenAnalysis = rollbackReviewText;
+                context.selfReflectionScores = rollbackSelfReflectionScores;
+                Log.warn(
+                    `Rewrite phase ${completion.reason} — preserving original analysis text`
+                );
+                return emptyStepResult({
+                    budgetExhausted: completion.budgetExhausted,
+                    summary: `Rewrite incomplete: conversation ${completion.reason}. Original review preserved.`,
+                });
+            }
+
+            context.rewrittenAnalysis = rewriteResult;
+
+            // Root-cause fix: remove findings the LLM silently omitted
+            // from the store itself, not just from the score list.
+            // Scores are then naturally filtered by the findingStore check
+            // in commitPipelinePhaseState.
+            reconcileFindingStoreWithReview(
+                context.findingStore,
+                rewriteResult,
+                context.executionContext.reasoningChain
             );
 
-            return {
-                findingsDropped: [],
-                findingsDowngraded: [],
-                toolCallRecords: [],
-            };
+            commitPipelinePhaseState(context, rewriteResult);
+
+            return emptyStepResult();
         },
     };
 }

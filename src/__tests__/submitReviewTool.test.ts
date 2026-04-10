@@ -271,6 +271,64 @@ const x = 1;
             expect(result.success).toBe(true);
         });
 
+        it('rejects review when only a single common word from title matches', async () => {
+            const store = createFindingStore({
+                title: 'Memory exhaustion in loop',
+                file: 'src/processor.ts',
+            });
+            const ctx = ctxWithReflection({ findingStore: store });
+
+            // Review incidentally contains "exhaustion" but not enough title words
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'The PR looks good overall. No exhaustion of resources was observed during testing.',
+                },
+                ctx
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Review rejected');
+            expect(result.error).toContain('Memory exhaustion in loop');
+        });
+
+        it('accepts review when at least two title words match', async () => {
+            const store = createFindingStore({
+                title: 'Memory exhaustion in loop',
+                file: 'src/processor.ts',
+            });
+            const ctx = ctxWithReflection({ findingStore: store });
+
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'Found a memory exhaustion issue triggered by an infinite loop in the processor.',
+                },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+        });
+
+        it('accepts single-word title when that word matches', async () => {
+            const store = createFindingStore({
+                title: 'Deadlock',
+                file: 'src/sync.ts',
+            });
+            const ctx = ctxWithReflection({ findingStore: store });
+
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'Found a potential deadlock in the synchronization module.',
+                },
+                ctx
+            );
+
+            // "Deadlock" is the only title word (>= 3 chars), so min(2, 1) = 1
+            expect(result.success).toBe(true);
+        });
+
         it('accepts review that mentions finding file', async () => {
             const store = createFindingStore({
                 title: 'Null dereference in handler',

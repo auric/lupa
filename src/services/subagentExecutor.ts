@@ -521,6 +521,23 @@ export class SubagentExecutor {
                 };
             }
 
+            // Degraded exit: runner encountered non-fatal errors (e.g., context overflow,
+            // conversation corruption) but still returned a response.
+            if (conversationRunner.degraded) {
+                Log.warn(
+                    `${logLabel} Degraded exit (${conversationRunner.exitReason ?? 'unknown'}) at iteration ${currentIteration}/${maxIterations} after ${duration}ms with ${toolCallsMade} tool calls`
+                );
+                return {
+                    success: false,
+                    response,
+                    toolCallsMade,
+                    toolCalls,
+                    executionTimeMs: duration,
+                    iterationsUsed: conversationRunner.iterationsUsed,
+                    error: conversationRunner.exitReason ?? 'unknown',
+                };
+            }
+
             Log.info(
                 `${logLabel} Completed in ${duration}ms (${currentIteration}/${maxIterations} iterations, ${toolCallsMade} tool calls)`
             );
