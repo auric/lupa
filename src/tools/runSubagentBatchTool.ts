@@ -465,7 +465,8 @@ RULES:
             const timedOut =
                 !result.success &&
                 result.error === 'cancelled' &&
-                cancellationReason === 'timeout';
+                cancellationReason === 'timeout' &&
+                !context.cancellationToken.isCancellationRequested;
             const recursiveStateError = timedOut
                 ? SubagentErrors.timeout(timeoutMs)
                 : result.error;
