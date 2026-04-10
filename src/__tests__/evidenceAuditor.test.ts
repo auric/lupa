@@ -1557,7 +1557,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.entries[0]!.reason).toContain('callers');
         });
 
-        it('falls back to checking all find_usages when primaryIdentifier is too short', () => {
+        it('skips caller check when primaryIdentifier is too short to match', () => {
             const findings = [
                 createTestFinding({
                     severity: 'HIGH',
@@ -1590,11 +1590,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
 
             const result = auditor.audit(findings, records);
 
-            // Fallback behavior: when primaryIdentifier is undefined,
-            // ALL find_usages calls are checked — even for unrelated symbols
-            expect(result.weakEvidence).toBe(1);
-            expect(result.entries[0]!.verdict).toBe('weak-evidence');
-            expect(result.entries[0]!.reason).toContain('callers');
+            // When primaryIdentifier is undefined (too short), caller check is skipped entirely
+            expect(result.weakEvidence).toBe(0);
+            expect(result.entries[0]!.verdict).toBe('keep');
         });
     });
 

@@ -39,7 +39,10 @@ const ZERO_REFERENCE_TOOL_NAMES = new Set(['find_usages', 'find_symbol']);
 const FILE_TARGETED_TOOL_NAMES: readonly string[] = [
     ...new Set([
         ...INVESTIGATION_TOOLS.filter(
-            (t) => t !== 'search_for_pattern' && t !== 'batch_tools'
+            (t) =>
+                t !== 'search_for_pattern' &&
+                t !== 'batch_tools' &&
+                t !== 'find_files_by_pattern'
         ),
         ...DIFF_TOOLS,
     ]),
@@ -62,7 +65,7 @@ const NO_CALLERS_PATTERN =
  * Pattern matching findings that claim something about a function's internal behavior.
  */
 const FUNCTION_BEHAVIOR_PATTERN =
-    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!ic)|clos|releas|dispos|clean|clear|free|initializ|init|deserializ|pars|process|encod|decod)\w*\b/;
+    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!ic)|clos|releas|dispos|clean|clear(?!ly)|free(?!z)|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
 
 /**
  * Tool argument keys that reference symbols (not file paths).
@@ -603,18 +606,18 @@ export class EvidenceAuditor {
         const primaryIdentifier = extractPrimaryIdentifier(
             finding.affectedComponent
         );
-        const usageCalls = primaryIdentifier
-            ? allUsageCalls.filter((tc) => {
-                  const symbolArg =
-                      (tc.arguments['symbol_name'] as string | undefined) ??
-                      (tc.arguments['name'] as string | undefined) ??
-                      (tc.arguments['name_path'] as string | undefined);
-                  return (
-                      symbolArg !== undefined &&
-                      symbolArg.includes(primaryIdentifier)
-                  );
-              })
-            : allUsageCalls;
+        if (!primaryIdentifier) {
+            return null;
+        }
+        const usageCalls = allUsageCalls.filter((tc) => {
+            const symbolArg =
+                (tc.arguments['symbol_name'] as string | undefined) ??
+                (tc.arguments['name'] as string | undefined) ??
+                (tc.arguments['name_path'] as string | undefined);
+            return (
+                symbolArg !== undefined && symbolArg.includes(primaryIdentifier)
+            );
+        });
 
         if (usageCalls.length === 0) {
             return null;
