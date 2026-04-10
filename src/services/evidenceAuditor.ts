@@ -58,7 +58,7 @@ const NO_CALLERS_PATTERN =
  * Pattern matching findings that claim something about a function's internal behavior.
  */
 const FUNCTION_BEHAVIOR_PATTERN =
-    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly)\s+(?:handle|check|validate|verify|sanitize|escape|guard|protect|catch|throw|return|log|close|release|dispose|clean|clear|free|initialize|init|deserialize|parse|process|encode|decode)\w*\b/;
+    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log|clos|releas|dispos|clean|clear|free|initializ|init|deserializ|pars|process|encod|decod)\w*\b/;
 
 /**
  * Global search tools that don't target a specific file but may mention
@@ -221,21 +221,7 @@ export class EvidenceAuditor {
             };
         }
 
-        // Step 7: Check claim-vs-output cross-referencing
-        const claimVerdict = this.checkClaimVsOutput(
-            finding,
-            allSupportingCalls
-        );
-        if (claimVerdict) {
-            return {
-                ...claimVerdict,
-                supportingToolCallIds: supportingToolCallIdsAll,
-                claimedTools,
-                actualToolsOnFile,
-            };
-        }
-
-        // Step 8: Pattern-specific evidence checks
+        // Step 7: Pattern-specific evidence checks (run before broad check for better diagnostics)
         const patternVerdict = this.checkPatternSpecificEvidence(
             finding,
             allSupportingCalls
@@ -243,6 +229,20 @@ export class EvidenceAuditor {
         if (patternVerdict) {
             return {
                 ...patternVerdict,
+                supportingToolCallIds: supportingToolCallIdsAll,
+                claimedTools,
+                actualToolsOnFile,
+            };
+        }
+
+        // Step 8: Check claim-vs-output cross-referencing (broad check)
+        const claimVerdict = this.checkClaimVsOutput(
+            finding,
+            allSupportingCalls
+        );
+        if (claimVerdict) {
+            return {
+                ...claimVerdict,
                 supportingToolCallIds: supportingToolCallIdsAll,
                 claimedTools,
                 actualToolsOnFile,
@@ -301,7 +301,9 @@ export class EvidenceAuditor {
         findingFile: string,
         toolCallRecords: ToolCallRecord[]
     ): ToolCallRecord[] {
-        const normalizedTarget = findingFile.replace(/\\/g, '/');
+        const normalizedTarget = findingFile
+            .replace(/\\/g, '/')
+            .replace(/^\.\//, '');
 
         return toolCallRecords.filter((tc) => {
             if (!tc.success || typeof tc.result !== 'string') {
@@ -310,7 +312,9 @@ export class EvidenceAuditor {
             if (tc.toolName !== 'search_for_pattern') {
                 return false;
             }
-            const normalizedResult = tc.result.replace(/\\/g, '/');
+            const normalizedResult = tc.result
+                .replace(/\\/g, '/')
+                .replace(/\.\/(?=\w)/g, '');
             return normalizedResult.includes(normalizedTarget);
         });
     }
@@ -489,10 +493,21 @@ export class EvidenceAuditor {
         }
 
         // Also check tool arguments — if a tool was specifically called with this symbol, it's evidence
-        const inArguments = fileSupportingCalls.some((tc) => {
-            const argStr = JSON.stringify(tc.arguments);
-            return argStr.includes(primaryIdentifier);
-        });
+        const SYMBOL_ARG_KEYS = [
+            'symbol_name',
+            'name',
+            'name_path',
+            'pattern',
+            'query',
+        ];
+        const inArguments = fileSupportingCalls.some((tc) =>
+            SYMBOL_ARG_KEYS.some((key) => {
+                const val = tc.arguments[key];
+                return (
+                    typeof val === 'string' && val.includes(primaryIdentifier)
+                );
+            })
+        );
         if (inArguments) {
             return null;
         }
@@ -569,12 +584,33 @@ export class EvidenceAuditor {
         }
 
         // Check if find_usages was called on this file
-        const usageCalls = fileSupportingCalls.filter(
+        const allUsageCalls = fileSupportingCalls.filter(
             (tc) =>
                 tc.success &&
                 tc.toolName === 'find_usages' &&
                 typeof tc.result === 'string'
         );
+
+        if (allUsageCalls.length === 0) {
+            return null;
+        }
+
+        // Filter to only find_usages calls targeting the claimed symbol
+        const primaryIdentifier = extractPrimaryIdentifier(
+            finding.affectedComponent
+        );
+        const usageCalls = primaryIdentifier
+            ? allUsageCalls.filter((tc) => {
+                  const symbolArg =
+                      (tc.arguments['symbol_name'] as string | undefined) ??
+                      (tc.arguments['name'] as string | undefined) ??
+                      (tc.arguments['name_path'] as string | undefined);
+                  return (
+                      symbolArg !== undefined &&
+                      symbolArg.includes(primaryIdentifier)
+                  );
+              })
+            : allUsageCalls;
 
         if (usageCalls.length === 0) {
             return null;
