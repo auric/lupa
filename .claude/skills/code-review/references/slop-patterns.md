@@ -165,6 +165,67 @@ return temp;
 // Last modified: 2024-01-15
 ```
 
+## Over-Engineering Slop (FLAG)
+
+Patterns especially common with Claude Opus 4.6:
+
+```typescript
+// ❌ Unnecessary try-catch wrapping entire tool execute()
+// ToolExecutor already handles CancellationError, TimeoutError, and generic errors
+async execute(args: Args, context: ExecutionContext): Promise<ToolResult> {
+    try {
+        // ... entire implementation
+    } catch (error) {
+        rethrowIfCancellationOrTimeout(error);
+        return toolError(`Failed: ${error}`);
+    }
+}
+// Just let errors propagate to ToolExecutor
+
+// ❌ Options objects with parameters never used by any caller
+interface DiscoverOptions {
+    maxDepth?: number;         // Always left as default
+    includeHidden?: boolean;   // Never passed by anyone
+    timeout?: number;          // Already handled elsewhere
+}
+
+// ❌ Defensive validation at non-system boundaries
+function processFile(file: ParsedFile): Result {
+    if (!file) throw new Error('file is required');        // Type system guarantees this
+    if (!file.path) throw new Error('path is required');   // Already validated at input
+    // ...
+}
+
+// ❌ Wrapper class that just delegates to the wrapped object
+class GitServiceWrapper {
+    constructor(private git: GitOperationsManager) {}
+    getStatus() { return this.git.getStatus(); }
+    getDiff() { return this.git.getDiff(); }
+    // No added logic, just delegation
+}
+// Just use GitOperationsManager directly
+```
+
+## Verbose Naming Slop (FLAG)
+
+```typescript
+// ❌ Function names that describe implementation steps instead of intent
+function iterateOverFilesAndCollectSymbols() {} // → extractSymbols()
+function parseJsonStringAndValidateSchema() {} // → validateConfig()
+function loopThroughResultsAndFilterValid() {} // → filterValid()
+
+// ❌ Redundant type info in variable names
+const userArray: User[] = []; // → users
+const nameString: string = 'hello'; // → name
+const isActiveBoolean = true; // → isActive
+const countNumber = 0; // → count
+
+// ❌ Over-qualified names
+function createNewInstanceOfAnalysisEngine() {} // → createAnalysisEngine()
+class AbstractBaseToolFactory {} // → ToolFactory
+const currentActiveUserSession = {}; // → session
+```
+
 ## Detection Rules
 
 For each pattern, assess:
@@ -186,3 +247,10 @@ For each pattern, assess:
 | Empty catch blocks    | HIGH     | FLAG (potential bug)   |
 | Copy-paste code       | HIGH     | FLAG (DRY violation)   |
 | Deferred TODOs        | LOW      | FLAG (if no issue ref) |
+| Unnecessary try-catch | MEDIUM   | FLAG                   |
+| Unused options params | LOW      | FLAG                   |
+| Redundant validation  | LOW      | FLAG                   |
+| Delegation wrappers   | MEDIUM   | FLAG                   |
+| Implementation naming | LOW      | FLAG                   |
+| Type-in-name          | LOW      | FLAG                   |
+| Over-qualified names  | LOW      | FLAG                   |

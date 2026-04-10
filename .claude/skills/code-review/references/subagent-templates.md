@@ -2,15 +2,18 @@
 
 Ready-to-use templates for spawning focused subagents. Each subagent handles ONE specific concern.
 
+> **Note**: Each template intentionally duplicates "Key Lupa conventions" because subagents get fresh context and can't reference shared files. When conventions change, update ALL template copies together.
+
 ## Table of Contents
 
 - [File Analyzer](#file-analyzer)
 - [Pattern Finder](#pattern-finder)
 - [Usage Tracer](#usage-tracer)
 - [Security Reviewer](#security-reviewer)
-- [SOLID/DRY Checker](#solid-dry-checker)
+- [SOLID/DRY Checker](#soliddry-checker)
 - [External Research](#external-research)
 - [Slop Detector](#slop-detector)
+- [Test Reviewer](#test-reviewer)
 
 ---
 
@@ -27,17 +30,28 @@ File: {file_path}
 Changes in this file:
 {diff_content}
 
+Key Lupa conventions:
+- ToolExecutor handles errors centrally — tools should NOT have try-catch wrapping entire execute()
+- VS Code APIs return undefined on cancellation, they don't throw CancellationError
+- Use Git root for paths, never workspace folders
+- Use Log from loggingService, not console.log (except webviews)
+- Use toolSuccess()/toolError() for tool return values
+- Prefer `param: string | undefined` over `param?: string`
+
 Investigate:
 1. SECURITY: Auth bypass, injection, secrets, insecure crypto
 2. BUGS: Logic errors, null handling, edge cases, race conditions
 3. TYPESCRIPT: Type safety, proper error handling, async patterns
 4. STYLE: Naming conventions, code organization, readability
+5. CONVENTIONS: ToolExecutor error handling delegation (no unnecessary try-catch in tools),
+   CancellationToken propagation (passed to all long-running ops), path resolution
+   (git root not workspace folder), logging (Log not console.log), toolSuccess/toolError returns
 
 For each finding, return:
 - file: {path}
 - line: {number}
 - severity: CRITICAL|HIGH|MEDIUM|LOW
-- category: security|bug|typescript|style
+- category: security|bug|typescript|style|convention
 - issue: {clear description}
 - suggestion: {specific fix}
 - confidence: HIGH|MEDIUM|LOW
@@ -56,15 +70,24 @@ Search the codebase for existing patterns similar to this new code:
 New implementation: {description_of_new_pattern}
 File: {file_path}
 
+Key Lupa conventions:
+- ToolExecutor handles errors centrally — tools should NOT have try-catch wrapping entire execute()
+- VS Code APIs return undefined on cancellation, they don't throw CancellationError
+- Use Git root for paths, never workspace folders
+- Use Log from loggingService, not console.log (except webviews)
+- Use toolSuccess()/toolError() for tool return values
+- Prefer `param: string | undefined` over `param?: string`
+
 Questions to answer:
 1. Does similar functionality exist elsewhere in the codebase?
 2. Are there utility functions that could be reused?
 3. Is there an established pattern for this type of operation?
 
 Use these tools:
-- search_for_pattern: Find similar implementations
-- find_symbol: Locate existing functions/classes
-- find_files_by_pattern: Discover related files
+- grep_search: Find exact text matches and similar implementations
+- semantic_search: Find conceptually related code by meaning
+- file_search: Discover related files by name/path pattern
+- vscode_listCodeUsages: Trace symbol definitions, references, and implementations
 
 Return:
 - existing_path: {where similar pattern exists}
@@ -86,13 +109,22 @@ Trace usages and impact of changes in:
 File: {file_path}
 Changed symbols: {function_names_or_class_names}
 
+Key Lupa conventions:
+- ToolExecutor handles errors centrally — tools should NOT have try-catch wrapping entire execute()
+- VS Code APIs return undefined on cancellation, they don't throw CancellationError
+- Use Git root for paths, never workspace folders
+- Use Log from loggingService, not console.log (except webviews)
+- Use toolSuccess()/toolError() for tool return values
+- Prefer `param: string | undefined` over `param?: string`
+
 Investigate:
 1. Find all direct callers of modified functions
 2. Check if callers handle new error cases
 3. Identify breaking changes to public APIs
 4. Verify signature changes are reflected in all usages
 
-Use find_usages for each modified symbol.
+Use vscode_listCodeUsages for each modified symbol — provide the symbol name,
+a file where it appears, and a line content substring containing the symbol.
 
 Return for each affected caller:
 - caller_file: {path}
@@ -117,35 +149,47 @@ File: {file_path}
 Changes context:
 {diff_content}
 
+Key Lupa security conventions:
+- Spawned processes (ripgrep, git) must use proper argument escaping — no user input reaching shell
+- CancellationTokens must propagate to all long-running ops to prevent resource exhaustion
+- Use Git root for paths, never workspace folders — prevents path traversal
+- Log via `Log` from loggingService — never log secrets or sensitive data
+- Webviews need CSP headers and postMessage origin validation
+- Tool outputs sent to LLM must not contain secrets or credentials
+
+This is a VS Code extension — focus on extension-specific attack surface.
+
 Security checklist:
-1. AUTHENTICATION
-   - Are credentials properly validated?
-   - Is session handling secure?
-   - Are tokens properly verified?
+1. EXTENSION INPUT VALIDATION
+   - Is untrusted workspace content (file names, git data, LLM output) sanitized before use?
+   - Are command arguments validated before execution?
+   - Are there path traversal vectors via relative paths or symlinks?
+   - Is webview content sanitized (CSP headers, postMessage origin checks)?
 
-2. AUTHORIZATION
-   - Are permissions checked before operations?
-   - Is access control consistently applied?
-   - Can authorization be bypassed?
+2. SECRETS & DATA EXPOSURE
+   - Are any secrets or tokens hardcoded?
+   - Is sensitive data logged via Log or console.log?
+   - Are API keys, auth tokens, or credentials exposed in tool results sent to LLM?
+   - Does error output leak file system paths or internal state?
 
-3. INPUT VALIDATION
-   - Is all user input sanitized?
-   - Are there injection vectors (SQL, command, XSS)?
-   - Are boundaries validated (size, format)?
+3. PROCESS & COMMAND EXECUTION
+   - Are spawned processes (ripgrep, git) invoked with proper argument escaping?
+   - Can user-controlled input reach shell commands?
+   - Are child process timeouts and kill signals handled correctly?
 
-4. SECRETS
-   - Are any secrets hardcoded?
-   - Are API keys exposed?
-   - Is sensitive data logged?
+4. WEBVIEW SECURITY
+   - Is Content Security Policy set and restrictive?
+   - Are postMessage handlers validating message origin and shape?
+   - Is user-generated or LLM-generated content escaped before rendering?
 
-5. ERROR HANDLING
-   - Do errors leak sensitive information?
-   - Are stack traces exposed?
-   - Is failure handling secure?
+5. RESOURCE EXHAUSTION
+   - Can malicious repos trigger unbounded file reads or searches?
+   - Are there missing limits on recursion depth, file count, or response size?
+   - Are CancellationTokens propagated to prevent runaway operations?
 
 If uncertain about security patterns, use:
-- DeepWiki for framework-specific security
-- Tavily for OWASP guidelines
+- DeepWiki (microsoft/vscode) for extension security model
+- Tavily for OWASP and VS Code extension security guidelines
 
 Return:
 - file: {path}
@@ -171,6 +215,14 @@ File: {file_path}
 
 Changes:
 {diff_content}
+
+Key Lupa conventions:
+- ToolExecutor handles errors centrally — tools should NOT have try-catch wrapping entire execute()
+- VS Code APIs return undefined on cancellation, they don't throw CancellationError
+- Use Git root for paths, never workspace folders
+- Use Log from loggingService, not console.log (except webviews)
+- Use toolSuccess()/toolError() for tool return values
+- Prefer `param: string | undefined` over `param?: string`
 
 CHECK EACH PRINCIPLE:
 
@@ -222,6 +274,14 @@ Research external knowledge for:
 Topic: {specific_question}
 Context: {why this is needed}
 
+Key Lupa conventions:
+- ToolExecutor handles errors centrally — tools should NOT have try-catch wrapping entire execute()
+- VS Code APIs return undefined on cancellation, they don't throw CancellationError
+- Use Git root for paths, never workspace folders
+- Use Log from loggingService, not console.log (except webviews)
+- Use toolSuccess()/toolError() for tool return values
+- Prefer `param: string | undefined` over `param?: string`
+
 Research protocol:
 1. FIRST: Try DeepWiki
    - For library questions: ask_question("{repo_path}", "{question}")
@@ -257,6 +317,14 @@ File: {file_path}
 Changes:
 {diff_content}
 
+Key Lupa conventions:
+- ToolExecutor handles errors centrally — tools should NOT have try-catch wrapping entire execute()
+- VS Code APIs return undefined on cancellation, they don't throw CancellationError
+- Use Git root for paths, never workspace folders
+- Use Log from loggingService, not console.log (except webviews)
+- Use toolSuccess()/toolError() for tool return values
+- Prefer `param: string | undefined` over `param?: string`
+
 SCAN FOR:
 
 1. OBVIOUS COMMENTS (for auto-removal)
@@ -289,6 +357,68 @@ Return for each finding:
 - content: {the problematic code}
 - action: AUTO_REMOVE|FLAG
 - reason: {why this is slop}
+```
+
+---
+
+## Test Reviewer
+
+Review test quality and coverage for changed code.
+
+```
+Research only (do not edit files).
+
+Review test quality for:
+File: {file_path}
+Test file: {test_file_path}
+
+Changes:
+{diff_content}
+
+Key Lupa testing conventions:
+- Use shared mock factories from `testUtils/mockFactories.ts` (createMockExecutionContext, etc.)
+- `createMockExecutionContext()` is required for all tool tests — provides cancellationToken
+- Do NOT mock VS Code APIs to throw CancellationError — use pre-cancelled tokens instead
+- Vitest 4: constructor mocks require `function` syntax, not arrow functions
+- Use toolSuccess()/toolError() for tool return values
+- ToolExecutor handles errors centrally — tool tests should verify error propagation, not wrapping
+
+TEST QUALITY CHECKLIST:
+
+1. COVERAGE
+   - Are all new/changed code paths tested?
+   - Are edge cases covered (empty input, boundary values, error paths)?
+   - Are both success and failure scenarios tested?
+
+2. TEST CORRECTNESS
+   - Do assertions actually verify the behavior under test (not just "doesn't throw")?
+   - Are mocks configured correctly — not mocking the thing being tested?
+   - Do tests fail for the right reason when the code is broken?
+
+3. MOCK PATTERNS
+   - Are shared mock factories from testUtils/mockFactories.ts used where applicable?
+   - Is createMockExecutionContext() used for tool tests (provides cancellationToken)?
+   - Are VS Code APIs mocked correctly — returning undefined on cancel, NOT throwing CancellationError?
+   - For cancellation tests: are pre-cancelled tokens used instead of mocking APIs to throw?
+   - Vitest 4: constructor mocks require `function` syntax, not arrow functions
+
+4. ISOLATION
+   - Does each test clean up after itself (no shared mutable state between tests)?
+   - Are timers, file system ops, or network calls properly mocked?
+   - Can tests run in any order without affecting results?
+
+5. NAMING & STRUCTURE
+   - Do test names describe the expected behavior, not the implementation?
+   - Are describe blocks organized logically (by method, scenario, or feature)?
+   - Are test fixtures/helpers extracted to reduce duplication?
+
+Return for each finding:
+- file: {path}
+- line: {number}
+- severity: HIGH|MEDIUM|LOW
+- category: coverage|correctness|mocking|isolation|structure
+- issue: {clear description}
+- suggestion: {specific fix}
 ```
 
 ---

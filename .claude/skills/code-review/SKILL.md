@@ -1,195 +1,207 @@
 ---
 name: code-review
-description: Conduct comprehensive code review of branch changes against main branch using massive parallel subagent orchestration. Use this skill when (1) reviewing code changes on a feature branch, (2) performing security audits on recent changes, (3) checking TypeScript best practices compliance, (4) detecting and removing AI slop (obvious comments, over-abstraction), or (5) finding code duplication opportunities. This skill spawns unlimited parallel subagents for thorough research, uses DeepWiki/Tavily for external knowledge, and applies sequential thinking for deep analysis.
+description: Conduct comprehensive code review of branch changes against main branch using massive parallel subagent orchestration. Use this skill when reviewing code changes on a feature branch, performing security audits, checking TypeScript best practices, detecting AI slop, or finding code duplication. Also use when the user says things like "review my PR", "check my code", "look at the diff", "what do you think of these changes", "review the branch", "code quality check", or any request to examine recent code changes — even casual ones.
 ---
 
 # Code Review
 
-Conduct thorough code reviews using massive parallel subagent orchestration. Each subagent handles ONE focused subtask. No limits on subagent count—spawn as many as needed for comprehensive analysis.
+Conduct thorough code reviews using massive parallel subagent orchestration. This skill is tuned for Lupa — a VS Code extension for PR analysis — where code is primarily written by Claude Opus 4.6 and must be well-understood by humans.
 
 ## Quick Reference
 
-| Phase         | Action                                  | Tools                                  |
-| ------------- | --------------------------------------- | -------------------------------------- |
-| Discovery     | Get changed files, spawn file analyzers | `get_changed_files`, `runSubagent`     |
-| Research      | Find existing patterns, trace usages    | `runSubagent` (parallel)               |
-| Deep Analysis | Verify findings, security review        | `sequentialthinking`, DeepWiki, Tavily |
-| Auto-Fix      | Remove obvious comments                 | `replace_string_in_file`               |
-| Synthesis     | Prioritize, categorize, report          | `sequentialthinking`                   |
+| Phase             | Action                                   | Tools                                  |
+| ----------------- | ---------------------------------------- | -------------------------------------- |
+| Discovery         | Get changed files, assess scope          | `get_changed_files`, `runSubagent`     |
+| File Analysis     | Spawn per-file and per-concern subagents | `runSubagent` (parallel)               |
+| External Research | Verify findings with docs, patterns      | DeepWiki, Tavily, `sequentialthinking` |
+| Synthesis         | Cross-reference, prioritize, deduplicate | `sequentialthinking`                   |
+| Auto-Fix          | Remove obvious comments, verify types    | `replace_string_in_file`, terminal     |
+| Report            | Categorize findings by severity          | —                                      |
+
+## Project Context
+
+Lupa is a TypeScript VS Code extension using tool-calling architecture. Before reviewing, load project conventions from [lupa-conventions.md](references/lupa-conventions.md) — the most common review misses come from ignoring project-specific patterns like centralized error handling in ToolExecutor, CancellationToken semantics, and path resolution via Git root.
+
+Since the code is written by Claude Opus 4.6, the reviewer (also an LLM) shares the same biases as the author. See [claude-patterns.md](references/claude-patterns.md) for patterns to actively watch for — especially over-engineering, unnecessary defensive coding, and confirmation bias.
 
 ## Core Workflow
 
-### Phase 1: Discovery
+### Phase 1: Discovery & Scoping
 
 1. **Get branch diff**: Call `get_changed_files` comparing current branch to main
-2. **Spawn file analyzers**: For EACH changed file, spawn a dedicated subagent
-3. **Spawn pattern researchers**: Parallel subagents to find existing implementations
+2. **Assess scope** and choose strategy:
 
-```
-FOR each changed_file IN diff:
-    spawn_subagent(file_analysis_task(changed_file))
-    spawn_subagent(pattern_research_task(changed_file))
-    spawn_subagent(usage_tracing_task(changed_file))
-```
+| PR Size | Files | Strategy                                                                              |
+| ------- | ----- | ------------------------------------------------------------------------------------- |
+| Small   | 1-10  | Full analysis per file — spawn one subagent per file plus per-concern subagents       |
+| Medium  | 10-30 | Group by directory/module. Prioritize `.ts` files over config/docs                    |
+| Large   | 30+   | Skim-then-deep — quick pass to identify hot spots, then deep-dive critical files only |
 
-### Phase 2: Parallel Research
+3. **Handle edge cases**:
+    - Empty diff → report "no changes found on this branch vs main" and stop
+    - Only config/doc changes → lighter review, skip security analysis
 
-Spawn ALL research subagents simultaneously:
+### Phase 2: Parallel File Analysis
 
-| Subagent Type     | Focus                            | Template                                                                    |
-| ----------------- | -------------------------------- | --------------------------------------------------------------------------- |
-| File Analyzer     | Security, bugs, TypeScript, slop | [subagent-templates.md](references/subagent-templates.md#file-analyzer)     |
-| Pattern Finder    | Existing implementations         | [subagent-templates.md](references/subagent-templates.md#pattern-finder)    |
-| Usage Tracer      | Impact on callers                | [subagent-templates.md](references/subagent-templates.md#usage-tracer)      |
-| Security Reviewer | Auth, injection, secrets         | [subagent-templates.md](references/subagent-templates.md#security-reviewer) |
-| SOLID/DRY Checker | Principle violations             | [subagent-templates.md](references/subagent-templates.md#solid-dry-checker) |
+Spawn one dedicated subagent per changed file. Each subagent gets a focused task and a fresh context window (which is why parallelization matters — no context pollution across files).
 
-**CRITICAL**: Do NOT limit subagent count. Spawn one per file, one per concern, one per research question.
+Before spawning subagents, read the full file content (or at minimum the changed functions/classes with surrounding context) — not just the diff. Diffs alone miss convention violations that require understanding the broader function or class structure. Pass both the diff and relevant file context to each subagent.
 
-### Phase 3: External Research Protocol
+For each file, spawn these subagents simultaneously:
 
-When subagent findings involve unfamiliar patterns:
+| Subagent Type     | Focus                              | Template Reference                                                          |
+| ----------------- | ---------------------------------- | --------------------------------------------------------------------------- |
+| File Analyzer     | Bugs, types, conventions, style    | [subagent-templates.md](references/subagent-templates.md#file-analyzer)     |
+| Pattern Finder    | DRY violations, existing utilities | [subagent-templates.md](references/subagent-templates.md#pattern-finder)    |
+| Usage Tracer      | Impact on callers of changed APIs  | [subagent-templates.md](references/subagent-templates.md#usage-tracer)      |
+| Security Reviewer | Extension-specific vulnerabilities | [subagent-templates.md](references/subagent-templates.md#security-reviewer) |
 
-```
-IF unknown_library_or_api:
-    1. DeepWiki: ask_question(repo_path, specific_question)
-    2. IF insufficient: Tavily search for official docs
+Additional specialized subagents (SOLID/DRY Checker, Slop Detector, Test Reviewer) can be spawned for relevant files — see [subagent-templates.md](references/subagent-templates.md) for the full template list. Spawn Test Reviewer subagents for any changed test files.
 
-IF security_pattern_verification:
-    1. DeepWiki for framework-specific security
-    2. Tavily for OWASP patterns and CVEs
+Don't limit subagent count for small and medium PRs — parallel analysis catches cross-cutting issues that sequential review misses, and each subagent gets a fresh context window. For large PRs (30+ files), focus parallel subagents on high-risk files (new code, security-relevant, complex logic) and use lighter single-subagent analysis for config, documentation, and simple test files.
 
-IF architectural_decision_validation:
-    1. Sequential thinking to analyze implications
-    2. Research best practices via Tavily
-```
+If a subagent fails or returns empty results, log it and continue with others. Missing one file's analysis is better than halting the entire review.
 
-**DeepWiki repos**: `microsoft/vscode`, `vitest-dev/vitest`, `facebook/react`, etc.
+### Phase 3: External Research
 
-### Phase 4: Deep Synthesis
+When subagent findings reference unfamiliar patterns or libraries:
 
-**MANDATORY**: Use sequential thinking before final report.
+- **DeepWiki** for framework questions (e.g., `microsoft/vscode` for extension API, `vitest-dev/vitest` for testing)
+- **Tavily** for recent changes, security advisories, or patterns not in DeepWiki
+- **Sequential thinking** for architectural decisions or complex trade-off analysis
 
-```
-sequential_thinking:
-    1. Aggregate all subagent findings
-    2. Cross-reference with codebase patterns
-    3. Prioritize: branch_changes > codebase_issues
-    4. Validate security findings
-    5. Identify obvious comments for removal
-    6. Formulate recommendations
-```
+Skip external research for findings already well-understood from codebase context — it takes time and not every finding needs verification.
 
-### Phase 5: Auto-Fix
+### Phase 4: Synthesis
 
-Remove obvious comments WITHOUT asking user:
+Use sequential thinking before writing the final report. Aggregating findings across many subagents requires structured reasoning to:
 
-```typescript
-// These patterns trigger auto-removal:
-// increment counter        → REMOVE
-// initialize variable      → REMOVE
-// return result            → REMOVE
-// call function            → REMOVE
-// check if null            → REMOVE
-```
+- Deduplicate findings reported by multiple subagents
+- Cross-reference related issues (e.g., a missing error handler + an untested error path)
+- Promote findings that affect multiple files
+- Ensure branch-change findings are prioritized over pre-existing issues
 
-For each identified comment:
+### Phase 5: Auto-Fix & Verify
 
-1. Call `replace_string_in_file` to remove
-2. Log in final report under "Auto-Fixes Applied"
+Remove obvious comments (the kind that restate the code) without asking — see [slop-patterns.md](references/slop-patterns.md) for the full pattern list. Only auto-remove HIGH confidence, positive impact patterns.
 
-See [slop-patterns.md](references/slop-patterns.md) for complete list.
+**After auto-fixes, run `npm run check-types`** to verify nothing broke. If types fail, revert the offending auto-fix and flag it for manual review instead. This verification step matters because comment removal can occasionally break template literals, JSX, or conditional blocks.
 
 ### Phase 6: Report
 
-Structure findings:
+Structure findings by severity, with file:line references for every item:
 
 ```markdown
 ## Code Review Summary
 
 ### Overview
 
-[Brief description of changes and assessment]
+[Brief assessment: scope of changes, risk level, overall quality]
 
 ### Critical Findings (Block Merge)
 
-- [file:line] SECURITY: {issue}
-- [file:line] BUG: {issue}
+- [file:line] SECURITY/BUG: {issue} — {why this matters}
 
 ### High Priority (Should Fix)
 
-- [findings...]
+- [file:line] {category}: {issue} — {suggestion}
 
 ### Medium Priority (Should Fix Soon)
 
-- [findings...]
+- [file:line] {category}: {issue} — {suggestion}
 
 ### Low Priority (Nice to Have)
 
-- [findings...]
+- [file:line] {category}: {issue} — {suggestion}
 
 ### Code Duplication Opportunities
 
-- {new_pattern} already exists at {existing_path}
+- {new pattern} already exists at {existing path}
 
 ### Auto-Fixes Applied
 
 - Removed {N} obvious comments in {files}
+- Type check: PASSED / FAILED (details)
+
+### Test Coverage Gaps
+
+- {changed behavior} lacks test for {scenario}
 
 ### Recommendations
 
-- [actionable items]
+[Actionable items, ordered by impact]
 ```
 
 ## Quality Detection
 
-### Security (see [security-checklist.md](references/security-checklist.md))
+### Lupa Conventions
 
-- Authentication/authorization bypass
-- Injection vulnerabilities (SQL, command, XSS)
-- Secrets in code
-- Insecure cryptography
-- Missing input validation
+See [lupa-conventions.md](references/lupa-conventions.md) for the full checklist. Key items reviewers most often miss:
+
+- Tools should NOT have try-catch blocks — ToolExecutor handles errors centrally
+- VS Code APIs return `undefined` on cancellation, they don't throw CancellationError
+- Use Git root for path resolution, never workspace folders
+- Use `Log` for logging (except webviews which use `console.log`)
+
+### Security (VS Code Extension Surface)
+
+See [security-checklist.md](references/security-checklist.md). Focus areas:
+
+- Command injection via `child_process` (ripgrep spawning)
+- Path traversal in file operations
+- Secrets leaking into LLM prompts or logs
+- XSS in webview content
+- Prompt injection in tool outputs
 
 ### TypeScript Best Practices
 
-- Prefer `T | undefined` over `T?` for explicit nullability
-- No `any` types without justification
-- Proper error handling (no empty catch blocks)
-- Named constants over magic numbers
-- Async/await over raw promises where appropriate
+See [lupa-conventions.md](references/lupa-conventions.md) for the full list. Most commonly missed in this codebase:
 
-### SOLID Violations
+- Async/await opportunities in newly added tools — check for sequential operations that could be parallelized
+- `any` type sneaking in via third-party library returns
+- Non-exhaustive switch statements on union types
 
-- Single Responsibility: classes/functions doing too much
-- Interface Segregation: large interfaces that should split
-- Dependency Inversion: concrete dependencies instead of abstractions
+### SOLID/DRY Violations
 
-### DRY Violations
+Focus on the principles that surface most in this codebase:
 
-Subagents MUST search for:
+- **Single Responsibility**: Functions/classes doing too much
+- **Dependency Inversion**: Concrete dependencies instead of abstractions
+- **DRY**: Search for existing utilities before flagging — Lupa has shared helpers in `utils/`
 
-- Existing utility functions
-- Patterns already implemented elsewhere
-- Copy-pasted code with variations
+### Test Quality
+
+- Are tests present for changed behavior?
+- Do tests use shared mock factories from `testUtils/mockFactories.ts`?
+- Do constructor mocks use `function` syntax (Vitest 4 requirement)?
+- Do tests avoid mocking VS Code APIs to throw CancellationError (use pre-cancelled tokens instead)?
+
+## AI Self-Review
+
+This code is written by Claude Opus 4.6 and reviewed by an LLM. The reviewer shares the author's biases — see [claude-patterns.md](references/claude-patterns.md) for detection patterns. Key questions for every finding:
+
+1. **Is this abstraction justified?** Or does it just feel "structurally correct"?
+2. **Is this error handling needed?** Given ToolExecutor's centralized handling, most tool try-catch blocks are unnecessary.
+3. **Would a human write this?** Over-verbose naming, excessive JSDoc, factory patterns for single implementations — these are LLM tells.
+4. **What's NOT being caught?** Claude tends to produce structurally perfect code that misses subtle semantic bugs — especially in async/cancellation/state-rollback scenarios.
 
 ## AI Slop Detection
 
-Auto-detect and flag (or auto-remove):
-
-| Category         | Examples                     | Action      |
-| ---------------- | ---------------------------- | ----------- |
-| Obvious Comments | `// increment counter`       | AUTO-REMOVE |
-| Type Restating   | JSDoc that restates types    | FLAG        |
-| Over-Abstraction | Factory for 1 implementation | FLAG        |
-| Magic Values     | Hardcoded strings/numbers    | FLAG        |
-| Vibe-Coding      | `// TODO: fix later`         | FLAG        |
+| Category         | Examples                                | Action      |
+| ---------------- | --------------------------------------- | ----------- |
+| Obvious Comments | `// increment counter`                  | AUTO-REMOVE |
+| Type Restating   | JSDoc that restates types               | FLAG        |
+| Over-Abstraction | Factory for 1 implementation            | FLAG        |
+| Magic Values     | Hardcoded strings/numbers               | FLAG        |
+| Vibe-Coding      | `// TODO: fix later`                    | FLAG        |
+| Over-Defensive   | Try-catch where caller handles errors   | FLAG        |
+| Verbose Naming   | `handleUserDataProcessingAndValidation` | FLAG        |
 
 See [slop-patterns.md](references/slop-patterns.md) for complete detection rules.
 
 ## Subagent Task Format
 
-Every subagent task MUST include:
+Every subagent task should include:
 
 ```
 Research only (do not edit files).
@@ -198,40 +210,28 @@ Research only (do not edit files).
 Context:
 {relevant_changes_or_code}
 
+Key Lupa conventions to check:
+- ToolExecutor handles errors centrally — tools should NOT have try-catch wrapping execute()
+- VS Code APIs return undefined on cancellation, don't throw CancellationError
+- Use Git root for paths, never workspace folders
+- Use Log from loggingService, not console.log (except webviews)
+- Use toolSuccess()/toolError() for return values
+
 Return:
 - file: {path}
 - line: {number}
 - severity: CRITICAL|HIGH|MEDIUM|LOW
-- category: security|bug|style|slop|duplication
+- category: security|bug|style|slop|duplication|convention
 - issue: {description}
 - suggestion: {fix or recommendation}
 ```
 
 See [subagent-templates.md](references/subagent-templates.md) for ready-to-use templates.
 
-## Prioritization Rules
+## Prioritization
 
-1. **Branch changes** > codebase issues not related to changes
-2. **CRITICAL** findings first (security, data loss, crashes)
-3. **Affected callers** of changed functions
-4. **Pattern violations** in new code
-5. **Style issues** last
-
-## Anti-Patterns
-
-NEVER:
-
-- Limit subagent count arbitrarily
-- Skip external research when uncertain
-- Report findings without file:line references
-- Suggest changes to unchanged code without justification
-- Miss obvious comments that should be removed
-- Ignore existing implementations when reporting duplication
-
-ALWAYS:
-
-- Spawn subagent per file, per concern, per research question
-- Use sequential thinking before synthesis
-- Verify security findings with external research
-- Apply auto-fixes for obvious comments
-- Cross-reference with existing codebase patterns
+1. **Branch changes** over pre-existing issues — the goal is reviewing what changed, not auditing the entire repo. Pre-existing issues should only be mentioned when they interact with the changes.
+2. **Critical findings** first — security vulnerabilities, data loss risks, and crashes can't ship. Everything else can be iterated on.
+3. **Convention violations** in new code — these compound over time. Catching them now prevents patterns from spreading.
+4. **Affected callers** of changed functions — ripple effects are easy to miss and cause production issues.
+5. **Style and slop** last — important for maintainability but won't break anything in production.
