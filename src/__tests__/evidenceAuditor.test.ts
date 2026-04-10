@@ -38,7 +38,7 @@ function createTestFinding(
 
 /**
  * Default result includes 'someFunction' to match the default affectedComponent
- * in createTestFinding. This prevents the claim-vs-output check (Step 7) from
+ * in createTestFinding. This prevents the claim-vs-output check from
  * triggering spuriously in tests that don't focus on cross-referencing.
  */
 function createToolCallRecord(
@@ -926,6 +926,11 @@ describe('extractPrimaryIdentifier', () => {
     it('returns undefined for two-char identifier', () => {
         expect(extractPrimaryIdentifier('fn')).toBeUndefined();
     });
+
+    it('returns undefined when last segment after dot split is too short', () => {
+        expect(extractPrimaryIdentifier('Foo.ab')).toBeUndefined();
+        expect(extractPrimaryIdentifier('Module.xy')).toBeUndefined();
+    });
 });
 
 describe('aggregateToolOutputText', () => {
@@ -1545,6 +1550,46 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain('callers');
         });
+
+        it('falls back to checking all find_usages when primaryIdentifier is too short', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'Callers do not handle error return',
+                    affectedComponent: 'fn', // too short for extractPrimaryIdentifier
+                    description:
+                        'The callers of fn ignore the error return value',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function fn() { return new Error("fail"); }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'otherSymbol',
+                    },
+                    result: '0 results found for otherSymbol',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ fn change',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // Fallback behavior: when primaryIdentifier is undefined,
+            // ALL find_usages calls are checked — even for unrelated symbols
+            expect(result.weakEvidence).toBe(1);
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+            expect(result.entries[0]!.reason).toContain('callers');
+        });
     });
 
     describe('function body not read', () => {
@@ -1710,7 +1755,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                     arguments: { file_path: 'src/foo.ts' },
                     result: 'function otherFunc() { return []; }',
                 }),
-                // find_usages mentions someFunction so Step 7 (claim-vs-output) passes
+                // find_usages mentions someFunction so claim-vs-output passes
                 createToolCallRecord({
                     toolName: 'find_usages',
                     arguments: {

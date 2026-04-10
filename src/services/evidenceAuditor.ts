@@ -58,12 +58,19 @@ const NO_CALLERS_PATTERN =
  * Pattern matching findings that claim something about a function's internal behavior.
  */
 const FUNCTION_BEHAVIOR_PATTERN =
-    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log|clos|releas|dispos|clean|clear|free|initializ|init|deserializ|pars|process|encod|decod)\w*\b/;
+    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!ic)|clos|releas|dispos|clean|clear|free|initializ|init|deserializ|pars|process|encod|decod)\w*\b/;
 
 /**
- * Global search tools that don't target a specific file but may mention
- * the finding's file in their results.
+ * Tool argument keys that reference symbols (not file paths).
+ * Used to avoid matching file paths that happen to contain the identifier.
  */
+const SYMBOL_ARG_KEYS = [
+    'symbol_name',
+    'name',
+    'name_path',
+    'pattern',
+    'query',
+] as const;
 
 export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade' | 'weak-evidence';
 
@@ -493,13 +500,6 @@ export class EvidenceAuditor {
         }
 
         // Also check tool arguments — if a tool was specifically called with this symbol, it's evidence
-        const SYMBOL_ARG_KEYS = [
-            'symbol_name',
-            'name',
-            'name_path',
-            'pattern',
-            'query',
-        ];
         const inArguments = fileSupportingCalls.some((tc) =>
             SYMBOL_ARG_KEYS.some((key) => {
                 const val = tc.arguments[key];
