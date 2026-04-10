@@ -715,6 +715,80 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.verdict).not.toBe('drop');
         });
 
+        it('does not drop findings about untested code even with deletion language', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'Removed validation is now untested',
+                    affectedComponent: 'validateInput()',
+                    description:
+                        'The validateInput function was removed but the untested code path remains',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function validateInput() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'validateInput',
+                    },
+                    result: '0 results found',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- validateInput removed',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // "untested" triggers isTestCoverageFinding → deletion safety skipped
+            expect(result.entries[0]!.verdict).not.toBe('drop');
+        });
+
+        it('does not drop findings about test coverage gaps even with deletion language', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'Removed function causes coverage gap',
+                    affectedComponent: 'helperFunc()',
+                    description:
+                        'The deleted helper function leaves a coverage gap in the test suite',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function helperFunc() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'helperFunc',
+                    },
+                    result: '0 results found',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- helperFunc deleted',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // "coverage gap" triggers isTestCoverageFinding → deletion safety skipped
+            expect(result.entries[0]!.verdict).not.toBe('drop');
+        });
+
         it('counts global search_for_pattern results as supporting evidence', () => {
             const findings = [
                 createTestFinding({

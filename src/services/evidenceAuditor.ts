@@ -16,6 +16,11 @@ const DEPTH_THRESHOLD_HIGH = 4;
 const DEPTH_THRESHOLD_MEDIUM = 2;
 const MIN_IDENTIFIER_LENGTH = 3;
 
+/**
+ * Tool argument keys that reference symbols (not file paths).
+ */
+const SYMBOL_ARG_KEYS = ['symbol_name', 'name', 'name_path'] as const;
+
 const DELETION_LANGUAGE_PATTERN =
     /\b(deleted|removed|no longer|was removed|was deleted|dropped|eliminated|got rid of)\b/i;
 
@@ -190,8 +195,7 @@ export class EvidenceAuditor {
         if (claimedTools.length > 0) {
             const fabricated = this.findFabricatedClaims(
                 claimedTools,
-                allSupportingCalls,
-                flatRecords
+                allSupportingCalls
             );
             if (fabricated.length > 0) {
                 const reason = `Fabricated evidence: claimed ${fabricated.join(', ')} but ${fabricated.length === 1 ? 'this tool was' : 'these tools were'} never called on "${finding.file}"`;
@@ -336,12 +340,7 @@ export class EvidenceAuditor {
                     return true;
                 }
                 const nextChar = normalizedResult[afterMatch]!;
-                if (
-                    nextChar === ':' ||
-                    nextChar === ' ' ||
-                    nextChar === '\n' ||
-                    nextChar === '\r'
-                ) {
+                if (/[:, \t\n\r"']/.test(nextChar)) {
                     return true;
                 }
                 searchFrom = idx + 1;
@@ -363,8 +362,7 @@ export class EvidenceAuditor {
      */
     private findFabricatedClaims(
         claimedTools: string[],
-        fileSupportingCalls: ToolCallRecord[],
-        _allToolCallRecords: ToolCallRecord[]
+        fileSupportingCalls: ToolCallRecord[]
     ): string[] {
         // Only check file-targeted tools, not validate_claim/think/etc.
         const fileTargetedClaims = claimedTools.filter((t) =>
@@ -613,11 +611,13 @@ export class EvidenceAuditor {
             return null;
         }
         const usageCalls = allUsageCalls.filter((tc) => {
-            const symbolArg = ['symbol_name', 'name', 'name_path']
-                .map((key) => tc.arguments[key])
-                .find((val): val is string => typeof val === 'string');
+            const symbolArg = SYMBOL_ARG_KEYS.map(
+                (key) => tc.arguments[key]
+            ).find((val): val is string => typeof val === 'string');
             return (
-                symbolArg !== undefined && symbolArg.includes(primaryIdentifier)
+                symbolArg !== undefined &&
+                (symbolArg === primaryIdentifier ||
+                    symbolArg.endsWith('.' + primaryIdentifier))
             );
         });
 
