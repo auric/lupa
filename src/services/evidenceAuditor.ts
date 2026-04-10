@@ -62,7 +62,7 @@ const FILE_TARGETED_TOOL_NAMES: readonly string[] = [
  * Pattern matching findings that claim callers/consumers exist and do/don't do something.
  */
 const CALLER_CLAIM_PATTERN =
-    /\b(?:callers?|call\s*sites?|consumers?|upstream\s+code)\b/;
+    /\b(?:callers?|call[\s-]*sites?|consumers?|upstream\s+code)\b/;
 
 /**
  * Pattern matching findings that explicitly state there are no callers.
@@ -149,13 +149,11 @@ export class EvidenceAuditor {
         flatRecords: ToolCallRecord[],
         depthScores: Map<string, InvestigationDepth>
     ): EvidenceAuditEntry {
-        // Step 1: Find all tool calls that reference the finding's file
         const matchingCalls = this.findToolCallsForFile(
             finding.file,
             flatRecords
         );
 
-        // Step 1b: Also count global search tools whose results mention this file
         const globalSearchCalls = this.findGlobalSearchCallsMentioningFile(
             finding.file,
             flatRecords
@@ -165,7 +163,6 @@ export class EvidenceAuditor {
             ...new Set(allSupportingCalls.map((tc) => tc.id)),
         ];
 
-        // Step 2: Extract tool names claimed in evidence text
         const evidenceText = this.getEvidenceText(finding);
         const claimedTools = extractClaimedToolNames(evidenceText);
 
@@ -173,10 +170,8 @@ export class EvidenceAuditor {
             ...new Set(allSupportingCalls.map((tc) => tc.toolName)),
         ];
 
-        // Step 3: Populate supportingToolCalls on the finding
         finding.supportingToolCalls = supportingToolCallIdsAll;
 
-        // Step 4: Check for deletion safety pattern (proved safe but still reported)
         const deletionVerdict = this.checkDeletionSafety(
             finding,
             allSupportingCalls
@@ -190,7 +185,6 @@ export class EvidenceAuditor {
             };
         }
 
-        // Step 5: Check for fabricated evidence (claims tools never called)
         if (claimedTools.length > 0) {
             const fabricated = this.findFabricatedClaims(
                 claimedTools,
@@ -212,7 +206,6 @@ export class EvidenceAuditor {
             }
         }
 
-        // Step 6: Check investigation depth using scored depth system
         const fileScore = this.getFileDepthScore(finding.file, depthScores);
         const requiredScore = this.getRequiredDepthScore(finding.severity);
 
@@ -231,7 +224,6 @@ export class EvidenceAuditor {
             };
         }
 
-        // Step 7: Pattern-specific evidence checks (run before broad check for better diagnostics)
         const patternVerdict = this.checkPatternSpecificEvidence(
             finding,
             allSupportingCalls
@@ -245,7 +237,6 @@ export class EvidenceAuditor {
             };
         }
 
-        // Step 8: Check claim-vs-output cross-referencing (broad check)
         const claimVerdict = this.checkClaimVsOutput(
             finding,
             allSupportingCalls
@@ -337,7 +328,7 @@ export class EvidenceAuditor {
                 // Left boundary: must be at start or preceded by a path separator/whitespace
                 const leftOk =
                     idx === 0 ||
-                    /[/ \t\n\r"',]/.test(normalizedResult[idx - 1]!);
+                    /[/ \t\n\r"',;>()[\]{}]/.test(normalizedResult[idx - 1]!);
                 if (!leftOk) {
                     searchFrom = idx + 1;
                     continue;
@@ -347,7 +338,7 @@ export class EvidenceAuditor {
                     return true;
                 }
                 const nextChar = normalizedResult[afterMatch]!;
-                if (/[:, \t\n\r"']/.test(nextChar)) {
+                if (/[:, \t\n\r"';)<[\]{}]/.test(nextChar)) {
                     return true;
                 }
                 searchFrom = idx + 1;
@@ -449,7 +440,7 @@ export class EvidenceAuditor {
             return true;
         }
         const text = `${finding.title} ${finding.description}`.toLowerCase();
-        return /\buntested\b|\bcoverage\s*(gap|loss|miss|reduc)|\btests?\s+(remov|delet|drop)|\btest\s+file\s+(remov|delet)/.test(
+        return /\buntested\b|\bcoverage\s+(gap|loss|miss|reduc)|\btests?\s+(remov|delet|drop)|\btest\s+file\s+(remov|delet)/.test(
             text
         );
     }
@@ -458,7 +449,7 @@ export class EvidenceAuditor {
         file: string,
         depthScores: Map<string, InvestigationDepth>
     ): number {
-        const normalized = file.replace(/\\/g, '/');
+        const normalized = normalizeRelativePath(file);
 
         const exact = depthScores.get(normalized);
         if (exact) {
@@ -755,7 +746,7 @@ export function extractClaimedToolNames(text: string): string[] {
         // Match the tool name as a word boundary or followed by ( or space
         // This avoids partial matches like "find_files_by_pattern" matching "find"
         const pattern = new RegExp(
-            `\\b${toolName.replace(/_/g, '[_ ]')}\\b|${toolName.replace(/_/g, '[_ ]')}\\(`,
+            `\\b${toolName.replace(/_/g, '[_ ]')}(?:\\b|\\()`,
             'i'
         );
         if (pattern.test(lowerText)) {

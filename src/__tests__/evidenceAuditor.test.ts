@@ -789,6 +789,44 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.verdict).not.toBe('drop');
         });
 
+        it('drops deletion finding when find_symbol returns zero results', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'someFunction was deleted',
+                    affectedComponent: 'someFunction()',
+                    description: 'someFunction was removed from the codebase',
+                    verificationEvidence:
+                        'Used find_symbol to check for remaining references',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function someFunction() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'someFunction',
+                    },
+                    result: '0 results found',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- function someFunction() { return true; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('drop');
+            expect(result.entries[0]!.reason).toContain('Deletion safety');
+        });
+
         it('counts global search_for_pattern results as supporting evidence', () => {
             const findings = [
                 createTestFinding({
@@ -860,6 +898,30 @@ describe('EvidenceAuditor', () => {
             const result = auditor.audit(findings, records);
 
             // search_for_pattern matched foo.tsx, NOT foo.ts — should NOT count as evidence
+            expect(result.entries[0]!.verdict).toBe('drop');
+        });
+
+        it('rejects search_for_pattern result when finding path is a suffix of another path', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'bar.ts',
+                    affectedComponent: 'someFunction()',
+                    severity: 'HIGH',
+                    verificationEvidence:
+                        'Used search_for_pattern to find usages',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'search_for_pattern',
+                    arguments: { pattern: 'something' },
+                    result: 'foobar.ts:10: const x = something;',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // 'bar.ts' is a suffix of 'foobar.ts' — should NOT match
             expect(result.entries[0]!.verdict).toBe('drop');
         });
 
@@ -1895,6 +1957,45 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             // When primaryIdentifier is undefined (too short), caller check is skipped entirely
             expect(result.weakEvidence).toBe(0);
             expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
+        it('matches find_usages with dotted symbol_name against primary identifier', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'Callers of someFunction pass invalid args',
+                    affectedComponent: 'MyClass.someFunction()',
+                    description:
+                        'The callers of someFunction pass invalid arguments',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'class MyClass { someFunction() { return true; } }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'MyClass.someFunction',
+                    },
+                    result: '0 results found',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ MyClass.someFunction update',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // symbol_name 'MyClass.someFunction' endsWith '.someFunction' → matches
+            expect(result.weakEvidence).toBe(1);
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+            expect(result.entries[0]!.reason).toContain('callers');
         });
     });
 
