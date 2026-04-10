@@ -3,6 +3,8 @@ import {
     EvidenceAuditor,
     extractClaimedToolNames,
     extractFilesFromArgs,
+    extractPrimaryIdentifier,
+    aggregateToolOutputText,
 } from '../services/evidenceAuditor';
 import type { RecordedFinding } from '../types/findingTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
@@ -41,7 +43,7 @@ function createToolCallRecord(
         id: `tc-${Math.random().toString(36).slice(2, 8)}`,
         toolName: 'read_file',
         arguments: { file_path: 'src/foo.ts' },
-        result: 'file contents...',
+        result: 'function someFunction() { return true; }',
         success: true,
         error: undefined,
         durationMs: 50,
@@ -801,5 +803,560 @@ describe('extractFilesFromArgs', () => {
 
     it('returns empty array for args with no file-like keys', () => {
         expect(extractFilesFromArgs({ pattern: 'foo' })).toEqual([]);
+    });
+});
+
+describe('extractPrimaryIdentifier', () => {
+    it('extracts function name from simple identifier', () => {
+        expect(extractPrimaryIdentifier('processOrder')).toBe('processOrder');
+    });
+
+    it('strips trailing parentheses', () => {
+        expect(extractPrimaryIdentifier('handleClick()')).toBe('handleClick');
+    });
+
+    it('extracts last part of dotted path', () => {
+        expect(extractPrimaryIdentifier('MyClass.myMethod')).toBe('myMethod');
+    });
+
+    it('handles dotted path with trailing parens', () => {
+        expect(extractPrimaryIdentifier('OrderService.processOrder()')).toBe(
+            'processOrder'
+        );
+    });
+
+    it('returns undefined for empty/undefined input', () => {
+        expect(extractPrimaryIdentifier(undefined)).toBeUndefined();
+        expect(extractPrimaryIdentifier('')).toBeUndefined();
+    });
+
+    it('returns undefined for single-char identifier', () => {
+        expect(extractPrimaryIdentifier('x')).toBeUndefined();
+    });
+
+    it('handles two-char identifier', () => {
+        expect(extractPrimaryIdentifier('fn')).toBe('fn');
+    });
+});
+
+describe('aggregateToolOutputText', () => {
+    it('concatenates string results from successful calls', () => {
+        const calls = [
+            createToolCallRecord({ result: 'output one' }),
+            createToolCallRecord({ result: 'output two' }),
+        ];
+        const text = aggregateToolOutputText(calls);
+        expect(text).toContain('output one');
+        expect(text).toContain('output two');
+    });
+
+    it('excludes failed calls', () => {
+        const calls = [
+            createToolCallRecord({ result: 'good output', success: true }),
+            createToolCallRecord({
+                result: 'bad output',
+                success: false,
+                error: 'failed',
+            }),
+        ];
+        const text = aggregateToolOutputText(calls);
+        expect(text).toContain('good output');
+        expect(text).not.toContain('bad output');
+    });
+
+    it('excludes non-string results', () => {
+        const calls = [
+            createToolCallRecord({ result: 'text result' }),
+            createToolCallRecord({
+                result: { key: 'value' } as unknown as string,
+            }),
+        ];
+        const text = aggregateToolOutputText(calls);
+        expect(text).toContain('text result');
+        expect(text).not.toContain('key');
+    });
+
+    it('returns empty string when no calls', () => {
+        expect(aggregateToolOutputText([])).toBe('');
+    });
+});
+
+describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
+    const auditor = new EvidenceAuditor();
+
+    it('flags weak-evidence when primary identifier not in any tool output', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'HIGH',
+                affectedComponent: 'processOrder()',
+                description: 'processOrder has a critical bug',
+            }),
+        ];
+        const records = [
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: 'function handleClick() { return null; }',
+            }),
+            createToolCallRecord({
+                toolName: 'find_usages',
+                arguments: {
+                    file_path: 'src/foo.ts',
+                    symbol_name: 'handleClick',
+                },
+                result: '3 references found',
+            }),
+            createToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/foo.ts'] },
+                result: '+ added line\n- removed line',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        expect(result.weakEvidence).toBe(1);
+        expect(result.entries[0]!.verdict).toBe('weak-evidence');
+        expect(result.entries[0]!.reason).toContain('processOrder');
+        expect(result.entries[0]!.reason).toContain(
+            'not found in any tool output'
+        );
+    });
+
+    it('keeps finding when primary identifier IS in tool output', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'HIGH',
+                affectedComponent: 'processOrder()',
+                description: 'processOrder has a critical bug',
+            }),
+        ];
+        const records = [
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: 'export function processOrder(order: Order) { return order.items; }',
+            }),
+            createToolCallRecord({
+                toolName: 'find_usages',
+                arguments: {
+                    file_path: 'src/foo.ts',
+                    symbol_name: 'processOrder',
+                },
+                result: '3 references found',
+            }),
+            createToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/foo.ts'] },
+                result: '+ added line',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        expect(result.kept).toBe(1);
+        expect(result.entries[0]!.verdict).toBe('keep');
+    });
+
+    it('keeps finding when primary identifier found in tool arguments', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'HIGH',
+                affectedComponent: 'handleError()',
+                description: 'handleError does not log',
+            }),
+        ];
+        const records = [
+            createToolCallRecord({
+                toolName: 'find_usages',
+                arguments: {
+                    file_path: 'src/foo.ts',
+                    symbol_name: 'handleError',
+                },
+                result: '2 references found in upstream.ts',
+            }),
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: 'export function handleError(e: Error) { console.log(e); }',
+            }),
+            createToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/foo.ts'] },
+                result: '+ new code here',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        expect(result.entries[0]!.verdict).toBe('keep');
+    });
+
+    it('skips weak-evidence check for LOW severity findings', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'LOW',
+                affectedComponent: 'unusedHelper()',
+                description: 'unusedHelper is not documented',
+            }),
+        ];
+        const records = [
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: 'function other() { return 1; }',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        expect(result.entries[0]!.verdict).toBe('keep');
+    });
+
+    it('skips weak-evidence check when no supporting tool calls', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'MEDIUM',
+                file: 'src/unvisited.ts',
+                affectedComponent: 'missingFunc()',
+                description: 'missingFunc is broken',
+            }),
+        ];
+        const records: ToolCallRecord[] = [];
+
+        const result = auditor.audit(findings, records);
+
+        // No supporting calls → depth downgrade, not weak-evidence
+        expect(result.entries[0]!.verdict).not.toBe('weak-evidence');
+    });
+
+    it('skips weak-evidence check when affectedComponent is too short', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'MEDIUM',
+                affectedComponent: 'fn',
+                description: 'fn is broken',
+            }),
+        ];
+        const records = [
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: 'no matching identifier here',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        // 'fn' is only 2 chars, skip the check
+        expect(result.entries[0]!.verdict).not.toBe('weak-evidence');
+    });
+
+    it('handles dotted affectedComponent — checks last part', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'HIGH',
+                affectedComponent: 'OrderService.processOrder()',
+                description: 'processOrder does not validate',
+            }),
+        ];
+        const records = [
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: 'class OrderService { processOrder(data) { return data; } }',
+            }),
+            createToolCallRecord({
+                toolName: 'find_usages',
+                arguments: {
+                    file_path: 'src/foo.ts',
+                    symbol_name: 'processOrder',
+                },
+                result: '1 reference found',
+            }),
+            createToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/foo.ts'] },
+                result: '+ something',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        // 'processOrder' IS in the read_file output → keep
+        expect(result.entries[0]!.verdict).toBe('keep');
+    });
+});
+
+describe('EvidenceAuditor — pattern-specific checks', () => {
+    const auditor = new EvidenceAuditor();
+
+    describe('caller claim contradiction', () => {
+        it('flags weak-evidence when finding claims callers but find_usages returned zero', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'Callers do not handle error return from someFunction',
+                    affectedComponent: 'someFunction()',
+                    description:
+                        'The callers of someFunction ignore the error return value',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function someFunction() { return new Error("fail"); }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'someFunction',
+                    },
+                    result: '0 results found for someFunction',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ someFunction change',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.weakEvidence).toBe(1);
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+            expect(result.entries[0]!.reason).toContain('callers');
+            expect(result.entries[0]!.reason).toContain('zero results');
+        });
+
+        it('keeps finding when callers mentioned AND find_usages found references', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'Callers do not handle error return from someFunction',
+                    affectedComponent: 'someFunction()',
+                    description:
+                        'The callers of someFunction ignore the error return',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function someFunction() { return new Error("fail"); }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'someFunction',
+                    },
+                    result: '3 references found in caller.ts, handler.ts',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ someFunction updated',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
+        it('skips caller check when finding says "no callers" (valid zero-ref finding)', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'Dead code: no callers for someFunction',
+                    affectedComponent: 'someFunction()',
+                    description:
+                        'someFunction has no callers and can be safely removed',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function someFunction() { return 1; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'someFunction',
+                    },
+                    result: '0 results found',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ someFunction',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // "no callers" is a valid claim supported by zero results — should NOT be weak-evidence
+            expect(result.entries[0]!.verdict).not.toBe('weak-evidence');
+        });
+
+        it('skips caller check for LOW severity', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'LOW',
+                    title: 'Callers ignore return value',
+                    affectedComponent: 'someFunction()',
+                    description: 'someFunction callers ignore the return',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'someFunction',
+                    },
+                    result: '0 results',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
+    });
+
+    describe('function body not read', () => {
+        it('flags weak-evidence when behavior claim but no read_file on file', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'someFunction fails to validate input',
+                    affectedComponent: 'someFunction()',
+                    description:
+                        'someFunction does not validate the input parameter before use',
+                }),
+            ];
+            const records = [
+                // Only find_usages, find_symbol, and diff — no read_file
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'someFunction',
+                    },
+                    result: '2 references found for someFunction',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        name_path: 'someFunction',
+                    },
+                    result: 'Found function someFunction at line 10',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ someFunction() { changed }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.weakEvidence).toBe(1);
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+            expect(result.entries[0]!.reason).toContain('no read_file call');
+        });
+
+        it('flags weak-evidence when behavior claim and read_file lacks function name', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    title: "someFunction doesn't handle errors properly",
+                    affectedComponent: 'someFunction()',
+                    description:
+                        'someFunction does not handle thrown exceptions',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function otherFunc() { try { } catch(e) { } }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'someFunction',
+                    },
+                    result: '3 references found for someFunction',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+            expect(result.entries[0]!.reason).toContain(
+                'function name not found in read_file output'
+            );
+        });
+
+        it('keeps finding when behavior claim and read_file contains function name', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    title: "someFunction doesn't handle errors properly",
+                    affectedComponent: 'someFunction()',
+                    description:
+                        'someFunction does not handle thrown exceptions',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function someFunction() { const x = 1; return x; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
+        it('skips function body check when title has no behavior pattern', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    title: 'Unused import in file',
+                    affectedComponent: 'notInOutput()',
+                    description: 'The import is unused and should be removed',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'import { x } from "y";',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // No behavior pattern match → function body check skipped
+            // But claim-vs-output WILL fire because 'notInOutput' is not in tool output
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+            expect(result.entries[0]!.reason).toContain('notInOutput');
+        });
     });
 });

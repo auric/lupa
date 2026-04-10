@@ -42,11 +42,30 @@ const FILE_TARGETED_TOOL_NAMES: readonly string[] = [
 ];
 
 /**
+ * Pattern matching findings that claim callers/consumers exist and do/don't do something.
+ */
+const CALLER_CLAIM_PATTERN =
+    /\b(?:callers?|call\s*sites?|consumers?|upstream\s+code)\b/i;
+
+/**
+ * Pattern matching findings that explicitly state there are no callers.
+ * Used to exclude "no callers" findings from the caller claim contradiction check.
+ */
+const NO_CALLERS_PATTERN =
+    /\b(?:no|zero|0|unused|dead|orphan)\s+(?:callers?|references?|usages?|consumers?)\b/i;
+
+/**
+ * Pattern matching findings that claim something about a function's internal behavior.
+ */
+const FUNCTION_BEHAVIOR_PATTERN =
+    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no)\s+(?:handle|check|validate|verify|sanitize|escape|guard|protect|catch|throw|return|log|close|release|dispose|clean|clear|free|initialize|init)\b/i;
+
+/**
  * Global search tools that don't target a specific file but may mention
  * the finding's file in their results.
  */
 
-export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade';
+export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade' | 'weak-evidence';
 
 export interface EvidenceAuditEntry {
     finding: RecordedFinding;
@@ -61,6 +80,7 @@ export interface EvidenceAuditResult {
     entries: EvidenceAuditEntry[];
     dropped: number;
     downgraded: number;
+    weakEvidence: number;
     kept: number;
 }
 
@@ -100,12 +120,15 @@ export class EvidenceAuditor {
             (e) => e.verdict === 'downgrade'
         ).length;
         const kept = entries.filter((e) => e.verdict === 'keep').length;
+        const weakEvidence = entries.filter(
+            (e) => e.verdict === 'weak-evidence'
+        ).length;
 
         Log.info(
-            `EvidenceAuditor: ${kept} kept, ${downgraded} downgraded, ${dropped} dropped out of ${findings.length} findings`
+            `EvidenceAuditor: ${kept} kept, ${downgraded} downgraded, ${weakEvidence} weak-evidence, ${dropped} dropped out of ${findings.length} findings`
         );
 
-        return { entries, dropped, downgraded, kept };
+        return { entries, dropped, downgraded, weakEvidence, kept };
     }
 
     private auditFinding(
@@ -192,6 +215,34 @@ export class EvidenceAuditor {
                 finding,
                 verdict: 'downgrade',
                 reason,
+                supportingToolCallIds: supportingToolCallIdsAll,
+                claimedTools,
+                actualToolsOnFile,
+            };
+        }
+
+        // Step 7: Check claim-vs-output cross-referencing
+        const claimVerdict = this.checkClaimVsOutput(
+            finding,
+            allSupportingCalls
+        );
+        if (claimVerdict) {
+            return {
+                ...claimVerdict,
+                supportingToolCallIds: supportingToolCallIdsAll,
+                claimedTools,
+                actualToolsOnFile,
+            };
+        }
+
+        // Step 8: Pattern-specific evidence checks
+        const patternVerdict = this.checkPatternSpecificEvidence(
+            finding,
+            allSupportingCalls
+        );
+        if (patternVerdict) {
+            return {
+                ...patternVerdict,
                 supportingToolCallIds: supportingToolCallIdsAll,
                 claimedTools,
                 actualToolsOnFile,
@@ -395,6 +446,213 @@ export class EvidenceAuditor {
         }
     }
 
+    /**
+     * Cross-reference identifiers mentioned in the finding against actual tool output text.
+     * If the finding's primary identifier (from affectedComponent) doesn't appear in any
+     * tool output for the file, the evidence is weak — the model may have fabricated the conclusion.
+     *
+     * Only runs for MEDIUM+ severity findings that have supporting tool calls.
+     * Conservative: only flags when the primary identifier is clearly absent.
+     */
+    private checkClaimVsOutput(
+        finding: RecordedFinding,
+        fileSupportingCalls: ToolCallRecord[]
+    ): Pick<EvidenceAuditEntry, 'finding' | 'verdict' | 'reason'> | null {
+        // Only check MEDIUM+ severity — LOW findings are too noisy
+        if (finding.severity === 'LOW') {
+            return null;
+        }
+
+        // Must have supporting tool calls (tools were called on this file)
+        if (fileSupportingCalls.length === 0) {
+            return null;
+        }
+
+        // Extract the primary identifier from affectedComponent
+        const primaryIdentifier = extractPrimaryIdentifier(
+            finding.affectedComponent
+        );
+        if (!primaryIdentifier || primaryIdentifier.length < 3) {
+            return null;
+        }
+
+        // Aggregate all tool output text from supporting calls
+        const outputText = aggregateToolOutputText(fileSupportingCalls);
+        if (outputText.length === 0) {
+            return null;
+        }
+
+        // Check if the primary identifier appears in any tool output
+        if (outputText.includes(primaryIdentifier)) {
+            return null;
+        }
+
+        // Also check tool arguments — if a tool was specifically called with this symbol, it's evidence
+        const inArguments = fileSupportingCalls.some((tc) => {
+            const argStr = JSON.stringify(tc.arguments);
+            return argStr.includes(primaryIdentifier);
+        });
+        if (inArguments) {
+            return null;
+        }
+
+        const reason = `Weak evidence: claimed symbol "${primaryIdentifier}" not found in any tool output for "${finding.file}"`;
+        Log.info(
+            `EvidenceAuditor WEAK-EVIDENCE [${finding.id}] "${finding.title}": ${reason}`
+        );
+        return { finding, verdict: 'weak-evidence', reason };
+    }
+
+    /**
+     * Pattern-specific evidence checks for common false positive patterns.
+     * Each check targets a specific claim type and verifies the tool output supports it.
+     */
+    private checkPatternSpecificEvidence(
+        finding: RecordedFinding,
+        fileSupportingCalls: ToolCallRecord[]
+    ): Pick<EvidenceAuditEntry, 'finding' | 'verdict' | 'reason'> | null {
+        // Only check MEDIUM+ severity
+        if (finding.severity === 'LOW') {
+            return null;
+        }
+
+        const text = `${finding.title} ${finding.description}`.toLowerCase();
+
+        // Pattern 1: Finding claims callers exist/mishandle something,
+        // but find_usages returned zero results
+        const callerVerdict = this.checkCallerClaimContradiction(
+            finding,
+            text,
+            fileSupportingCalls
+        );
+        if (callerVerdict) {
+            return callerVerdict;
+        }
+
+        // Pattern 2: Finding claims about internal function behavior
+        // but no read_file output contains the function name
+        const bodyVerdict = this.checkFunctionBodyNotRead(
+            finding,
+            text,
+            fileSupportingCalls
+        );
+        if (bodyVerdict) {
+            return bodyVerdict;
+        }
+
+        return null;
+    }
+
+    /**
+     * Detects contradiction: finding claims callers exist and mishandle something,
+     * but find_usages actually returned zero results.
+     *
+     * Examples of claims this catches:
+     * - "Callers don't handle the error return"
+     * - "Call sites ignore the null case"
+     * - "Consumers pass invalid arguments"
+     */
+    private checkCallerClaimContradiction(
+        finding: RecordedFinding,
+        lowerText: string,
+        fileSupportingCalls: ToolCallRecord[]
+    ): Pick<EvidenceAuditEntry, 'finding' | 'verdict' | 'reason'> | null {
+        // Check if finding mentions callers/consumers
+        if (!CALLER_CLAIM_PATTERN.test(lowerText)) {
+            return null;
+        }
+
+        // If the finding explicitly says "no callers"/"unused", that's a different claim — skip
+        if (NO_CALLERS_PATTERN.test(lowerText)) {
+            return null;
+        }
+
+        // Check if find_usages was called on this file
+        const usageCalls = fileSupportingCalls.filter(
+            (tc) =>
+                tc.success &&
+                tc.toolName === 'find_usages' &&
+                typeof tc.result === 'string'
+        );
+
+        if (usageCalls.length === 0) {
+            return null;
+        }
+
+        // Check if ALL find_usages calls returned zero results
+        const allZero = usageCalls.every((tc) =>
+            ZERO_REFERENCE_PATTERNS.some((pattern) =>
+                pattern.test(tc.result as string)
+            )
+        );
+
+        if (!allZero) {
+            return null;
+        }
+
+        const reason =
+            'Weak evidence: finding claims callers/consumers exist, but find_usages returned zero results';
+        Log.info(
+            `EvidenceAuditor WEAK-EVIDENCE [${finding.id}] "${finding.title}": ${reason}`
+        );
+        return { finding, verdict: 'weak-evidence', reason };
+    }
+
+    /**
+     * Detects unsupported function behavior claims: finding claims something about
+     * a function's internal behavior but no read_file output for the file
+     * contains the function name, suggesting the function body was never actually read.
+     */
+    private checkFunctionBodyNotRead(
+        finding: RecordedFinding,
+        lowerText: string,
+        fileSupportingCalls: ToolCallRecord[]
+    ): Pick<EvidenceAuditEntry, 'finding' | 'verdict' | 'reason'> | null {
+        // Check if finding makes a claim about internal function behavior
+        if (!FUNCTION_BEHAVIOR_PATTERN.test(lowerText)) {
+            return null;
+        }
+
+        // Extract the function name from affectedComponent
+        const funcName = extractPrimaryIdentifier(finding.affectedComponent);
+        if (!funcName || funcName.length < 3) {
+            return null;
+        }
+
+        // Check read_file calls specifically (not find_usages, search, etc.)
+        const readFileCalls = fileSupportingCalls.filter(
+            (tc) =>
+                tc.success &&
+                tc.toolName === 'read_file' &&
+                typeof tc.result === 'string'
+        );
+
+        // If no read_file calls on this file at all, the function body wasn't read
+        if (readFileCalls.length === 0) {
+            const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but no read_file call was made on "${finding.file}"`;
+            Log.info(
+                `EvidenceAuditor WEAK-EVIDENCE [${finding.id}] "${finding.title}": ${reason}`
+            );
+            return { finding, verdict: 'weak-evidence', reason };
+        }
+
+        // If read_file was called but output doesn't contain the function name,
+        // the function body wasn't actually shown
+        const funcInOutput = readFileCalls.some((tc) =>
+            (tc.result as string).includes(funcName)
+        );
+
+        if (!funcInOutput) {
+            const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but function name not found in read_file output`;
+            Log.info(
+                `EvidenceAuditor WEAK-EVIDENCE [${finding.id}] "${finding.title}": ${reason}`
+            );
+            return { finding, verdict: 'weak-evidence', reason };
+        }
+
+        return null;
+    }
+
     private getEvidenceText(finding: RecordedFinding): string {
         const parts: string[] = [finding.description];
         if (finding.verificationEvidence) {
@@ -440,6 +698,42 @@ export function extractClaimedToolNames(text: string): string[] {
     }
 
     return found;
+}
+
+/**
+ * Extract the primary identifier from the affectedComponent field.
+ * Strips trailing parentheses, splits by dots, and returns the last (most specific) part.
+ * Returns undefined if the input is empty or the result is too short.
+ */
+export function extractPrimaryIdentifier(
+    affectedComponent: string | undefined
+): string | undefined {
+    if (!affectedComponent) {
+        return undefined;
+    }
+
+    // Strip trailing () and whitespace
+    const cleaned = affectedComponent.replace(/\(\)$/, '').trim();
+    if (cleaned.length < 2) {
+        return undefined;
+    }
+
+    // Split by dots and take the last part (most specific symbol)
+    const parts = cleaned.split('.');
+    const last = parts[parts.length - 1]!;
+
+    return last.length >= 2 ? last : cleaned;
+}
+
+/**
+ * Aggregate tool output text from a set of tool call records.
+ * Only includes string results from successful calls.
+ */
+export function aggregateToolOutputText(toolCalls: ToolCallRecord[]): string {
+    return toolCalls
+        .filter((tc) => tc.success && typeof tc.result === 'string')
+        .map((tc) => tc.result as string)
+        .join('\n');
 }
 
 /**

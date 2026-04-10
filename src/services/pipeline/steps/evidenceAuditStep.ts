@@ -43,7 +43,10 @@ export function createEvidenceAuditStep(): PipelineStep {
                         context.executionContext.reasoningChain,
                         'Finding dropped by evidence audit'
                     );
-                } else if (entry.verdict === 'downgrade') {
+                } else if (
+                    entry.verdict === 'downgrade' ||
+                    entry.verdict === 'weak-evidence'
+                ) {
                     const newSeverity = downgradeSeverity(
                         entry.finding.severity
                     );
