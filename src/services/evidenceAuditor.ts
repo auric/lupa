@@ -37,8 +37,12 @@ const ZERO_REFERENCE_TOOL_NAMES = new Set(['find_usages', 'find_symbol']);
  * and global tools (search_for_pattern) that don't target a single file.
  */
 const FILE_TARGETED_TOOL_NAMES: readonly string[] = [
-    ...INVESTIGATION_TOOLS.filter((t) => t !== 'search_for_pattern'),
-    ...DIFF_TOOLS,
+    ...new Set([
+        ...INVESTIGATION_TOOLS.filter(
+            (t) => t !== 'search_for_pattern' && t !== 'batch_tools'
+        ),
+        ...DIFF_TOOLS,
+    ]),
 ];
 
 /**
@@ -58,7 +62,7 @@ const NO_CALLERS_PATTERN =
  * Pattern matching findings that claim something about a function's internal behavior.
  */
 const FUNCTION_BEHAVIOR_PATTERN =
-    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!ic)|clos|releas|dispos|clean|clear|free|initializ|init|deserializ|pars|process|encod|decod)\w*\b/;
+    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!ic)|clos|releas|dispos|clean|clear|free|initializ|init|deserializ|pars|process|encod|decod)\w*\b/;
 
 /**
  * Tool argument keys that reference symbols (not file paths).
@@ -701,7 +705,7 @@ export class EvidenceAuditor {
     }
 
     private getEvidenceText(finding: RecordedFinding): string {
-        const parts: string[] = [finding.description];
+        const parts: string[] = [finding.title, finding.description];
         if (finding.verificationEvidence) {
             parts.push(finding.verificationEvidence);
         }

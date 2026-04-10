@@ -867,6 +867,12 @@ describe('extractFilesFromArgs', () => {
         ).toEqual(['src/components']);
     });
 
+    it('handles path argument', () => {
+        expect(extractFilesFromArgs({ path: 'src/components' })).toEqual([
+            'src/components',
+        ]);
+    });
+
     it('ignores "." as relative_path', () => {
         expect(extractFilesFromArgs({ relative_path: '.' })).toEqual([]);
     });
