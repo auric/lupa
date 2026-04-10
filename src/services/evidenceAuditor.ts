@@ -45,20 +45,20 @@ const FILE_TARGETED_TOOL_NAMES: readonly string[] = [
  * Pattern matching findings that claim callers/consumers exist and do/don't do something.
  */
 const CALLER_CLAIM_PATTERN =
-    /\b(?:callers?|call\s*sites?|consumers?|upstream\s+code)\b/i;
+    /\b(?:callers?|call\s*sites?|consumers?|upstream\s+code)\b/;
 
 /**
  * Pattern matching findings that explicitly state there are no callers.
  * Used to exclude "no callers" findings from the caller claim contradiction check.
  */
 const NO_CALLERS_PATTERN =
-    /\b(?:no|zero|0|unused|dead|orphan)\s+(?:callers?|references?|usages?|consumers?)\b/i;
+    /\b(?:no|zero|0|unused|dead|orphan)\s+(?:callers?|references?|usages?|consumers?)\b/;
 
 /**
  * Pattern matching findings that claim something about a function's internal behavior.
  */
 const FUNCTION_BEHAVIOR_PATTERN =
-    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no)\s+(?:handle|check|validate|verify|sanitize|escape|guard|protect|catch|throw|return|log|close|release|dispose|clean|clear|free|initialize|init)\b/i;
+    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly)\s+(?:handle|check|validate|verify|sanitize|escape|guard|protect|catch|throw|return|log|close|release|dispose|clean|clear|free|initialize|init|deserialize|parse|process|encode|decode)\b/;
 
 /**
  * Global search tools that don't target a specific file but may mention
@@ -619,7 +619,7 @@ export class EvidenceAuditor {
             return null;
         }
 
-        // Check read_file calls specifically (not find_usages, search, etc.)
+        // Check read_file calls specifically (primary source for function body)
         const readFileCalls = fileSupportingCalls.filter(
             (tc) =>
                 tc.success &&
@@ -627,30 +627,40 @@ export class EvidenceAuditor {
                 typeof tc.result === 'string'
         );
 
-        // If no read_file calls on this file at all, the function body wasn't read
-        if (readFileCalls.length === 0) {
-            const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but no read_file call was made on "${finding.file}"`;
-            Log.info(
-                `EvidenceAuditor WEAK-EVIDENCE [${finding.id}] "${finding.title}": ${reason}`
-            );
-            return { finding, verdict: 'weak-evidence', reason };
-        }
+        // Also check get_file_diff — diffs can show the function implementation
+        const diffCalls = fileSupportingCalls.filter(
+            (tc) =>
+                tc.success &&
+                tc.toolName === 'get_file_diff' &&
+                typeof tc.result === 'string'
+        );
 
-        // If read_file was called but output doesn't contain the function name,
-        // the function body wasn't actually shown
-        const funcInOutput = readFileCalls.some((tc) =>
+        // Function name must appear in at least one read_file or get_file_diff output
+        const funcInReadFile = readFileCalls.some((tc) =>
+            (tc.result as string).includes(funcName)
+        );
+        const funcInDiff = diffCalls.some((tc) =>
             (tc.result as string).includes(funcName)
         );
 
-        if (!funcInOutput) {
-            const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but function name not found in read_file output`;
+        if (funcInReadFile || funcInDiff) {
+            return null;
+        }
+
+        // No tool output shows the function body
+        if (readFileCalls.length === 0 && diffCalls.length === 0) {
+            const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but no read_file or get_file_diff call was made on "${finding.file}"`;
             Log.info(
                 `EvidenceAuditor WEAK-EVIDENCE [${finding.id}] "${finding.title}": ${reason}`
             );
             return { finding, verdict: 'weak-evidence', reason };
         }
 
-        return null;
+        const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but function name not found in read_file or diff output`;
+        Log.info(
+            `EvidenceAuditor WEAK-EVIDENCE [${finding.id}] "${finding.title}": ${reason}`
+        );
+        return { finding, verdict: 'weak-evidence', reason };
     }
 
     private getEvidenceText(finding: RecordedFinding): string {
@@ -712,8 +722,8 @@ export function extractPrimaryIdentifier(
         return undefined;
     }
 
-    // Strip trailing () and whitespace
-    const cleaned = affectedComponent.replace(/\(\)$/, '').trim();
+    // Strip trailing parenthesized content (handles both () and (args))
+    const cleaned = affectedComponent.replace(/\(.*\)$/, '').trim();
     if (cleaned.length < 2) {
         return undefined;
     }
@@ -722,7 +732,9 @@ export function extractPrimaryIdentifier(
     const parts = cleaned.split('.');
     const last = parts[parts.length - 1]!;
 
-    return last.length >= 2 ? last : cleaned;
+    // If the last part is too short, skip the check rather than
+    // searching for the full dotted string (which includes a literal dot)
+    return last.length >= 2 ? last : undefined;
 }
 
 /**

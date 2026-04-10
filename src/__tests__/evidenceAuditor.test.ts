@@ -36,6 +36,11 @@ function createTestFinding(
     };
 }
 
+/**
+ * Default result includes 'someFunction' to match the default affectedComponent
+ * in createTestFinding. This prevents the claim-vs-output check (Step 7) from
+ * triggering spuriously in tests that don't focus on cross-referencing.
+ */
 function createToolCallRecord(
     overrides: Partial<ToolCallRecord> = {}
 ): ToolCallRecord {
@@ -815,6 +820,16 @@ describe('extractPrimaryIdentifier', () => {
         expect(extractPrimaryIdentifier('handleClick()')).toBe('handleClick');
     });
 
+    it('strips trailing parentheses with arguments', () => {
+        expect(extractPrimaryIdentifier('processOrder(order)')).toBe(
+            'processOrder'
+        );
+    });
+
+    it('returns undefined when last dotted part is single char', () => {
+        expect(extractPrimaryIdentifier('A.x')).toBeUndefined();
+    });
+
     it('extracts last part of dotted path', () => {
         expect(extractPrimaryIdentifier('MyClass.myMethod')).toBe('myMethod');
     });
@@ -1052,6 +1067,40 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
         expect(result.entries[0]!.verdict).not.toBe('weak-evidence');
     });
 
+    it('skips check when all tool outputs are non-string', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'HIGH',
+                affectedComponent: 'notInOutput()',
+                description: 'notInOutput has an issue',
+            }),
+        ];
+        const records = [
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: { structured: 'data' } as unknown as string,
+            }),
+            createToolCallRecord({
+                toolName: 'find_usages',
+                arguments: { file_path: 'src/foo.ts', symbol_name: 'other' },
+                result: { refs: [] } as unknown as string,
+            }),
+            createToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/foo.ts'] },
+                result: '+ some diff content',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        // aggregateToolOutputText returns only string results, the structured ones
+        // will be excluded. get_file_diff has a string result but doesn't contain
+        // 'notInOutput'. So this should flag weak-evidence.
+        expect(result.entries[0]!.verdict).toBe('weak-evidence');
+    });
+
     it('handles dotted affectedComponent — checks last part', () => {
         const findings = [
             createTestFinding({
@@ -1246,7 +1295,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                 }),
             ];
             const records = [
-                // Only find_usages, find_symbol, and diff — no read_file
+                // Only find_usages and find_symbol — no read_file or get_file_diff
                 createToolCallRecord({
                     toolName: 'find_usages',
                     arguments: {
@@ -1263,18 +1312,40 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                     },
                     result: 'Found function someFunction at line 10',
                 }),
-                createToolCallRecord({
-                    toolName: 'get_file_diff',
-                    arguments: { file_paths: ['src/foo.ts'] },
-                    result: '+ someFunction() { changed }',
-                }),
             ];
 
             const result = auditor.audit(findings, records);
 
             expect(result.weakEvidence).toBe(1);
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
-            expect(result.entries[0]!.reason).toContain('no read_file call');
+            expect(result.entries[0]!.reason).toContain(
+                'no read_file or get_file_diff call'
+            );
+        });
+
+        it('keeps finding when function visible in get_file_diff output', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    title: "someFunction doesn't handle errors",
+                    affectedComponent: 'someFunction()',
+                    description:
+                        'someFunction does not handle thrown exceptions',
+                }),
+            ];
+            const records = [
+                // No read_file call, but diff shows the function
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ function someFunction() { try { api.call() } catch(e) { } }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // Function visible in diff → body was seen → keep
+            expect(result.entries[0]!.verdict).toBe('keep');
         });
 
         it('flags weak-evidence when behavior claim and read_file lacks function name', () => {
@@ -1307,7 +1378,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
 
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain(
-                'function name not found in read_file output'
+                'function name not found in read_file or diff output'
             );
         });
 
