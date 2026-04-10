@@ -117,11 +117,12 @@ export class EvidenceAuditor {
     ): EvidenceAuditResult {
         const entries: EvidenceAuditEntry[] = [];
         const investigationAudit = buildInvestigationAudit(toolCallRecords);
+        const flatRecords = flattenToolCalls(toolCallRecords);
 
         for (const finding of findings) {
             const entry = this.auditFinding(
                 finding,
-                toolCallRecords,
+                flatRecords,
                 investigationAudit.depthScores
             );
             entries.push(entry);
@@ -145,12 +146,10 @@ export class EvidenceAuditor {
 
     private auditFinding(
         finding: RecordedFinding,
-        toolCallRecords: ToolCallRecord[],
+        flatRecords: ToolCallRecord[],
         depthScores: Map<string, InvestigationDepth>
     ): EvidenceAuditEntry {
         // Step 1: Find all tool calls that reference the finding's file
-        // Flatten nested calls so subagent-produced tool calls are included
-        const flatRecords = flattenToolCalls(toolCallRecords);
         const matchingCalls = this.findToolCallsForFile(
             finding.file,
             flatRecords
@@ -290,8 +289,8 @@ export class EvidenceAuditor {
                 const normalizedFile = normalizeRelativePath(f);
                 return (
                     normalizedFile === normalizedTarget ||
-                    normalizedFile.endsWith(normalizedTarget) ||
-                    normalizedTarget.endsWith(normalizedFile)
+                    normalizedFile.endsWith('/' + normalizedTarget) ||
+                    normalizedTarget.endsWith('/' + normalizedFile)
                 );
             });
         });
@@ -334,6 +333,14 @@ export class EvidenceAuditor {
                 );
                 if (idx === -1) {
                     return false;
+                }
+                // Left boundary: must be at start or preceded by a path separator/whitespace
+                const leftOk =
+                    idx === 0 ||
+                    /[/ \t\n\r"',]/.test(normalizedResult[idx - 1]!);
+                if (!leftOk) {
+                    searchFrom = idx + 1;
+                    continue;
                 }
                 const afterMatch = idx + normalizedTarget.length;
                 if (afterMatch >= normalizedResult.length) {
@@ -459,7 +466,10 @@ export class EvidenceAuditor {
         }
 
         for (const [path, depth] of depthScores) {
-            if (path.endsWith(normalized) || normalized.endsWith(path)) {
+            if (
+                path.endsWith('/' + normalized) ||
+                normalized.endsWith('/' + path)
+            ) {
                 return depth.score;
             }
         }
@@ -813,7 +823,7 @@ export function extractFilesFromArgs(args: Record<string, unknown>): string[] {
     const filePaths = args['file_paths'];
     if (Array.isArray(filePaths)) {
         for (const fp of filePaths) {
-            if (typeof fp === 'string' && fp.length > 0) {
+            if (typeof fp === 'string' && fp.length > 0 && fp !== '.') {
                 files.push(fp);
             }
         }

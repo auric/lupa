@@ -958,6 +958,72 @@ describe('EvidenceAuditor', () => {
                 result.entries[0]!.supportingToolCallIds.length
             ).toBeGreaterThan(0);
         });
+
+        it('attributes subagent-nested tool calls as supporting evidence', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/foo.ts',
+                    affectedComponent: 'someFunction()',
+                    severity: 'HIGH',
+                }),
+            ];
+            const records: ToolCallRecord[] = [
+                {
+                    id: 'outer-1',
+                    toolName: 'run_subagent_batch',
+                    arguments: { tasks: ['investigate foo'] },
+                    result: 'completed',
+                    success: true,
+                    error: undefined,
+                    durationMs: 5000,
+                    timestamp: Date.now(),
+                    nestedCalls: [
+                        {
+                            id: 'inner-1',
+                            toolName: 'read_file',
+                            arguments: { file_path: 'src/foo.ts' },
+                            result: 'function someFunction() { return true; }',
+                            success: true,
+                            error: undefined,
+                            durationMs: 50,
+                            timestamp: Date.now(),
+                        },
+                        {
+                            id: 'inner-2',
+                            toolName: 'find_usages',
+                            arguments: {
+                                file_path: 'src/foo.ts',
+                                symbol_name: 'someFunction',
+                            },
+                            result: '3 references found',
+                            success: true,
+                            error: undefined,
+                            durationMs: 100,
+                            timestamp: Date.now(),
+                        },
+                    ],
+                },
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ someFunction update',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('keep');
+            expect(result.entries[0]!.supportingToolCallIds).toContain(
+                'inner-1'
+            );
+            expect(result.entries[0]!.supportingToolCallIds).toContain(
+                'inner-2'
+            );
+            expect(result.entries[0]!.actualToolsOnFile).toContain('read_file');
+            expect(result.entries[0]!.actualToolsOnFile).toContain(
+                'find_usages'
+            );
+        });
     });
 });
 
