@@ -1307,6 +1307,44 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
 
             expect(result.entries[0]!.verdict).toBe('keep');
         });
+
+        it('does not trigger when only find_symbol (not find_usages) returned zero', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'Callers do not handle error from someFunction',
+                    affectedComponent: 'someFunction()',
+                    description:
+                        'The callers of someFunction ignore the error return',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function someFunction() { throw new Error("fail"); }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'someFunction',
+                    },
+                    result: '0 results found',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ someFunction changed',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // find_symbol zero results should NOT trigger caller contradiction —
+            // only find_usages is checked (conservative design)
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
     });
 
     describe('function body not read', () => {
