@@ -473,7 +473,7 @@ export class EvidenceAuditor {
         const primaryIdentifier = extractPrimaryIdentifier(
             finding.affectedComponent
         );
-        if (!primaryIdentifier || primaryIdentifier.length < 3) {
+        if (!primaryIdentifier) {
             return null;
         }
 
@@ -616,7 +616,7 @@ export class EvidenceAuditor {
 
         // Extract the function name from affectedComponent
         const funcName = extractPrimaryIdentifier(finding.affectedComponent);
-        if (!funcName || funcName.length < 3) {
+        if (!funcName) {
             return null;
         }
 
@@ -725,7 +725,7 @@ export function extractPrimaryIdentifier(
 
     // Strip trailing parenthesized content (handles both () and (args))
     const cleaned = affectedComponent.replace(/\(.*\)$/, '').trim();
-    if (cleaned.length < 2) {
+    if (cleaned.length < 3) {
         return undefined;
     }
 
@@ -735,7 +735,7 @@ export function extractPrimaryIdentifier(
 
     // If the last part is too short, skip the check rather than
     // searching for the full dotted string (which includes a literal dot)
-    return last.length >= 2 ? last : undefined;
+    return last.length >= 3 ? last : undefined;
 }
 
 /**

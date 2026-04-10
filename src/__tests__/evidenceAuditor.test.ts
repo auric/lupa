@@ -528,6 +528,7 @@ describe('EvidenceAuditor', () => {
             expect(result.kept).toBe(1); // f1: MEDIUM with read_file + find_usages
             expect(result.downgraded).toBe(1); // f2: CRITICAL with only read_file
             expect(result.dropped).toBe(1); // f3: claimed find_usages but file never investigated
+            expect(result.weakEvidence).toBe(0);
             expect(result.entries.length).toBe(3);
         });
 
@@ -874,8 +875,8 @@ describe('extractPrimaryIdentifier', () => {
         expect(extractPrimaryIdentifier('x')).toBeUndefined();
     });
 
-    it('handles two-char identifier', () => {
-        expect(extractPrimaryIdentifier('fn')).toBe('fn');
+    it('returns undefined for two-char identifier', () => {
+        expect(extractPrimaryIdentifier('fn')).toBeUndefined();
     });
 });
 
@@ -1092,7 +1093,7 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
         expect(result.entries[0]!.verdict).not.toBe('weak-evidence');
     });
 
-    it('skips check when all tool outputs are non-string', () => {
+    it('flags weak-evidence when identifier absent from available string outputs', () => {
         const findings = [
             createTestFinding({
                 severity: 'HIGH',
