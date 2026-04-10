@@ -8,6 +8,10 @@ import {
     flattenToolCalls,
 } from '../utils/investigationAudit';
 
+function normalizeRelativePath(p: string): string {
+    return p.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
 const DEPTH_THRESHOLD_HIGH = 4;
 const DEPTH_THRESHOLD_MEDIUM = 2;
 const MIN_IDENTIFIER_LENGTH = 3;
@@ -270,9 +274,7 @@ export class EvidenceAuditor {
         findingFile: string,
         toolCallRecords: ToolCallRecord[]
     ): ToolCallRecord[] {
-        const normalizedTarget = findingFile
-            .replace(/\\/g, '/')
-            .replace(/^\.\//, '');
+        const normalizedTarget = normalizeRelativePath(findingFile);
 
         return toolCallRecords.filter((tc) => {
             if (!tc.success) {
@@ -281,9 +283,7 @@ export class EvidenceAuditor {
 
             const files = extractFilesFromArgs(tc.arguments);
             return files.some((f) => {
-                const normalizedFile = f
-                    .replace(/\\/g, '/')
-                    .replace(/^\.\//, '');
+                const normalizedFile = normalizeRelativePath(f);
                 return (
                     normalizedFile === normalizedTarget ||
                     normalizedFile.endsWith(normalizedTarget) ||
@@ -308,9 +308,7 @@ export class EvidenceAuditor {
         findingFile: string,
         toolCallRecords: ToolCallRecord[]
     ): ToolCallRecord[] {
-        const normalizedTarget = findingFile
-            .replace(/\\/g, '/')
-            .replace(/^\.\//, '');
+        const normalizedTarget = normalizeRelativePath(findingFile);
 
         return toolCallRecords.filter((tc) => {
             if (!tc.success || typeof tc.result !== 'string') {
@@ -324,21 +322,30 @@ export class EvidenceAuditor {
                 .replace(/\.\/(?=\w)/g, '');
             // Require a path boundary after the match to prevent
             // prefix false positives (e.g. 'src/foo.ts' matching 'src/foo.tsx')
-            const idx = normalizedResult.indexOf(normalizedTarget);
-            if (idx === -1) {
-                return false;
+            let searchFrom = 0;
+            while (true) {
+                const idx = normalizedResult.indexOf(
+                    normalizedTarget,
+                    searchFrom
+                );
+                if (idx === -1) {
+                    return false;
+                }
+                const afterMatch = idx + normalizedTarget.length;
+                if (afterMatch >= normalizedResult.length) {
+                    return true;
+                }
+                const nextChar = normalizedResult[afterMatch]!;
+                if (
+                    nextChar === ':' ||
+                    nextChar === ' ' ||
+                    nextChar === '\n' ||
+                    nextChar === '\r'
+                ) {
+                    return true;
+                }
+                searchFrom = idx + 1;
             }
-            const afterMatch = idx + normalizedTarget.length;
-            if (afterMatch >= normalizedResult.length) {
-                return true; // Match at end of string
-            }
-            const nextChar = normalizedResult[afterMatch]!;
-            return (
-                nextChar === ':' ||
-                nextChar === ' ' ||
-                nextChar === '\n' ||
-                nextChar === '\r'
-            );
         });
     }
 
@@ -606,10 +613,9 @@ export class EvidenceAuditor {
             return null;
         }
         const usageCalls = allUsageCalls.filter((tc) => {
-            const symbolArg =
-                (tc.arguments['symbol_name'] as string | undefined) ??
-                (tc.arguments['name'] as string | undefined) ??
-                (tc.arguments['name_path'] as string | undefined);
+            const symbolArg = ['symbol_name', 'name', 'name_path']
+                .map((key) => tc.arguments[key])
+                .find((val): val is string => typeof val === 'string');
             return (
                 symbolArg !== undefined && symbolArg.includes(primaryIdentifier)
             );

@@ -1149,7 +1149,7 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
         expect(result.entries[0]!.verdict).toBe('keep');
     });
 
-    it('keeps finding when primary identifier found in tool arguments', () => {
+    it('keeps finding when primary identifier found in tool output', () => {
         const findings = [
             createTestFinding({
                 severity: 'HIGH',
@@ -1188,7 +1188,8 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
             createTestFinding({
                 severity: 'HIGH',
                 affectedComponent: 'processOrder()',
-                description: 'processOrder does not validate input',
+                description:
+                    'processOrder has a critical flaw in its implementation',
             }),
         ];
         const records = [
@@ -1218,6 +1219,9 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
         // → should flag as weak-evidence (argument-only evidence is insufficient)
         expect(result.weakEvidence).toBe(1);
         expect(result.entries[0]!.verdict).toBe('weak-evidence');
+        expect(result.entries[0]!.reason).toContain(
+            'not found in any tool output'
+        );
     });
 
     it('skips weak-evidence check for LOW severity findings', () => {
@@ -1312,6 +1316,9 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
         // will be excluded. get_file_diff has a string result but doesn't contain
         // 'notInOutput'. So this should flag weak-evidence.
         expect(result.entries[0]!.verdict).toBe('weak-evidence');
+        expect(result.entries[0]!.reason).toContain(
+            'not found in any tool output'
+        );
     });
 
     it('handles dotted affectedComponent — checks last part', () => {
@@ -1385,6 +1392,33 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
         // only symbol_name, name, name_path, pattern, query count
         expect(result.entries[0]!.verdict).toBe('weak-evidence');
         expect(result.entries[0]!.reason).toContain('processOrder');
+    });
+
+    it('keeps finding when all supporting calls have non-string results', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'HIGH',
+                affectedComponent: 'someFunction()',
+                description: 'someFunction has a bug',
+            }),
+        ];
+        const records = [
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: { structured: 'data' } as unknown as string,
+                success: true,
+            }),
+            createToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/foo.ts'] },
+                result: { lines: ['+change'] } as unknown as string,
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        expect(result.entries[0]!.verdict).toBe('keep');
     });
 });
 
@@ -1935,6 +1969,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
 
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain('someFunction');
+            expect(result.entries[0]!.reason).toContain(
+                'function name not found'
+            );
         });
     });
 });
