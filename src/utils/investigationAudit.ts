@@ -132,7 +132,10 @@ function extractFileReads(calls: ToolCallRecord[]): FileReadEntry[] {
         }
         const startLine = getNumberArg(call.arguments, 'start_line') ?? 0;
         const endLine = getNumberArg(call.arguments, 'end_line') ?? 0;
-        entries.push({ path: filePath, lineRange: [startLine, endLine] });
+        entries.push({
+            path: normalizeRelativePath(filePath),
+            lineRange: [startLine, endLine],
+        });
     }
     return entries;
 }
@@ -154,7 +157,7 @@ function extractSymbolsResolved(
             continue;
         }
         const kind = extractKindFromResult(call.result);
-        entries.push({ name, file, kind });
+        entries.push({ name, file: normalizeRelativePath(file), kind });
     }
     return entries;
 }
@@ -200,7 +203,10 @@ function extractDiffsExamined(calls: ToolCallRecord[]): string[] {
             continue;
         }
         for (const p of parseDiffFilePaths(call.arguments)) {
-            paths.add(p);
+            const normalized = normalizeRelativePath(p);
+            if (normalized) {
+                paths.add(normalized);
+            }
         }
     }
     return [...paths];
@@ -217,21 +223,27 @@ function computeDepthScores(
 
     const allFiles = new Set<string>();
     for (const f of filesRead) {
-        allFiles.add(normalizeRelativePath(f.path));
+        if (f.path) {
+            allFiles.add(f.path);
+        }
     }
     for (const d of diffsExamined) {
-        allFiles.add(normalizeRelativePath(d));
+        if (d) {
+            allFiles.add(d);
+        }
     }
     for (const s of symbolsResolved) {
-        allFiles.add(normalizeRelativePath(s.file));
+        if (s.file) {
+            allFiles.add(s.file);
+        }
     }
 
-    const diffSet = new Set(diffsExamined.map(normalizeRelativePath));
+    const diffSet = new Set(diffsExamined.filter((d) => d.length > 0));
     const readSet = new Set(
-        filesRead.map((f) => normalizeRelativePath(f.path))
+        filesRead.map((f) => f.path).filter((p) => p.length > 0)
     );
     const symbolFiles = new Set(
-        symbolsResolved.map((s) => normalizeRelativePath(s.file))
+        symbolsResolved.map((s) => s.file).filter((f) => f.length > 0)
     );
 
     const usageSymbols = new Set(usagesChecked.map((u) => u.symbol));
@@ -240,7 +252,7 @@ function computeDepthScores(
         if (!symbolToFile.has(s.name)) {
             symbolToFile.set(s.name, new Set());
         }
-        symbolToFile.get(s.name)!.add(normalizeRelativePath(s.file));
+        symbolToFile.get(s.name)!.add(s.file);
     }
 
     for (const file of allFiles) {

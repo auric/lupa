@@ -470,6 +470,9 @@ export class EvidenceAuditor {
         depthScores: Map<string, InvestigationDepth>
     ): number {
         const normalized = normalizeRelativePath(file);
+        if (!normalized) {
+            return 0;
+        }
 
         const exact = depthScores.get(normalized);
         if (exact) {
