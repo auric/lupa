@@ -437,7 +437,11 @@ export class EvidenceAuditor {
                 typeof tc.result === 'string'
         );
 
-        const hasZeroReferences = referenceToolCalls.some((tc) =>
+        if (referenceToolCalls.length === 0) {
+            return null;
+        }
+
+        const hasZeroReferences = referenceToolCalls.every((tc) =>
             ZERO_REFERENCE_PATTERNS.some((pattern) =>
                 pattern.test(tc.result as string)
             )

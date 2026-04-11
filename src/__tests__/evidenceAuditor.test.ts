@@ -919,6 +919,50 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.reason).toContain('Deletion safety');
         });
 
+        it('keeps deletion finding when only some reference tools show zero results', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    title: 'processOrder was removed',
+                    affectedComponent: 'processOrder()',
+                    description: 'processOrder was deleted from the codebase',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function processOrder() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'processOrder',
+                    },
+                    result: 'not found',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'processOrder',
+                    },
+                    result: 'src/routes/api.ts:15: processOrder(req)',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- function processOrder() { return true; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // find_usages found callers → deletion NOT safe → should NOT be dropped
+            expect(result.entries[0]!.verdict).not.toBe('drop');
+        });
+
         it('counts global search_for_pattern results as supporting evidence', () => {
             const findings = [
                 createTestFinding({
