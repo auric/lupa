@@ -995,6 +995,44 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.verdict).not.toBe('drop');
         });
 
+        it('does not treat multi-digit counts as zero references in deletion safety', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/utils.ts',
+                    severity: 'MEDIUM',
+                    title: 'Deprecated function removed',
+                    description: 'The deprecated utility was deleted',
+                    affectedComponent: 'deprecatedUtil()',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/utils.ts' },
+                    result: 'function deprecatedUtil() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/utils.ts',
+                        symbol_name: 'deprecatedUtil',
+                    },
+                    result: '10 results found across the codebase',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/utils.ts'] },
+                    result: '- function deprecatedUtil() { return true; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // "10 results" should NOT match zero-reference patterns
+            // Finding should be kept (references exist, deletion is potentially unsafe)
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
         it('excludes reverse-phrased no-caller findings from contradiction check', () => {
             const findings = [
                 createTestFinding({
@@ -2627,6 +2665,33 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
 
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain('someFunction');
+            expect(result.entries[0]!.reason).toContain(
+                'function name not found'
+            );
+        });
+
+        it('detects past tense verb forms (failed to)', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/auth.ts',
+                    title: 'Function failed to validate token',
+                    description:
+                        'The authentication handler failed to validate the JWT token properly',
+                    affectedComponent: 'validateToken()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/auth.ts'] },
+                    result: '+ // auth module header updated',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain(
                 'function name not found'
             );

@@ -22,18 +22,18 @@ const DELETION_LANGUAGE_PATTERN =
     /\b(deleted|removed|no longer|was removed|was deleted|dropped|eliminated|got rid of)\b/i;
 
 const ZERO_REFERENCE_PATTERNS = [
-    /0 results/i,
+    /\b0 results/i,
     /no results/i,
     /not found/i,
     /no references/i,
-    /0 usages/i,
+    /\b0 usages/i,
     /no usages/i,
     /no callers/i,
-    /0 callers/i,
+    /\b0 callers/i,
     /no matches/i,
-    /0 matches/i,
+    /\b0 matches/i,
     /no occurrences/i,
-    /0 occurrences/i,
+    /\b0 occurrences/i,
     /^\s*$/,
 ] as const;
 
@@ -80,7 +80,7 @@ const NO_CALLERS_REVERSE_PATTERN =
  * Pattern matching findings that claim something about a function's internal behavior.
  */
 const FUNCTION_BEHAVIOR_PATTERN =
-    /\b(?:doesn['\u2019]t|does not|don['\u2019]t|do not|isn['\u2019]t|aren['\u2019]t|wasn['\u2019]t|weren['\u2019]t|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:\w+ly\s+)?(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!i)|clos|releas|dispos|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
+    /\b(?:doesn['\u2019]t|does not|don['\u2019]t|do not|isn['\u2019]t|aren['\u2019]t|wasn['\u2019]t|weren['\u2019]t|fail(?:s|ed|ing)? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:\w+ly\s+)?(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!i)|clos|releas|dispos|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
 
 export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade' | 'weak-evidence';
 
