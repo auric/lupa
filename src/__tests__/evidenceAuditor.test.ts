@@ -2119,6 +2119,40 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.entries[0]!.verdict).toBe('keep');
         });
 
+        it('filters find_usages calls by symbol using name_path arg key', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/utils/handler.ts',
+                    title: 'Callers of handleRequest skip validation',
+                    description:
+                        'The callers of handleRequest pass unvalidated input',
+                    affectedComponent: 'handleRequest()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/utils/handler.ts' },
+                    result: 'function handleRequest() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/utils/handler.ts',
+                        name_path: 'handleRequest',
+                    },
+                    result: '',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // find_usages with name_path arg should be recognized, empty result = zero refs
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+            expect(result.entries[0]!.reason).toContain('caller');
+        });
+
         it('does not trigger when only find_symbol (not find_usages) returned zero', () => {
             const findings = [
                 createTestFinding({
@@ -2525,6 +2559,40 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.entries[0]!.reason).toContain(
                 'function name not found'
             );
+        });
+
+        it('detects function behavior claim in description when body not read', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/api.ts',
+                    title: 'Issue in request module',
+                    description:
+                        'processRequest fails to validate user input before processing',
+                    affectedComponent: 'processRequest()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/api.ts',
+                        symbol_name: 'processRequest',
+                    },
+                    result: 'src/routes.ts:10: processRequest()',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/api.ts'] },
+                    result: '+ // added a comment to the module header',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // Pattern matches in description, but function body not in read_file/get_file_diff output
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+            expect(result.entries[0]!.reason).toContain('read_file');
         });
     });
 

@@ -6,29 +6,8 @@ import { INVESTIGATION_TOOLS, DIFF_TOOLS } from '../models/toolConstants';
 import {
     buildInvestigationAudit,
     flattenToolCalls,
+    normalizeRelativePath,
 } from '../utils/investigationAudit';
-
-function normalizeRelativePath(p: string): string {
-    const slashNormalized = p.replace(/\\/g, '/').replace(/^\.\//, '');
-    // Collapse internal ./ and ../ segments
-    const segments = slashNormalized.split('/');
-    const resolved: string[] = [];
-    for (const seg of segments) {
-        if (seg === '.') {
-            continue;
-        }
-        if (
-            seg === '..' &&
-            resolved.length > 0 &&
-            resolved[resolved.length - 1] !== '..'
-        ) {
-            resolved.pop();
-        } else {
-            resolved.push(seg);
-        }
-    }
-    return resolved.join('/');
-}
 
 const DEPTH_THRESHOLD_HIGH = 4;
 const DEPTH_THRESHOLD_MEDIUM = 2;
@@ -55,6 +34,7 @@ const ZERO_REFERENCE_PATTERNS = [
     /0 matches/i,
     /no occurrences/i,
     /0 occurrences/i,
+    /^\s*$/,
 ] as const;
 
 const ZERO_REFERENCE_TOOL_NAMES = new Set(['find_usages', 'find_symbol']);

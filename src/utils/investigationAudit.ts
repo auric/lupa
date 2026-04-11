@@ -8,7 +8,7 @@ import type {
     InvestigationDepth,
 } from '../types/investigationTypes';
 
-function normalizePath(p: string): string {
+export function normalizeRelativePath(p: string): string {
     const slashed = p.replace(/\\/g, '/').replace(/^\.\//, '');
     const segments = slashed.split('/');
     const resolved: string[] = [];
@@ -217,19 +217,21 @@ function computeDepthScores(
 
     const allFiles = new Set<string>();
     for (const f of filesRead) {
-        allFiles.add(normalizePath(f.path));
+        allFiles.add(normalizeRelativePath(f.path));
     }
     for (const d of diffsExamined) {
-        allFiles.add(normalizePath(d));
+        allFiles.add(normalizeRelativePath(d));
     }
     for (const s of symbolsResolved) {
-        allFiles.add(normalizePath(s.file));
+        allFiles.add(normalizeRelativePath(s.file));
     }
 
-    const diffSet = new Set(diffsExamined.map(normalizePath));
-    const readSet = new Set(filesRead.map((f) => normalizePath(f.path)));
+    const diffSet = new Set(diffsExamined.map(normalizeRelativePath));
+    const readSet = new Set(
+        filesRead.map((f) => normalizeRelativePath(f.path))
+    );
     const symbolFiles = new Set(
-        symbolsResolved.map((s) => normalizePath(s.file))
+        symbolsResolved.map((s) => normalizeRelativePath(s.file))
     );
 
     const usageSymbols = new Set(usagesChecked.map((u) => u.symbol));
@@ -238,7 +240,7 @@ function computeDepthScores(
         if (!symbolToFile.has(s.name)) {
             symbolToFile.set(s.name, new Set());
         }
-        symbolToFile.get(s.name)!.add(normalizePath(s.file));
+        symbolToFile.get(s.name)!.add(normalizeRelativePath(s.file));
     }
 
     for (const file of allFiles) {
