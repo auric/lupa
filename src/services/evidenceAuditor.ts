@@ -9,7 +9,25 @@ import {
 } from '../utils/investigationAudit';
 
 function normalizeRelativePath(p: string): string {
-    return p.replace(/\\/g, '/').replace(/^\.\//, '');
+    const slashNormalized = p.replace(/\\/g, '/').replace(/^\.\//, '');
+    // Collapse internal ./ and ../ segments
+    const segments = slashNormalized.split('/');
+    const resolved: string[] = [];
+    for (const seg of segments) {
+        if (seg === '.') {
+            continue;
+        }
+        if (
+            seg === '..' &&
+            resolved.length > 0 &&
+            resolved[resolved.length - 1] !== '..'
+        ) {
+            resolved.pop();
+        } else {
+            resolved.push(seg);
+        }
+    }
+    return resolved.join('/');
 }
 
 const DEPTH_THRESHOLD_HIGH = 4;

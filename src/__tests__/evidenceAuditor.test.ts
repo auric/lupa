@@ -2215,4 +2215,64 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             );
         });
     });
+
+    describe('normalizeRelativePath (via findToolCallsForFile integration)', () => {
+        it('matches tool calls with internal ./ segments in file path', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/foo.ts',
+                    affectedComponent: 'someFunction()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/./foo.ts' },
+                    result: 'function someFunction() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ someFunction change',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('keep');
+            expect(
+                result.entries[0]!.supportingToolCallIds.length
+            ).toBeGreaterThan(0);
+        });
+
+        it('matches tool calls with ../ segments in file path', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/foo.ts',
+                    affectedComponent: 'someFunction()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/utils/../foo.ts' },
+                    result: 'function someFunction() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ someFunction change',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('keep');
+            expect(
+                result.entries[0]!.supportingToolCallIds.length
+            ).toBeGreaterThan(0);
+        });
+    });
 });
