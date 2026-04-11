@@ -2597,7 +2597,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
     });
 
     describe('normalizeRelativePath (via findToolCallsForFile integration)', () => {
-        it('matches tool calls with internal ./ segments in file path', () => {
+        it('matches tool calls with ./ segments in file path', () => {
             const findings = [
                 createTestFinding({
                     file: 'src/foo.ts',
@@ -2654,7 +2654,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                 result.entries[0]!.supportingToolCallIds.length
             ).toBeGreaterThan(0);
         });
+    });
 
+    describe('additional pattern and evidence checks', () => {
         it('keeps finding claiming no call sites when NO_CALLERS_PATTERN matches', () => {
             const findings = [
                 createTestFinding({
