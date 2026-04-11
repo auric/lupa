@@ -310,7 +310,7 @@ describe('normalizeRelativePath', () => {
         expect(normalizeRelativePath('src/bar/../foo.ts')).toBe('src/foo.ts');
     });
 
-    it("returns empty string for lone '..'", () => {
+    it("preserves lone '..' (no parent to resolve)", () => {
         expect(normalizeRelativePath('..')).toBe('..');
     });
 
