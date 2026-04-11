@@ -1775,7 +1775,7 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
         expect(result.entries[0]!.verdict).toBe('keep');
     });
 
-    it('skips weak-evidence check when no supporting tool calls', () => {
+    it('downgrades MEDIUM finding with no tool calls via depth check', () => {
         const findings = [
             createTestFinding({
                 severity: 'MEDIUM',
@@ -2979,6 +2979,40 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             // Depth check fires before pattern-specific body check
             expect(result.entries[0]!.verdict).toBe('downgrade');
             expect(result.entries[0]!.reason).toContain('depth score');
+        });
+    });
+
+    describe('getFileDepthScore suffix matching', () => {
+        it('uses suffix matching when exact depth score lookup fails', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'utils/helper.ts',
+                    severity: 'MEDIUM',
+                    title: 'helper has issue',
+                    description: 'The helper function is buggy',
+                    affectedComponent: 'helperFunc()',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'project/src/utils/helper.ts' },
+                    result: 'function helperFunc() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: {
+                        file_paths: ['project/src/utils/helper.ts'],
+                    },
+                    result: '+ function helperFunc() {}',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // Suffix match: 'project/src/utils/helper.ts'.endsWith('/utils/helper.ts') → true
+            // Depth score should be > 0, finding should not be downgraded for insufficient depth
+            expect(result.entries[0]!.verdict).not.toBe('downgrade');
         });
     });
 });

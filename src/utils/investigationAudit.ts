@@ -126,6 +126,9 @@ function extractFileReads(calls: ToolCallRecord[]): FileReadEntry[] {
         if (call.toolName !== 'read_file') {
             continue;
         }
+        if (!call.success) {
+            continue;
+        }
         const filePath = getStringArg(call.arguments, 'file_path');
         if (!filePath) {
             continue;
@@ -152,6 +155,9 @@ function extractSymbolsResolved(
         if (call.toolName !== 'find_symbol') {
             continue;
         }
+        if (!call.success) {
+            continue;
+        }
         const name = getStringArg(call.arguments, 'name_path');
         const file =
             getStringArg(call.arguments, 'relative_path') ??
@@ -176,6 +182,9 @@ function extractUsagesChecked(calls: ToolCallRecord[]): UsageCheckEntry[] {
         if (call.toolName !== 'find_usages') {
             continue;
         }
+        if (!call.success) {
+            continue;
+        }
         const symbol = getStringArg(call.arguments, 'symbol_name');
         if (!symbol) {
             continue;
@@ -192,6 +201,9 @@ function extractPatternsSearched(
     const entries: PatternSearchEntry[] = [];
     for (const call of calls) {
         if (call.toolName !== 'search_for_pattern') {
+            continue;
+        }
+        if (!call.success) {
             continue;
         }
         const query = getStringArg(call.arguments, 'pattern');

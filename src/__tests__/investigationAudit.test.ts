@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
     buildInvestigationAudit,
     normalizeRelativePath,
+    formatCompactAudit,
 } from '../utils/investigationAudit';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 
@@ -322,5 +323,51 @@ describe('normalizeRelativePath', () => {
         expect(normalizeRelativePath('./src\\bar//../baz//file.ts')).toBe(
             'src/baz/file.ts'
         );
+    });
+});
+
+describe('formatCompactAudit', () => {
+    it('returns empty string for empty audit', () => {
+        const audit = buildInvestigationAudit([], undefined);
+        expect(formatCompactAudit(audit)).toBe('');
+    });
+
+    it('formats stats for populated audit', () => {
+        const records = [
+            makeToolCall({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: 'file contents',
+            }),
+            makeToolCall({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/foo.ts'] },
+                result: '+ added line',
+            }),
+        ];
+        const audit = buildInvestigationAudit(records, undefined);
+        const result = formatCompactAudit(audit);
+
+        expect(result).toContain('files');
+        expect(result).toContain('depth');
+        expect(result.length).toBeGreaterThan(0);
+    });
+});
+
+describe('buildInvestigationAudit preFlattened', () => {
+    it('uses preFlattened records when provided', () => {
+        const toolCalls: ToolCallRecord[] = [];
+        const preFlattened = [
+            makeToolCall({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/bar.ts' },
+                result: 'bar contents',
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(toolCalls, preFlattened);
+
+        expect(audit.filesRead.length).toBe(1);
+        expect(audit.filesRead[0]!.path).toBe('src/bar.ts');
     });
 });
