@@ -161,7 +161,11 @@ function extractSymbolsResolved(
             continue;
         }
         const kind = extractKindFromResult(call.result);
-        entries.push({ name, file: normalizeRelativePath(file), kind });
+        const normalized = normalizeRelativePath(file);
+        if (!normalized) {
+            continue;
+        }
+        entries.push({ name, file: normalized, kind });
     }
     return entries;
 }
@@ -318,7 +322,9 @@ export function buildInvestigationAudit(
         };
     }
 
-    const flat = preFlattened ?? flattenToolCalls(toolCalls);
+    const flat = preFlattened?.length
+        ? preFlattened
+        : flattenToolCalls(toolCalls);
     const filesRead = extractFileReads(flat);
     const symbolsResolved = extractSymbolsResolved(flat);
     const usagesChecked = extractUsagesChecked(flat);

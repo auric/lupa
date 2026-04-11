@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { buildInvestigationAudit } from '../utils/investigationAudit';
+import {
+    buildInvestigationAudit,
+    normalizeRelativePath,
+} from '../utils/investigationAudit';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 
 function makeToolCall(overrides: Partial<ToolCallRecord>): ToolCallRecord {
@@ -279,5 +282,45 @@ describe('buildInvestigationAudit', () => {
         const audit = buildInvestigationAudit(calls);
         expect(audit.filesRead).toHaveLength(1);
         expect(audit.filesRead[0].path).toBe('deep.ts');
+    });
+});
+
+describe('normalizeRelativePath', () => {
+    it('returns empty string for empty input', () => {
+        expect(normalizeRelativePath('')).toBe('');
+    });
+
+    it("returns empty string for '.'", () => {
+        expect(normalizeRelativePath('.')).toBe('');
+    });
+
+    it('strips leading ./', () => {
+        expect(normalizeRelativePath('./src/foo.ts')).toBe('src/foo.ts');
+    });
+
+    it('converts backslashes to forward slashes', () => {
+        expect(normalizeRelativePath('src\\foo.ts')).toBe('src/foo.ts');
+    });
+
+    it('collapses double slashes', () => {
+        expect(normalizeRelativePath('src//foo.ts')).toBe('src/foo.ts');
+    });
+
+    it('resolves parent traversal in the middle', () => {
+        expect(normalizeRelativePath('src/bar/../foo.ts')).toBe('src/foo.ts');
+    });
+
+    it("returns empty string for lone '..'", () => {
+        expect(normalizeRelativePath('..')).toBe('..');
+    });
+
+    it('preserves trailing slash for directory markers', () => {
+        expect(normalizeRelativePath('src/foo/')).toBe('src/foo');
+    });
+
+    it('handles complex combo of normalizations', () => {
+        expect(normalizeRelativePath('./src\\bar//../baz//file.ts')).toBe(
+            'src/baz/file.ts'
+        );
     });
 });

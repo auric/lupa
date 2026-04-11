@@ -35,27 +35,35 @@ export function createEvidenceAuditStep(): PipelineStep {
             );
 
             for (const entry of auditResult.entries) {
-                if (entry.verdict === 'drop') {
-                    findingsDropped.push(entry.finding.title);
-                    context.findingStore.remove(entry.finding.id);
-                    dismissHypothesesForDroppedFinding(
-                        entry.finding.id,
-                        context.executionContext.reasoningChain,
-                        'Finding dropped by evidence audit'
-                    );
-                } else if (
-                    entry.verdict === 'downgrade' ||
-                    entry.verdict === 'weak-evidence'
-                ) {
-                    const newSeverity = downgradeSeverity(
-                        entry.finding.severity
-                    );
-                    if (newSeverity) {
-                        findingsDowngraded.push(entry.finding.title);
-                        context.findingStore.updateSeverity(
+                switch (entry.verdict) {
+                    case 'drop':
+                        findingsDropped.push(entry.finding.title);
+                        context.findingStore.remove(entry.finding.id);
+                        dismissHypothesesForDroppedFinding(
                             entry.finding.id,
-                            newSeverity
+                            context.executionContext.reasoningChain,
+                            'Finding dropped by evidence audit'
                         );
+                        break;
+                    case 'downgrade':
+                    case 'weak-evidence': {
+                        const newSeverity = downgradeSeverity(
+                            entry.finding.severity
+                        );
+                        if (newSeverity) {
+                            findingsDowngraded.push(entry.finding.title);
+                            context.findingStore.updateSeverity(
+                                entry.finding.id,
+                                newSeverity
+                            );
+                        }
+                        break;
+                    }
+                    case 'keep':
+                        break;
+                    default: {
+                        const _exhaustive: never = entry.verdict;
+                        break;
                     }
                 }
             }

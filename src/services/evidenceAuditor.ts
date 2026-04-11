@@ -74,7 +74,7 @@ const NO_CALLERS_PATTERN =
  * Complements NO_CALLERS_PATTERN which only handles "no callers" word order.
  */
 const NO_CALLERS_REVERSE_PATTERN =
-    /\b(?:callers?|call[\s-]*sites?|consumers?|references?|usages?|upstream\s+code)\s+(?:don['\u2019]t|do\s+not|doesn['\u2019]t|does\s+not|aren['\u2019]t|are\s+not|can['\u2019]t|cannot|won['\u2019]t|will\s+not|were\s+not|was\s+not)\s+(?:exist|appear|found)\b/;
+    /\b(?:callers?|call[\s-]*sites?|consumers?|references?|usages?|upstream\s+code)\s+(?:don['\u2019]t|do\s+not|doesn['\u2019]t|does\s+not|aren['\u2019]t|are\s+not|weren['\u2019]t|were\s+not|wasn['\u2019]t|was\s+not|can['\u2019]t|cannot|won['\u2019]t|will\s+not)\s+(?:exist|appear|found)\b/;
 
 /**
  * Pattern matching findings that claim something about a function's internal behavior.
@@ -174,9 +174,9 @@ export class EvidenceAuditor {
         const fabricationText = [
             finding.description,
             finding.verificationEvidence,
-            finding.disproof?.method,
-            finding.disproof?.result !== finding.disproof?.method
-                ? finding.disproof?.result
+            finding.disproof.method,
+            finding.disproof.result !== finding.disproof.method
+                ? finding.disproof.result
                 : undefined,
         ]
             .filter(Boolean)
@@ -831,7 +831,8 @@ export function extractPrimaryIdentifier(
     }
 
     // Strip trailing parenthesized content (handles both () and (args))
-    const cleaned = affectedComponent.replace(/\(.*\)$/, '').trim();
+    const match = affectedComponent.match(/^([^(]+)/);
+    const cleaned = match ? match[1]!.trim() : affectedComponent.trim();
     if (cleaned.length < MIN_IDENTIFIER_LENGTH) {
         return undefined;
     }
