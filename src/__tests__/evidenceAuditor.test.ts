@@ -149,7 +149,7 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.reason).toContain('find_usages');
         });
 
-        it('detects fabricated tool claims in finding title', () => {
+        it('does not treat tool names in title as fabrication claims', () => {
             const findings = [
                 createTestFinding({
                     file: 'src/foo.ts',
@@ -172,8 +172,9 @@ describe('EvidenceAuditor', () => {
 
             const result = auditor.audit(findings, records);
 
-            expect(result.entries[0]!.verdict).toBe('drop');
-            expect(result.entries[0]!.reason).toContain('read_file');
+            // Title contains 'read_file' but title is excluded from fabrication detection
+            // No tools on src/foo.ts → depth downgrade, not fabrication drop
+            expect(result.entries[0]!.verdict).toBe('downgrade');
         });
 
         it('keeps finding when claimed tool was called on wrong file but file was investigated', () => {
@@ -432,8 +433,10 @@ describe('EvidenceAuditor', () => {
                 }),
             ];
 
-            auditor.audit(findings, records);
+            const result = auditor.audit(findings, records);
             expect(findings[0]!.supportingToolCalls).toEqual([]);
+            // Failed call excluded → no tools on file → read_file claim is fabricated → drop
+            expect(result.entries[0]!.verdict).toBe('drop');
         });
 
         it('matches files with path suffix (relative vs absolute)', () => {
@@ -961,6 +964,74 @@ describe('EvidenceAuditor', () => {
 
             // find_usages found callers → deletion NOT safe → should NOT be dropped
             expect(result.entries[0]!.verdict).not.toBe('drop');
+        });
+
+        it('keeps finding with deletion language when no reference tools were called', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    title: 'Helper function was removed',
+                    description:
+                        'The deprecated helper was deleted from the codebase',
+                    affectedComponent: 'deprecatedHelper()',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function deprecatedHelper() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- function deprecatedHelper() {}',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // No find_usages or find_symbol called → deletion safety can't confirm zero refs → should NOT drop
+            expect(result.entries[0]!.verdict).not.toBe('drop');
+        });
+
+        it('excludes reverse-phrased no-caller findings from contradiction check', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/utils/handler.ts',
+                    title: 'References do not exist for handleRequest',
+                    description:
+                        'The callers of handleRequest do not exist in the codebase',
+                    affectedComponent: 'handleRequest()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/utils/handler.ts' },
+                    result: 'function handleRequest() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/utils/handler.ts',
+                        symbol_name: 'handleRequest',
+                    },
+                    result: '',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/utils/handler.ts'] },
+                    result: '+ function handleRequest() {}',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // "callers do not exist" matches NO_CALLERS_REVERSE_PATTERN → skip contradiction check
+            // Finding is valid "no callers" observation, not a contradiction
+            expect(result.entries[0]!.verdict).toBe('keep');
         });
 
         it('counts global search_for_pattern results as supporting evidence', () => {
@@ -2747,7 +2818,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.entries[0]!.reason).toContain('not found in');
         });
 
-        it('flags weak-evidence when no body-reading tools exist for file', () => {
+        it('flags weak-evidence when function name not found in any body-reading tool output', () => {
             const findings = [
                 createTestFinding({
                     file: 'src/api.ts',
@@ -2813,6 +2884,36 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
 
             // find_symbol output contains 'processRequest' → body was "read"
             expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
+        it('downgrades when no body-reading tools called on file (depth catch)', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/api.ts',
+                    title: 'processRequest never validates input',
+                    description:
+                        'processRequest does not validate the incoming request',
+                    affectedComponent: 'processRequest()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/api.ts',
+                        symbol_name: 'processRequest',
+                    },
+                    result: 'src/routes.ts:10: processRequest()',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // Only find_usages on file → depth score 0 for MEDIUM (requires ≥2) → downgrade
+            // Depth check fires before pattern-specific body check
+            expect(result.entries[0]!.verdict).toBe('downgrade');
+            expect(result.entries[0]!.reason).toContain('depth score');
         });
     });
 });

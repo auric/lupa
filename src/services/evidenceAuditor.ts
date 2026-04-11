@@ -74,7 +74,7 @@ const NO_CALLERS_PATTERN =
  * Complements NO_CALLERS_PATTERN which only handles "no callers" word order.
  */
 const NO_CALLERS_REVERSE_PATTERN =
-    /\b(?:callers?|call[\s-]*sites?|consumers?|references?|usages?)\s+(?:don['\u2019]t|do\s+not|doesn['\u2019]t|does\s+not|aren['\u2019]t|are\s+not|can['\u2019]t|cannot|won['\u2019]t|will\s+not|were\s+not|was\s+not)\s+(?:exist|appear|found)\b/;
+    /\b(?:callers?|call[\s-]*sites?|consumers?|references?|usages?|upstream\s+code)\s+(?:don['\u2019]t|do\s+not|doesn['\u2019]t|does\s+not|aren['\u2019]t|are\s+not|can['\u2019]t|cannot|won['\u2019]t|will\s+not|were\s+not|was\s+not)\s+(?:exist|appear|found)\b/;
 
 /**
  * Pattern matching findings that claim something about a function's internal behavior.
@@ -171,8 +171,17 @@ export class EvidenceAuditor {
             ...new Set(allSupportingCalls.map((tc) => tc.id)),
         ];
 
-        const evidenceText = this.getEvidenceText(finding);
-        const claimedTools = extractClaimedToolNames(evidenceText);
+        const fabricationText = [
+            finding.description,
+            finding.verificationEvidence,
+            finding.disproof?.method,
+            finding.disproof?.result !== finding.disproof?.method
+                ? finding.disproof?.result
+                : undefined,
+        ]
+            .filter(Boolean)
+            .join(' ');
+        const claimedTools = extractClaimedToolNames(fabricationText);
 
         const actualToolsOnFile = [
             ...new Set(allSupportingCalls.map((tc) => tc.toolName)),

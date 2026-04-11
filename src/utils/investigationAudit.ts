@@ -13,7 +13,7 @@ export function normalizeRelativePath(p: string): string {
     const segments = slashed.split('/');
     const resolved: string[] = [];
     for (const seg of segments) {
-        if (seg === '.') {
+        if (seg === '' || seg === '.') {
             continue;
         }
         if (
@@ -132,8 +132,12 @@ function extractFileReads(calls: ToolCallRecord[]): FileReadEntry[] {
         }
         const startLine = getNumberArg(call.arguments, 'start_line') ?? 0;
         const endLine = getNumberArg(call.arguments, 'end_line') ?? 0;
+        const normalized = normalizeRelativePath(filePath);
+        if (!normalized) {
+            continue;
+        }
         entries.push({
-            path: normalizeRelativePath(filePath),
+            path: normalized,
             lineRange: [startLine, endLine],
         });
     }
