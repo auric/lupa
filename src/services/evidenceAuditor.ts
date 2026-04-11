@@ -134,8 +134,11 @@ export class EvidenceAuditor {
         toolCallRecords: ToolCallRecord[]
     ): EvidenceAuditResult {
         const entries: EvidenceAuditEntry[] = [];
-        const investigationAudit = buildInvestigationAudit(toolCallRecords);
         const flatRecords = flattenToolCalls(toolCallRecords);
+        const investigationAudit = buildInvestigationAudit(
+            toolCallRecords,
+            flatRecords
+        );
 
         for (const finding of findings) {
             const entry = this.auditFinding(
@@ -540,10 +543,13 @@ export class EvidenceAuditor {
             return null;
         }
 
-        // Check if the primary identifier appears in any tool output (word boundary match)
-        const identifierPattern = new RegExp(
-            `\\b${primaryIdentifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`
+        // Check if the primary identifier appears in any tool output
+        // Use $-aware boundaries instead of \b (which treats $ as non-word)
+        const escaped = primaryIdentifier.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            '\\$&'
         );
+        const identifierPattern = new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`);
         if (identifierPattern.test(outputText)) {
             return null;
         }
@@ -718,9 +724,8 @@ export class EvidenceAuditor {
         );
 
         // Function name must appear in at least one read_file, get_file_diff, or find_symbol output
-        const funcPattern = new RegExp(
-            `\\b${funcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`
-        );
+        const escapedFunc = funcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const funcPattern = new RegExp(`(?<![\\w$])${escapedFunc}(?![\\w$])`);
         const funcInReadFile = readFileCalls.some((tc) =>
             funcPattern.test(tc.result as string)
         );

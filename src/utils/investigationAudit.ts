@@ -8,6 +8,27 @@ import type {
     InvestigationDepth,
 } from '../types/investigationTypes';
 
+function normalizePath(p: string): string {
+    const slashed = p.replace(/\\/g, '/').replace(/^\.\//, '');
+    const segments = slashed.split('/');
+    const resolved: string[] = [];
+    for (const seg of segments) {
+        if (seg === '.') {
+            continue;
+        }
+        if (
+            seg === '..' &&
+            resolved.length > 0 &&
+            resolved[resolved.length - 1] !== '..'
+        ) {
+            resolved.pop();
+        } else {
+            resolved.push(seg);
+        }
+    }
+    return resolved.join('/');
+}
+
 const KNOWN_KINDS = [
     'function',
     'class',
@@ -196,18 +217,20 @@ function computeDepthScores(
 
     const allFiles = new Set<string>();
     for (const f of filesRead) {
-        allFiles.add(f.path);
+        allFiles.add(normalizePath(f.path));
     }
     for (const d of diffsExamined) {
-        allFiles.add(d);
+        allFiles.add(normalizePath(d));
     }
     for (const s of symbolsResolved) {
-        allFiles.add(s.file);
+        allFiles.add(normalizePath(s.file));
     }
 
-    const diffSet = new Set(diffsExamined);
-    const readSet = new Set(filesRead.map((f) => f.path));
-    const symbolFiles = new Set(symbolsResolved.map((s) => s.file));
+    const diffSet = new Set(diffsExamined.map(normalizePath));
+    const readSet = new Set(filesRead.map((f) => normalizePath(f.path)));
+    const symbolFiles = new Set(
+        symbolsResolved.map((s) => normalizePath(s.file))
+    );
 
     const usageSymbols = new Set(usagesChecked.map((u) => u.symbol));
     const symbolToFile = new Map<string, Set<string>>();
@@ -215,7 +238,7 @@ function computeDepthScores(
         if (!symbolToFile.has(s.name)) {
             symbolToFile.set(s.name, new Set());
         }
-        symbolToFile.get(s.name)!.add(s.file);
+        symbolToFile.get(s.name)!.add(normalizePath(s.file));
     }
 
     for (const file of allFiles) {
@@ -263,9 +286,10 @@ function computeDepthScores(
 }
 
 export function buildInvestigationAudit(
-    toolCalls: ToolCallRecord[]
+    toolCalls: ToolCallRecord[],
+    preFlattened?: ToolCallRecord[]
 ): InvestigationAudit {
-    if (toolCalls.length === 0) {
+    if (toolCalls.length === 0 && !preFlattened?.length) {
         return {
             filesRead: [],
             symbolsResolved: [],
@@ -276,7 +300,7 @@ export function buildInvestigationAudit(
         };
     }
 
-    const flat = flattenToolCalls(toolCalls);
+    const flat = preFlattened ?? flattenToolCalls(toolCalls);
     const filesRead = extractFileReads(flat);
     const symbolsResolved = extractSymbolsResolved(flat);
     const usagesChecked = extractUsagesChecked(flat);

@@ -1841,6 +1841,58 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
 
         expect(result.entries[0]!.verdict).toBe('keep');
     });
+
+    it('keeps finding when $-prefixed identifier appears in tool output', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'MEDIUM',
+                affectedComponent: '$state()',
+                description: '$state reactive declaration has a bug',
+            }),
+        ];
+        const records = [
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: 'const $state = writable(0);',
+            }),
+            createToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/foo.ts'] },
+                result: '+ const $state = writable(0);',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        expect(result.entries[0]!.verdict).toBe('keep');
+    });
+
+    it('flags weak-evidence when $-prefixed identifier not in tool output', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'MEDIUM',
+                affectedComponent: '$onClick()',
+                description: '$onClick handler has a memory leak',
+            }),
+        ];
+        const records = [
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: 'function handleClick() { return true; }',
+            }),
+            createToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/foo.ts'] },
+                result: '+ function handleClick() { return true; }',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        expect(result.entries[0]!.verdict).toBe('weak-evidence');
+    });
 });
 
 describe('EvidenceAuditor — pattern-specific checks', () => {
