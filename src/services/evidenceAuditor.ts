@@ -70,10 +70,17 @@ const NO_CALLERS_PATTERN =
     /\b(?:no|zero|0|unused|dead|orphan)\s+(?:callers?|call[\s-]*sites?|references?|usages?|consumers?|upstream\s+code)\b/;
 
 /**
+ * Pattern matching "callers don't exist" style reverse phrasing.
+ * Complements NO_CALLERS_PATTERN which only handles "no callers" word order.
+ */
+const NO_CALLERS_REVERSE_PATTERN =
+    /\b(?:callers?|call[\s-]*sites?|consumers?|references?|usages?)\s+(?:don['\u2019]t|do\s+not|doesn['\u2019]t|does\s+not|aren['\u2019]t|are\s+not|can['\u2019]t|cannot|won['\u2019]t|will\s+not|were\s+not|was\s+not)\s+(?:exist|appear|found)\b/;
+
+/**
  * Pattern matching findings that claim something about a function's internal behavior.
  */
 const FUNCTION_BEHAVIOR_PATTERN =
-    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!i)|clos|releas|dispos|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
+    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:\w+ly\s+)?(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!i)|clos|releas|dispos|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
 
 export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade' | 'weak-evidence';
 
@@ -270,6 +277,9 @@ export class EvidenceAuditor {
         toolCallRecords: ToolCallRecord[]
     ): ToolCallRecord[] {
         const normalizedTarget = normalizeRelativePath(findingFile);
+        if (!normalizedTarget) {
+            return [];
+        }
 
         return toolCallRecords.filter((tc) => {
             if (!tc.success) {
@@ -304,6 +314,9 @@ export class EvidenceAuditor {
         toolCallRecords: ToolCallRecord[]
     ): ToolCallRecord[] {
         const normalizedTarget = normalizeRelativePath(findingFile);
+        if (!normalizedTarget) {
+            return [];
+        }
 
         return toolCallRecords.filter((tc) => {
             if (!tc.success || typeof tc.result !== 'string') {
@@ -601,7 +614,10 @@ export class EvidenceAuditor {
         }
 
         // If the finding explicitly says "no callers"/"unused", that's a different claim — skip
-        if (NO_CALLERS_PATTERN.test(lowerText)) {
+        if (
+            NO_CALLERS_PATTERN.test(lowerText) ||
+            NO_CALLERS_REVERSE_PATTERN.test(lowerText)
+        ) {
             return null;
         }
 
@@ -627,7 +643,10 @@ export class EvidenceAuditor {
         const usageCalls = allUsageCalls.filter((tc) => {
             const symbolArg = SYMBOL_ARG_KEYS.map(
                 (key) => tc.arguments[key]
-            ).find((val): val is string => typeof val === 'string');
+            ).find(
+                (val): val is string =>
+                    typeof val === 'string' && val.length > 0
+            );
             return (
                 symbolArg !== undefined &&
                 (symbolArg === primaryIdentifier ||

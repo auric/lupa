@@ -2744,5 +2744,73 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain('not found in');
         });
+
+        it('flags weak-evidence when no body-reading tools exist for file', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/api.ts',
+                    title: 'processRequest never validates input',
+                    description:
+                        'processRequest does not validate the incoming request',
+                    affectedComponent: 'processRequest()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/api.ts',
+                        symbol_name: 'processRequest',
+                    },
+                    result: 'src/routes.ts:10: processRequest()',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/api.ts'] },
+                    result: '+ // added a comment to the module header',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+            expect(result.entries[0]!.reason).toContain(
+                'function name not found in read_file'
+            );
+        });
+
+        it('keeps finding when function body found via find_symbol output', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/api.ts',
+                    title: 'processRequest never validates input',
+                    description:
+                        'processRequest does not validate the incoming request',
+                    affectedComponent: 'processRequest()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: {
+                        symbol_name: 'processRequest',
+                        relative_path: 'src/api.ts',
+                    },
+                    result: 'function processRequest(req: Request) { validate(req); }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/api.ts'] },
+                    result: '+ function processRequest(req: Request) {}',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // find_symbol output contains 'processRequest' → body was "read"
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
     });
 });
