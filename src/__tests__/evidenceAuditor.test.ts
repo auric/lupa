@@ -149,6 +149,29 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.reason).toContain('find_usages');
         });
 
+        it('detects fabricated tool claims in finding title', () => {
+            const findings = [
+                createTestFinding({
+                    title: 'read_file confirmed the bug',
+                    description:
+                        'The function has an issue with error handling',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: { symbol_name: 'someFunction' },
+                    result: 'function someFunction() { return true; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('drop');
+            expect(result.entries[0]!.reason).toContain('read_file');
+        });
+
         it('keeps finding when claimed tool was called on wrong file but file was investigated', () => {
             const findings = [
                 createTestFinding({
@@ -530,6 +553,56 @@ describe('EvidenceAuditor', () => {
             expect(result.dropped).toBe(1); // f3: claimed find_usages but file never investigated
             expect(result.weakEvidence).toBe(0);
             expect(result.entries.length).toBe(3);
+        });
+
+        it('counts weak-evidence in summary', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/foo.ts',
+                    title: 'Missing return type',
+                    affectedComponent: 'doesNotExistAnywhere()',
+                    severity: 'MEDIUM',
+                }),
+                createTestFinding({
+                    file: 'src/bar.ts',
+                    title: 'Unused variable',
+                    affectedComponent: 'actualFunction()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'export function otherThing() {}',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ export function otherThing() {}',
+                }),
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/bar.ts' },
+                    result: 'function actualFunction() { return 42; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/bar.ts'] },
+                    result: '+ function actualFunction() { return 42; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.weakEvidence).toBe(1);
+            expect(result.kept).toBe(1);
+            expect(
+                result.entries.filter((e) => e.verdict === 'weak-evidence')
+            ).toHaveLength(1);
+            expect(
+                result.entries.filter((e) => e.verdict === 'keep')
+            ).toHaveLength(1);
         });
 
         it('drops finding when deletion language + zero-reference evidence present', () => {
@@ -1170,6 +1243,18 @@ describe('extractFilesFromArgs', () => {
         expect(extractFilesFromArgs({ relative_path: '.' })).toEqual([]);
     });
 
+    it('filters out "." from file_path argument', () => {
+        const result = extractFilesFromArgs({ file_path: '.' });
+        expect(result).toEqual([]);
+    });
+
+    it('filters out "." from file_paths array', () => {
+        const result = extractFilesFromArgs({
+            file_paths: ['.', 'src/foo.ts'],
+        });
+        expect(result).toEqual(['src/foo.ts']);
+    });
+
     it('handles multiple argument types', () => {
         const files = extractFilesFromArgs({
             file_path: 'src/a.ts',
@@ -1596,7 +1681,7 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
         expect(result.entries[0]!.reason).toContain('processOrder');
     });
 
-    it('keeps finding when all supporting calls have non-string results', () => {
+    it('keeps finding when tool results are non-string (empty output text bypasses check)', () => {
         const findings = [
             createTestFinding({
                 severity: 'HIGH',
@@ -1734,6 +1819,45 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                     toolName: 'get_file_diff',
                     arguments: { file_paths: ['src/foo.ts'] },
                     result: '+ someFunction updated',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
+        it('keeps finding when some find_usages calls return results', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/utils/handler.ts',
+                    title: 'No callers found for handleRequest',
+                    description: 'handleRequest appears to have no callers',
+                    affectedComponent: 'handleRequest()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/utils/handler.ts' },
+                    result: 'function handleRequest() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/utils/handler.ts',
+                        symbol_name: 'handleRequest',
+                    },
+                    result: '',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/utils/handler.ts',
+                        symbol_name: 'handleRequest',
+                    },
+                    result: 'src/routes/api.ts:15: handleRequest(req)',
                 }),
             ];
 

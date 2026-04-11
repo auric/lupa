@@ -331,7 +331,7 @@ export class EvidenceAuditor {
             }
             const normalizedResult = tc.result
                 .replace(/\\/g, '/')
-                .replace(/\.\/(?=\w)/g, '');
+                .replace(/(?<!\.)\.\/(?=\w)/g, '');
             // Require a path boundary after the match to prevent
             // prefix false positives (e.g. 'src/foo.ts' matching 'src/foo.tsx')
             let searchFrom = 0;
@@ -346,7 +346,8 @@ export class EvidenceAuditor {
                 // Left boundary: must be at start or preceded by a path separator/whitespace
                 const leftOk =
                     idx === 0 ||
-                    /[/ \t\n\r"',;>()[\]{}]/.test(normalizedResult[idx - 1]!);
+                    // eslint-disable-next-line no-useless-escape
+                    /[/ \t\n\r"',;>()\[\]{}]/.test(normalizedResult[idx - 1]!);
                 if (!leftOk) {
                     searchFrom = idx + 1;
                     continue;
@@ -356,7 +357,8 @@ export class EvidenceAuditor {
                     return true;
                 }
                 const nextChar = normalizedResult[afterMatch]!;
-                if (/[:, \t\n\r"';)<[\]{}]/.test(nextChar)) {
+                // eslint-disable-next-line no-useless-escape
+                if (/[:, \t\n\r"';)\[\]{}]/.test(nextChar)) {
                     return true;
                 }
                 searchFrom = idx + 1;
