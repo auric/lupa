@@ -87,7 +87,7 @@ const CALLER_CLAIM_PATTERN =
  * Used to exclude "no callers" findings from the caller claim contradiction check.
  */
 const NO_CALLERS_PATTERN =
-    /\b(?:no|zero|0|unused|dead|orphan)\s+(?:callers?|call[\s-]*sites?|references?|usages?|consumers?)\b/;
+    /\b(?:no|zero|0|unused|dead|orphan)\s+(?:callers?|call[\s-]*sites?|references?|usages?|consumers?|upstream\s+code)\b/;
 
 /**
  * Pattern matching findings that claim something about a function's internal behavior.
