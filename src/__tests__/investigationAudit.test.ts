@@ -314,7 +314,7 @@ describe('normalizeRelativePath', () => {
         expect(normalizeRelativePath('..')).toBe('..');
     });
 
-    it('preserves trailing slash for directory markers', () => {
+    it('strips trailing slash from directory paths', () => {
         expect(normalizeRelativePath('src/foo/')).toBe('src/foo');
     });
 
