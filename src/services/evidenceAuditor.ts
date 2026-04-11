@@ -93,7 +93,7 @@ const NO_CALLERS_PATTERN =
  * Pattern matching findings that claim something about a function's internal behavior.
  */
 const FUNCTION_BEHAVIOR_PATTERN =
-    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!ic)|clos|releas|dispos|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
+    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!i)|clos|releas|dispos|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
 
 export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade' | 'weak-evidence';
 
@@ -817,7 +817,10 @@ export function extractPrimaryIdentifier(
     }
 
     // Split by dots and take the last part (most specific symbol)
-    const parts = cleaned.split('.');
+    const parts = cleaned.split('.').filter((p) => p.length > 0);
+    if (parts.length === 0) {
+        return undefined;
+    }
     const last = parts[parts.length - 1]!;
 
     // If the last part is too short, skip the check rather than

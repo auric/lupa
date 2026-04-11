@@ -152,6 +152,7 @@ describe('EvidenceAuditor', () => {
         it('detects fabricated tool claims in finding title', () => {
             const findings = [
                 createTestFinding({
+                    file: 'src/foo.ts',
                     title: 'read_file confirmed the bug',
                     description:
                         'The function has an issue with error handling',
@@ -161,7 +162,10 @@ describe('EvidenceAuditor', () => {
             const records = [
                 createToolCallRecord({
                     toolName: 'find_symbol',
-                    arguments: { symbol_name: 'someFunction' },
+                    arguments: {
+                        symbol_name: 'someFunction',
+                        relative_path: 'src/other.ts',
+                    },
                     result: 'function someFunction() { return true; }',
                 }),
             ];
@@ -199,7 +203,7 @@ describe('EvidenceAuditor', () => {
             const result = auditor.audit(findings, records);
 
             // File was investigated via read_file — not fabricated, just misattributed
-            expect(result.entries[0]!.verdict).not.toBe('drop');
+            expect(result.entries[0]!.verdict).toBe('downgrade');
         });
 
         it('downgrades CRITICAL finding with only one investigation tool type', () => {
@@ -704,6 +708,7 @@ describe('EvidenceAuditor', () => {
         it('keeps finding without deletion language even if zero references', () => {
             const findings = [
                 createTestFinding({
+                    severity: 'MEDIUM',
                     description: 'The function has a null pointer bug',
                 }),
             ];
@@ -721,7 +726,7 @@ describe('EvidenceAuditor', () => {
 
             const result = auditor.audit(findings, records);
 
-            expect(result.entries[0]!.verdict).not.toBe('drop');
+            expect(result.entries[0]!.verdict).toBe('keep');
         });
 
         it('does not false-drop when title has deletion language but finding is not about deletion', () => {
@@ -765,13 +770,20 @@ describe('EvidenceAuditor', () => {
         it('keeps test-coverage findings even with deletion language and zero references', () => {
             const findings = [
                 createTestFinding({
+                    severity: 'MEDIUM',
                     title: 'Coverage gap: tests removed',
                     description:
                         'Tool thinking tests were deleted, reducing test coverage',
                     file: 'src/__tests__/thinkTool.test.ts',
+                    affectedComponent: 'thinkTool()',
                 }),
             ];
             const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/__tests__/thinkTool.test.ts' },
+                    result: 'describe("thinkTool", () => { it("works", () => {}) });',
+                }),
                 createToolCallRecord({
                     toolName: 'find_usages',
                     arguments: {
@@ -780,12 +792,19 @@ describe('EvidenceAuditor', () => {
                     },
                     result: '0 results found',
                 }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: {
+                        file_paths: ['src/__tests__/thinkTool.test.ts'],
+                    },
+                    result: '- describe("thinkTool", ...) removed tests',
+                }),
             ];
 
             const result = auditor.audit(findings, records);
 
             // Test-coverage findings should NOT be dropped by deletion-safety
-            expect(result.entries[0]!.verdict).not.toBe('drop');
+            expect(result.entries[0]!.verdict).toBe('keep');
         });
 
         it('does not drop findings about untested code even with deletion language', () => {
@@ -1015,6 +1034,7 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.claimedTools).toEqual([]);
             // No investigation tools used → depth downgrade, not fabrication drop
             expect(result.entries[0]!.verdict).not.toBe('drop');
+            expect(result.entries[0]!.verdict).toBe('downgrade');
         });
 
         it('matches search_for_pattern results with ./ prefix in tool output', () => {
@@ -1092,6 +1112,76 @@ describe('EvidenceAuditor', () => {
             expect(
                 result.entries[0]!.supportingToolCallIds.length
             ).toBeGreaterThan(0);
+        });
+
+        it('matches tool calls with Windows backslash paths', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/utils/handler.ts',
+                    affectedComponent: 'someFunction()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src\\utils\\handler.ts' },
+                    result: 'function someFunction() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/utils/handler.ts'] },
+                    result: '+ function someFunction() { return true; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.verdict).toBe('keep');
+            expect(
+                result.entries[0]!.supportingToolCallIds.length
+            ).toBeGreaterThan(0);
+        });
+
+        it('does not double-extract tool names when disproof result equals method', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/foo.ts',
+                    title: 'Issue in module',
+                    description: 'The module has a problem',
+                    severity: 'MEDIUM',
+                    disproof: {
+                        attempted: true,
+                        method: 'Used find_symbol to check',
+                        result: 'Used find_symbol to check',
+                    },
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function someFunction() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ function someFunction() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: {
+                        symbol_name: 'someFunction',
+                        relative_path: 'src/foo.ts',
+                    },
+                    result: 'symbol info',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // find_symbol is mentioned in disproof and exists in records — should be fine
+            expect(result.entries[0]!.verdict).toBe('keep');
         });
 
         it('attributes subagent-nested tool calls as supporting evidence', () => {
