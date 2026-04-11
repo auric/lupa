@@ -74,7 +74,7 @@ const NO_CALLERS_PATTERN =
  * Complements NO_CALLERS_PATTERN which only handles "no callers" word order.
  */
 const NO_CALLERS_REVERSE_PATTERN =
-    /\b(?:callers?|call[\s-]*sites?|consumers?|references?|usages?|upstream\s+code)\s+(?:don['\u2019]t|do\s+not|doesn['\u2019]t|does\s+not|aren['\u2019]t|are\s+not|weren['\u2019]t|were\s+not|wasn['\u2019]t|was\s+not|can['\u2019]t|cannot|won['\u2019]t|will\s+not)\s+(?:exist|appear|found)\b/;
+    /\b(?:callers?|call[\s-]*sites?|consumers?|references?|usages?|upstream\s+code)\s+(?:don['\u2019]t|do\s+not|doesn['\u2019]t|does\s+not|aren['\u2019]t|are\s+not|weren['\u2019]t|were\s+not|wasn['\u2019]t|was\s+not|can['\u2019]t|cannot|won['\u2019]t|will\s+not)\s+(?:exist|appear|found|present)\b/;
 
 /**
  * Pattern matching findings that claim something about a function's internal behavior.
