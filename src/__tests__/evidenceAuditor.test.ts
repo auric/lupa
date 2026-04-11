@@ -1831,8 +1831,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             const findings = [
                 createTestFinding({
                     file: 'src/utils/handler.ts',
-                    title: 'No callers found for handleRequest',
-                    description: 'handleRequest appears to have no callers',
+                    title: 'Callers of handleRequest pass unvalidated input',
+                    description:
+                        'The callers of handleRequest skip input validation',
                     affectedComponent: 'handleRequest()',
                     severity: 'MEDIUM',
                 }),
@@ -2127,7 +2128,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
         it('flags weak-evidence when behavior claim but no read_file on file', () => {
             const findings = [
                 createTestFinding({
-                    severity: 'HIGH',
+                    severity: 'MEDIUM',
                     title: 'someFunction fails to validate input',
                     affectedComponent: 'someFunction()',
                     description:
@@ -2135,7 +2136,8 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                 }),
             ];
             const records = [
-                // Only find_usages and find_symbol — no read_file or get_file_diff
+                // find_usages + find_symbol give depth, but no read_file/get_file_diff
+                // find_symbol result does NOT contain the function name
                 createToolCallRecord({
                     toolName: 'find_usages',
                     arguments: {
@@ -2148,9 +2150,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                     toolName: 'find_symbol',
                     arguments: {
                         file_path: 'src/foo.ts',
-                        name_path: 'someFunction',
+                        name_path: 'otherSymbol',
                     },
-                    result: 'Found function someFunction at line 10',
+                    result: 'Found symbol otherSymbol at line 10',
                 }),
             ];
 
@@ -2159,7 +2161,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.weakEvidence).toBe(1);
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain(
-                'no read_file or get_file_diff call'
+                'function name not found in read_file, diff, or find_symbol output'
             );
         });
 
@@ -2218,7 +2220,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
 
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain(
-                'function name not found in read_file or diff output'
+                'function name not found in read_file, diff, or find_symbol output'
             );
         });
 
@@ -2304,7 +2306,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             // someFunction NOT in read_file output → weak-evidence
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain(
-                'function name not found in read_file or diff output'
+                'function name not found in read_file, diff, or find_symbol output'
             );
         });
 
@@ -2397,6 +2399,96 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(
                 result.entries[0]!.supportingToolCallIds.length
             ).toBeGreaterThan(0);
+        });
+
+        it('keeps finding claiming no call sites when NO_CALLERS_PATTERN matches', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/utils/handler.ts',
+                    title: 'No call sites for handleRequest',
+                    description:
+                        'The function has no call sites in the codebase',
+                    affectedComponent: 'handleRequest()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/utils/handler.ts' },
+                    result: 'function handleRequest() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/utils/handler.ts',
+                        symbol_name: 'handleRequest',
+                    },
+                    result: '',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // "no call sites" matches NO_CALLERS_PATTERN → caller contradiction check skipped → keep
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
+        it('does not match adjective phrases as function behavior (no clear documentation)', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/api.ts',
+                    title: 'No clear documentation for API endpoints',
+                    description: 'The module lacks clear documentation',
+                    affectedComponent: 'ApiModule',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/api.ts' },
+                    result: 'export class ApiModule { handle() { return true; } }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/api.ts'] },
+                    result: '+ export class ApiModule { handle() { return true; } }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // Should NOT be caught by FUNCTION_BEHAVIOR_PATTERN
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
+        it('does not match short identifier as substring of longer word', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/utils.ts',
+                    affectedComponent: 'get()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/utils.ts' },
+                    result: 'function target() { return offset; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/utils.ts'] },
+                    result: '+ function target() { return offset; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // "get" should NOT match inside "target" or "offset"
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+            expect(result.entries[0]!.reason).toContain('not found in');
         });
     });
 });

@@ -87,13 +87,13 @@ const CALLER_CLAIM_PATTERN =
  * Used to exclude "no callers" findings from the caller claim contradiction check.
  */
 const NO_CALLERS_PATTERN =
-    /\b(?:no|zero|0|unused|dead|orphan)\s+(?:callers?|references?|usages?|consumers?)\b/;
+    /\b(?:no|zero|0|unused|dead|orphan)\s+(?:callers?|call[\s-]*sites?|references?|usages?|consumers?)\b/;
 
 /**
  * Pattern matching findings that claim something about a function's internal behavior.
  */
 const FUNCTION_BEHAVIOR_PATTERN =
-    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!ic)|clos|releas|dispos|clean|clear(?!ly)|free(?!z)|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
+    /\b(?:doesn't|does not|don't|do not|fails? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!ic)|clos|releas|dispos|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
 
 export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade' | 'weak-evidence';
 
@@ -536,8 +536,11 @@ export class EvidenceAuditor {
             return null;
         }
 
-        // Check if the primary identifier appears in any tool output
-        if (outputText.includes(primaryIdentifier)) {
+        // Check if the primary identifier appears in any tool output (word boundary match)
+        const identifierPattern = new RegExp(
+            `\\b${primaryIdentifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`
+        );
+        if (identifierPattern.test(outputText)) {
             return null;
         }
 
@@ -702,28 +705,46 @@ export class EvidenceAuditor {
                 typeof tc.result === 'string'
         );
 
-        // Function name must appear in at least one read_file or get_file_diff output
-        const funcInReadFile = readFileCalls.some((tc) =>
-            (tc.result as string).includes(funcName)
-        );
-        const funcInDiff = diffCalls.some((tc) =>
-            (tc.result as string).includes(funcName)
+        // Also check find_symbol — with include_body it returns function bodies
+        const findSymbolCalls = fileSupportingCalls.filter(
+            (tc) =>
+                tc.success &&
+                tc.toolName === 'find_symbol' &&
+                typeof tc.result === 'string'
         );
 
-        if (funcInReadFile || funcInDiff) {
+        // Function name must appear in at least one read_file, get_file_diff, or find_symbol output
+        const funcPattern = new RegExp(
+            `\\b${funcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`
+        );
+        const funcInReadFile = readFileCalls.some((tc) =>
+            funcPattern.test(tc.result as string)
+        );
+        const funcInDiff = diffCalls.some((tc) =>
+            funcPattern.test(tc.result as string)
+        );
+        const funcInFindSymbol = findSymbolCalls.some((tc) =>
+            funcPattern.test(tc.result as string)
+        );
+
+        if (funcInReadFile || funcInDiff || funcInFindSymbol) {
             return null;
         }
 
         // No tool output shows the function body
-        if (readFileCalls.length === 0 && diffCalls.length === 0) {
-            const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but no read_file or get_file_diff call was made on "${finding.file}"`;
+        if (
+            readFileCalls.length === 0 &&
+            diffCalls.length === 0 &&
+            findSymbolCalls.length === 0
+        ) {
+            const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but no read_file, get_file_diff, or find_symbol call was made on "${finding.file}"`;
             Log.info(
                 `EvidenceAuditor WEAK-EVIDENCE [${finding.id}] "${finding.title}": ${reason}`
             );
             return { finding, verdict: 'weak-evidence', reason };
         }
 
-        const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but function name not found in read_file or diff output`;
+        const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but function name not found in read_file, diff, or find_symbol output`;
         Log.info(
             `EvidenceAuditor WEAK-EVIDENCE [${finding.id}] "${finding.title}": ${reason}`
         );
