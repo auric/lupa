@@ -309,7 +309,7 @@ function computeDepthScores(
 
 export function buildInvestigationAudit(
     toolCalls: ToolCallRecord[],
-    preFlattened?: ToolCallRecord[]
+    preFlattened: ToolCallRecord[] | undefined
 ): InvestigationAudit {
     if (toolCalls.length === 0 && !preFlattened?.length) {
         return {

@@ -691,7 +691,10 @@ RULES:
                     : taskText;
 
             if (outcome.status === 'completed') {
-                const audit = buildInvestigationAudit(outcome.result.toolCalls);
+                const audit = buildInvestigationAudit(
+                    outcome.result.toolCalls,
+                    undefined
+                );
                 const auditLine = formatCompactAudit(audit);
                 const header =
                     `### Subagent #${outcome.subagentId} — ${label}\n\n` +
@@ -706,7 +709,10 @@ RULES:
                     responseEnd: header.length + response.length,
                 });
             } else if (outcome.status === 'degraded') {
-                const audit = buildInvestigationAudit(outcome.result.toolCalls);
+                const audit = buildInvestigationAudit(
+                    outcome.result.toolCalls,
+                    undefined
+                );
                 const auditLine = formatCompactAudit(audit);
                 const header =
                     `### Subagent #${outcome.subagentId} — DEGRADED (partial results)\n\n` +

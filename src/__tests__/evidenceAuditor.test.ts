@@ -1029,8 +1029,8 @@ describe('EvidenceAuditor', () => {
 
             const result = auditor.audit(findings, records);
 
-            // "callers do not exist" matches NO_CALLERS_REVERSE_PATTERN → skip contradiction check
-            // Finding is valid "no callers" observation, not a contradiction
+            // Title "References do not exist for handleRequest" matches NO_CALLERS_REVERSE_PATTERN
+            // via "references do not exist" → skip contradiction check
             expect(result.entries[0]!.verdict).toBe('keep');
         });
 
@@ -2876,7 +2876,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                 createToolCallRecord({
                     toolName: 'get_file_diff',
                     arguments: { file_paths: ['src/api.ts'] },
-                    result: '+ function processRequest(req: Request) {}',
+                    result: '+ export { handler };',
                 }),
             ];
 

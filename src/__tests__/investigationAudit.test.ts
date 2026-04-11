@@ -21,7 +21,7 @@ function makeToolCall(overrides: Partial<ToolCallRecord>): ToolCallRecord {
 
 describe('buildInvestigationAudit', () => {
     it('returns empty audit for empty tool calls', () => {
-        const audit = buildInvestigationAudit([]);
+        const audit = buildInvestigationAudit([], undefined);
 
         expect(audit.filesRead).toHaveLength(0);
         expect(audit.symbolsResolved).toHaveLength(0);
@@ -51,7 +51,7 @@ describe('buildInvestigationAudit', () => {
             }),
         ];
 
-        const audit = buildInvestigationAudit(calls);
+        const audit = buildInvestigationAudit(calls, undefined);
 
         expect(audit.filesRead).toHaveLength(2);
         expect(audit.filesRead[0]).toEqual({
@@ -68,7 +68,7 @@ describe('buildInvestigationAudit', () => {
         const calls: ToolCallRecord[] = [
             makeToolCall({ toolName: 'read_file', arguments: {} }),
         ];
-        const audit = buildInvestigationAudit(calls);
+        const audit = buildInvestigationAudit(calls, undefined);
         expect(audit.filesRead).toHaveLength(0);
     });
 
@@ -84,7 +84,7 @@ describe('buildInvestigationAudit', () => {
             }),
         ];
 
-        const audit = buildInvestigationAudit(calls);
+        const audit = buildInvestigationAudit(calls, undefined);
 
         expect(audit.symbolsResolved).toHaveLength(1);
         expect(audit.symbolsResolved[0]).toEqual({
@@ -103,7 +103,7 @@ describe('buildInvestigationAudit', () => {
             }),
         ];
 
-        const audit = buildInvestigationAudit(calls);
+        const audit = buildInvestigationAudit(calls, undefined);
         expect(audit.symbolsResolved[0].file).toBe('unknown');
     });
 
@@ -116,7 +116,7 @@ describe('buildInvestigationAudit', () => {
             }),
         ];
 
-        const audit = buildInvestigationAudit(calls);
+        const audit = buildInvestigationAudit(calls, undefined);
 
         expect(audit.usagesChecked).toHaveLength(1);
         expect(audit.usagesChecked[0]).toEqual({
@@ -134,7 +134,7 @@ describe('buildInvestigationAudit', () => {
             }),
         ];
 
-        const audit = buildInvestigationAudit(calls);
+        const audit = buildInvestigationAudit(calls, undefined);
 
         expect(audit.patternsSearched).toHaveLength(1);
         expect(audit.patternsSearched[0]).toEqual({
@@ -179,7 +179,7 @@ describe('buildInvestigationAudit', () => {
             }),
         ];
 
-        const audit = buildInvestigationAudit(calls);
+        const audit = buildInvestigationAudit(calls, undefined);
         const depth = audit.depthScores.get('src/main.ts');
 
         expect(depth).toBeDefined();
@@ -219,7 +219,7 @@ describe('buildInvestigationAudit', () => {
             }),
         ];
 
-        const audit = buildInvestigationAudit(calls);
+        const audit = buildInvestigationAudit(calls, undefined);
         expect(audit.depthScores.get('a.ts')!.score).toBeLessThanOrEqual(10);
     });
 
@@ -249,7 +249,7 @@ describe('buildInvestigationAudit', () => {
             }),
         ];
 
-        const audit = buildInvestigationAudit(calls);
+        const audit = buildInvestigationAudit(calls, undefined);
 
         expect(audit.filesRead).toHaveLength(1);
         expect(audit.filesRead[0].path).toBe('src/nested.ts');
@@ -279,7 +279,7 @@ describe('buildInvestigationAudit', () => {
             }),
         ];
 
-        const audit = buildInvestigationAudit(calls);
+        const audit = buildInvestigationAudit(calls, undefined);
         expect(audit.filesRead).toHaveLength(1);
         expect(audit.filesRead[0].path).toBe('deep.ts');
     });
