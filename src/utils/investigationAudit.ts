@@ -222,6 +222,9 @@ function extractDiffsExamined(calls: ToolCallRecord[]): string[] {
         if (call.toolName !== 'get_file_diff') {
             continue;
         }
+        if (!call.success) {
+            continue;
+        }
         for (const p of parseDiffFilePaths(call.arguments)) {
             const normalized = normalizeRelativePath(p);
             if (normalized) {

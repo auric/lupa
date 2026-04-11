@@ -363,7 +363,7 @@ export class EvidenceAuditor {
                 }
                 const nextChar = normalizedResult[afterMatch]!;
                 // eslint-disable-next-line no-useless-escape
-                if (/[:, \t\n\r"';)\[\]{}]/.test(nextChar)) {
+                if (/[:,(> \t\n\r"';)\[\]{}]/.test(nextChar)) {
                     return true;
                 }
                 searchFrom = idx + 1;
