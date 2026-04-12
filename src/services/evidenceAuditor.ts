@@ -736,7 +736,15 @@ export class EvidenceAuditor {
                 typeof tc.result === 'string'
         );
 
-        // Function name must appear in at least one read_file, get_file_diff, or find_symbol output
+        // Also check search_for_pattern — grep results can show the function
+        const searchPatternCalls = fileSupportingCalls.filter(
+            (tc) =>
+                tc.success &&
+                tc.toolName === 'search_for_pattern' &&
+                typeof tc.result === 'string'
+        );
+
+        // Function name must appear in at least one read_file, get_file_diff, find_symbol, or search_for_pattern output
         const escapedFunc = funcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const funcPattern = new RegExp(`(?<![\\w$])${escapedFunc}(?![\\w$])`);
         const funcInReadFile = readFileCalls.some((tc) =>
@@ -748,8 +756,16 @@ export class EvidenceAuditor {
         const funcInFindSymbol = findSymbolCalls.some((tc) =>
             funcPattern.test(tc.result as string)
         );
+        const funcInSearchPattern = searchPatternCalls.some((tc) =>
+            funcPattern.test(tc.result as string)
+        );
 
-        if (funcInReadFile || funcInDiff || funcInFindSymbol) {
+        if (
+            funcInReadFile ||
+            funcInDiff ||
+            funcInFindSymbol ||
+            funcInSearchPattern
+        ) {
             return null;
         }
 
@@ -757,16 +773,17 @@ export class EvidenceAuditor {
         if (
             readFileCalls.length === 0 &&
             diffCalls.length === 0 &&
-            findSymbolCalls.length === 0
+            findSymbolCalls.length === 0 &&
+            searchPatternCalls.length === 0
         ) {
-            const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but no read_file, get_file_diff, or find_symbol call was made on "${finding.file}"`;
+            const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but no read_file, get_file_diff, find_symbol, or search_for_pattern call was made on "${finding.file}"`;
             Log.info(
                 `EvidenceAuditor WEAK-EVIDENCE [${finding.id}] "${finding.title}": ${reason}`
             );
             return { finding, verdict: 'weak-evidence', reason };
         }
 
-        const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but function name not found in read_file, diff, or find_symbol output`;
+        const reason = `Weak evidence: finding claims "${funcName}" has behavior issue, but function name not found in read_file, diff, find_symbol, or search_for_pattern output`;
         Log.info(
             `EvidenceAuditor WEAK-EVIDENCE [${finding.id}] "${finding.title}": ${reason}`
         );

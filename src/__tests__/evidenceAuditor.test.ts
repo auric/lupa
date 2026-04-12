@@ -94,7 +94,7 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.verdict).toBe('keep');
         });
 
-        it('keeps finding when claimed tool not called but file was investigated', () => {
+        it('downgrades finding when claimed tool not called but file was investigated', () => {
             const findings = [
                 createTestFinding({
                     description: 'find_usages showed no callers',
@@ -177,7 +177,7 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.verdict).toBe('downgrade');
         });
 
-        it('keeps finding when claimed tool was called on wrong file but file was investigated', () => {
+        it('downgrades finding when claimed tool was called on wrong file but file was investigated', () => {
             const findings = [
                 createTestFinding({
                     file: 'src/foo.ts',
@@ -2522,7 +2522,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.weakEvidence).toBe(1);
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain(
-                'function name not found in read_file, diff, or find_symbol output'
+                'function name not found in read_file, diff, find_symbol, or search_for_pattern output'
             );
         });
 
@@ -2581,7 +2581,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
 
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain(
-                'function name not found in read_file, diff, or find_symbol output'
+                'function name not found in read_file, diff, find_symbol, or search_for_pattern output'
             );
         });
 
@@ -2667,7 +2667,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             // someFunction NOT in read_file output → weak-evidence
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain(
-                'function name not found in read_file, diff, or find_symbol output'
+                'function name not found in read_file, diff, find_symbol, or search_for_pattern output'
             );
         });
 
