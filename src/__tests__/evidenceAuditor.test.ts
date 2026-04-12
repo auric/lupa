@@ -2983,6 +2983,36 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.entries[0]!.verdict).toBe('keep');
         });
 
+        it('keeps finding when function name found in search_for_pattern output', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/handler.ts',
+                    title: 'processRequest does not validate input',
+                    description:
+                        'The function processRequest fails to validate',
+                    affectedComponent: 'processRequest()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'search_for_pattern',
+                    arguments: { pattern: 'processRequest' },
+                    result: 'src/handler.ts:10: function processRequest(req: Request) { return req; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/handler.ts'] },
+                    result: '+ // module updated',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // search_for_pattern shows function body → should not flag weak-evidence
+            expect(result.entries[0]!.verdict).not.toBe('weak-evidence');
+        });
+
         it('downgrades when no body-reading tools called on file (depth catch)', () => {
             const findings = [
                 createTestFinding({
