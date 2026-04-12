@@ -40,6 +40,36 @@ const ZERO_REFERENCE_PATTERNS = [
 const ZERO_REFERENCE_TOOL_NAMES = new Set(['find_usages', 'find_symbol']);
 
 /**
+ * Tools that return toolError() (success: false) for zero results.
+ * These are NOT real errors — they indicate "searched and found nothing",
+ * which is valid investigation evidence.
+ */
+const ZERO_RESULT_TOOL_NAMES = new Set([
+    'find_usages',
+    'find_symbol',
+    'search_for_pattern',
+]);
+
+/**
+ * Patterns matching zero-result error messages from tools.
+ * Used to distinguish "found nothing" errors from real errors (timeouts, rate limits, etc.).
+ */
+const ZERO_RESULT_ERROR_PATTERNS = [
+    /no usages found/i,
+    /not found/i,
+    /no matches/i,
+    /no results/i,
+    /\b0 results/i,
+    /\b0 usages/i,
+    /\b0 matches/i,
+    /no references/i,
+    /no callers/i,
+    /\b0 callers/i,
+    /no occurrences/i,
+    /\b0 occurrences/i,
+] as const;
+
+/**
  * Tools that target specific files and can be matched per-file.
  * Excludes non-investigation tools (validate_claim, retract_finding, think, etc.)
  * and global tools (search_for_pattern) that don't target a single file.
@@ -99,6 +129,40 @@ export interface EvidenceAuditResult {
     downgraded: number;
     weakEvidence: number;
     kept: number;
+}
+
+/**
+ * Check if a failed tool call is actually a zero-result call (not a real error).
+ * Zero-result calls from specific tools are valid investigation evidence —
+ * the LLM ran a tool and confirmed nothing was found.
+ */
+export function isZeroResultCall(tc: ToolCallRecord): boolean {
+    if (tc.success) {
+        return false;
+    }
+    if (!ZERO_RESULT_TOOL_NAMES.has(tc.toolName)) {
+        return false;
+    }
+    if (typeof tc.error !== 'string' || tc.error.length === 0) {
+        return false;
+    }
+    return ZERO_RESULT_ERROR_PATTERNS.some((pattern) =>
+        pattern.test(tc.error!)
+    );
+}
+
+/**
+ * Get the effective text content of a tool call for evidence matching.
+ * For successful calls, returns the result. For zero-result calls, returns the error message.
+ */
+function getToolCallText(tc: ToolCallRecord): string | undefined {
+    if (tc.success && typeof tc.result === 'string') {
+        return tc.result;
+    }
+    if (isZeroResultCall(tc) && typeof tc.error === 'string') {
+        return tc.error;
+    }
+    return undefined;
 }
 
 /**
@@ -293,7 +357,7 @@ export class EvidenceAuditor {
         }
 
         return toolCallRecords.filter((tc) => {
-            if (!tc.success) {
+            if (!tc.success && !isZeroResultCall(tc)) {
                 return false;
             }
 
@@ -330,13 +394,16 @@ export class EvidenceAuditor {
         }
 
         return toolCallRecords.filter((tc) => {
-            if (!tc.success || typeof tc.result !== 'string') {
-                return false;
-            }
             if (tc.toolName !== 'search_for_pattern') {
                 return false;
             }
-            const normalizedResult = tc.result
+
+            const textToSearch = getToolCallText(tc);
+            if (!textToSearch) {
+                return false;
+            }
+
+            const normalizedResult = textToSearch
                 .replace(/\\/g, '/')
                 .replace(/(?<!\.)\.\/(?=\w)/g, '');
             // Require a path boundary after the match to prevent
@@ -381,9 +448,10 @@ export class EvidenceAuditor {
      *
      * A finding is only flagged as fabricated if:
      * - It claims file-targeted tools that were never called on the file
-     * - AND no other investigation tools were called on the file either
-     *   (if the file WAS investigated, misattributing which tool found it is
-     *   an evidence quality issue, not fabrication)
+     * - AND no file-targeted investigation tools were called on the file
+     *   (if the file WAS investigated by a file-targeted tool, misattributing
+     *   which tool it used is an evidence quality issue, not fabrication;
+     *   global search results alone don't prevent fabrication detection)
      */
     private findFabricatedClaims(
         claimedTools: string[],
@@ -397,13 +465,13 @@ export class EvidenceAuditor {
             return [];
         }
 
-        const toolsOnFile = new Set(
-            fileSupportingCalls.map((tc) => tc.toolName)
-        );
-
-        // If the file was investigated by ANY tool, don't flag as fabricated.
+        // If the file was investigated by a file-targeted tool, don't flag as fabricated.
         // The model found the issue — it just misattributed which tool it used.
-        if (toolsOnFile.size > 0) {
+        // Global search results alone don't count — require at least one file-targeted tool.
+        const hasFileTargetedCall = fileSupportingCalls.some((tc) =>
+            FILE_TARGETED_TOOL_NAMES.includes(tc.toolName)
+        );
+        if (hasFileTargetedCall) {
             return [];
         }
 
@@ -439,20 +507,23 @@ export class EvidenceAuditor {
         // Only check reference tools called on THIS finding's file, not all records
         const referenceToolCalls = fileSupportingCalls.filter(
             (tc) =>
-                tc.success &&
                 ZERO_REFERENCE_TOOL_NAMES.has(tc.toolName) &&
-                typeof tc.result === 'string'
+                ((tc.success && typeof tc.result === 'string') ||
+                    isZeroResultCall(tc))
         );
 
         if (referenceToolCalls.length === 0) {
             return null;
         }
 
-        const hasZeroReferences = referenceToolCalls.every((tc) =>
-            ZERO_REFERENCE_PATTERNS.some((pattern) =>
+        const hasZeroReferences = referenceToolCalls.every((tc) => {
+            if (isZeroResultCall(tc)) {
+                return true;
+            }
+            return ZERO_REFERENCE_PATTERNS.some((pattern) =>
                 pattern.test(tc.result as string)
-            )
-        );
+            );
+        });
 
         if (!hasZeroReferences) {
             return null;
@@ -638,9 +709,9 @@ export class EvidenceAuditor {
         // Check if find_usages was called on this file
         const allUsageCalls = fileSupportingCalls.filter(
             (tc) =>
-                tc.success &&
                 tc.toolName === 'find_usages' &&
-                typeof tc.result === 'string'
+                ((tc.success && typeof tc.result === 'string') ||
+                    isZeroResultCall(tc))
         );
 
         if (allUsageCalls.length === 0) {
@@ -673,11 +744,14 @@ export class EvidenceAuditor {
         }
 
         // Check if ALL find_usages calls returned zero results
-        const allZero = usageCalls.every((tc) =>
-            ZERO_REFERENCE_PATTERNS.some((pattern) =>
+        const allZero = usageCalls.every((tc) => {
+            if (isZeroResultCall(tc)) {
+                return true;
+            }
+            return ZERO_REFERENCE_PATTERNS.some((pattern) =>
                 pattern.test(tc.result as string)
-            )
-        );
+            );
+        });
 
         if (!allZero) {
             return null;
@@ -870,12 +944,13 @@ export function extractPrimaryIdentifier(
 
 /**
  * Aggregate tool output text from a set of tool call records.
- * Only includes string results from successful calls.
+ * Includes string results from successful calls and error messages
+ * from zero-result calls (which are valid investigation evidence).
  */
 export function aggregateToolOutputText(toolCalls: ToolCallRecord[]): string {
     return toolCalls
-        .filter((tc) => tc.success && typeof tc.result === 'string')
-        .map((tc) => tc.result as string)
+        .map((tc) => getToolCallText(tc))
+        .filter((text): text is string => text !== undefined)
         .join('\n');
 }
 

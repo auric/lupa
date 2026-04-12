@@ -5,6 +5,7 @@ import {
     extractFilesFromArgs,
     extractPrimaryIdentifier,
     aggregateToolOutputText,
+    isZeroResultCall,
 } from '../services/evidenceAuditor';
 import type { RecordedFinding } from '../types/findingTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
@@ -439,6 +440,46 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.verdict).toBe('drop');
         });
 
+        it('includes zero-result tool calls as supporting evidence', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    file: 'src/foo.ts',
+                    description: 'find_usages confirmed no callers',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                }),
+                createToolCallRecord({
+                    id: 'tc-zero',
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'someFunction',
+                    },
+                    success: false,
+                    error: 'No usages found for someFunction',
+                    result: undefined as unknown as string,
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ someFunction change',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // Zero-result find_usages should be included as supporting evidence
+            expect(findings[0]!.supportingToolCalls).toContain('tc-zero');
+            expect(result.entries[0]!.actualToolsOnFile).toContain(
+                'find_usages'
+            );
+        });
+
         it('matches files with path suffix (relative vs absolute)', () => {
             const findings = [
                 createTestFinding({
@@ -633,7 +674,9 @@ describe('EvidenceAuditor', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'handleClick',
                     },
-                    result: '0 results found for handleClick',
+                    success: false,
+                    error: '0 results found for handleClick',
+                    result: undefined as unknown as string,
                 }),
             ];
 
@@ -664,7 +707,9 @@ describe('EvidenceAuditor', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'helper',
                     },
-                    result: 'No results found',
+                    success: false,
+                    error: 'No results found',
+                    result: undefined as unknown as string,
                 }),
             ];
 
@@ -723,7 +768,9 @@ describe('EvidenceAuditor', () => {
                 createToolCallRecord({
                     toolName: 'find_usages',
                     arguments: { file_path: 'src/foo.ts', symbol_name: 'fn' },
-                    result: '0 results',
+                    success: false,
+                    error: '0 results',
+                    result: undefined as unknown as string,
                 }),
             ];
 
@@ -793,7 +840,9 @@ describe('EvidenceAuditor', () => {
                         file_path: 'src/__tests__/thinkTool.test.ts',
                         symbol_name: 'thinkTool',
                     },
-                    result: '0 results found',
+                    success: false,
+                    error: '0 results found',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',
@@ -832,7 +881,9 @@ describe('EvidenceAuditor', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'validateInput',
                     },
-                    result: '0 results found',
+                    success: false,
+                    error: '0 results found',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',
@@ -869,7 +920,9 @@ describe('EvidenceAuditor', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'helperFunc',
                     },
-                    result: '0 results found',
+                    success: false,
+                    error: '0 results found',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',
@@ -907,7 +960,9 @@ describe('EvidenceAuditor', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'someFunction',
                     },
-                    result: '0 results found',
+                    success: false,
+                    error: '0 results found',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',
@@ -943,7 +998,9 @@ describe('EvidenceAuditor', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'processOrder',
                     },
-                    result: 'not found',
+                    success: false,
+                    error: 'not found',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'find_usages',
@@ -1056,7 +1113,9 @@ describe('EvidenceAuditor', () => {
                         file_path: 'src/utils/handler.ts',
                         symbol_name: 'handleRequest',
                     },
-                    result: '',
+                    success: false,
+                    error: 'No usages found',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',
@@ -1070,6 +1129,30 @@ describe('EvidenceAuditor', () => {
             // Title "References do not exist for handleRequest" matches NO_CALLERS_REVERSE_PATTERN
             // via "references do not exist" → skip contradiction check
             expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
+        it('drops fabricated finding when only search_for_pattern matches (no file-targeted tools)', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    file: 'src/utils/helper.ts',
+                    description: 'read_file confirmed the issue',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'search_for_pattern',
+                    arguments: { pattern: 'helper', code_files_only: true },
+                    result: 'src/utils/helper.ts:42: export function helper() {',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // read_file was claimed but only search_for_pattern was called on file
+            // search_for_pattern is NOT a file-targeted tool → fabrication not waived
+            expect(result.entries[0]!.verdict).toBe('drop');
+            expect(result.entries[0]!.reason).toContain('Fabricated evidence');
         });
 
         it('counts global search_for_pattern results as supporting evidence', () => {
@@ -1632,6 +1715,117 @@ describe('aggregateToolOutputText', () => {
     it('returns empty string when no calls', () => {
         expect(aggregateToolOutputText([])).toBe('');
     });
+
+    it('includes error text from zero-result calls', () => {
+        const calls = [
+            createToolCallRecord({ result: 'good output', success: true }),
+            createToolCallRecord({
+                toolName: 'find_usages',
+                success: false,
+                error: 'No usages found for symbol',
+                result: undefined as unknown as string,
+            }),
+        ];
+        const text = aggregateToolOutputText(calls);
+        expect(text).toContain('good output');
+        expect(text).toContain('No usages found for symbol');
+    });
+
+    it('excludes error text from real errors (not zero-result)', () => {
+        const calls = [
+            createToolCallRecord({ result: 'good output', success: true }),
+            createToolCallRecord({
+                toolName: 'find_usages',
+                success: false,
+                error: 'Timeout: operation took too long',
+                result: undefined as unknown as string,
+            }),
+        ];
+        const text = aggregateToolOutputText(calls);
+        expect(text).toContain('good output');
+        expect(text).not.toContain('Timeout');
+    });
+});
+
+describe('isZeroResultCall', () => {
+    it('returns true for find_usages with zero-result error', () => {
+        const tc = createToolCallRecord({
+            toolName: 'find_usages',
+            success: false,
+            error: 'No usages found for symbol',
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(true);
+    });
+
+    it('returns true for find_symbol with not-found error', () => {
+        const tc = createToolCallRecord({
+            toolName: 'find_symbol',
+            success: false,
+            error: 'Symbol not found',
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(true);
+    });
+
+    it('returns true for search_for_pattern with no matches error', () => {
+        const tc = createToolCallRecord({
+            toolName: 'search_for_pattern',
+            success: false,
+            error: 'No matches found for pattern',
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(true);
+    });
+
+    it('returns false for successful calls', () => {
+        const tc = createToolCallRecord({
+            toolName: 'find_usages',
+            success: true,
+            result: '3 references found',
+        });
+        expect(isZeroResultCall(tc)).toBe(false);
+    });
+
+    it('returns false for real errors (timeout)', () => {
+        const tc = createToolCallRecord({
+            toolName: 'find_usages',
+            success: false,
+            error: 'Operation timed out after 5000ms',
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(false);
+    });
+
+    it('returns false for non-zero-result tools', () => {
+        const tc = createToolCallRecord({
+            toolName: 'read_file',
+            success: false,
+            error: 'File not found',
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(false);
+    });
+
+    it('returns false when error is empty', () => {
+        const tc = createToolCallRecord({
+            toolName: 'find_usages',
+            success: false,
+            error: '',
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(false);
+    });
+
+    it('returns false when error is undefined', () => {
+        const tc = createToolCallRecord({
+            toolName: 'find_usages',
+            success: false,
+            error: undefined,
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(false);
+    });
 });
 
 describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
@@ -1761,7 +1955,9 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
                     file_path: 'src/foo.ts',
                     symbol_name: 'processOrder',
                 },
-                result: '0 results found',
+                success: false,
+                error: '0 results found',
+                result: undefined as unknown as string,
             }),
             createToolCallRecord({
                 toolName: 'read_file',
@@ -2061,7 +2257,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                     file_path: 'src/foo.ts',
                     symbol_name: 'someFunction',
                 },
-                result: '0 results found',
+                success: false,
+                error: '0 results found',
+                result: undefined as unknown as string,
             }),
             createToolCallRecord({
                 toolName: 'get_file_diff',
@@ -2101,7 +2299,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'someFunction',
                     },
-                    result: '0 results found for someFunction',
+                    success: false,
+                    error: '0 results found for someFunction',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',
@@ -2177,7 +2377,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                         file_path: 'src/utils/handler.ts',
                         symbol_name: 'handleRequest',
                     },
-                    result: '',
+                    success: false,
+                    error: 'No usages found',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'find_usages',
@@ -2216,7 +2418,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'someFunction',
                     },
-                    result: '0 results found',
+                    success: false,
+                    error: '0 results found',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',
@@ -2251,7 +2455,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'someFunction',
                     },
-                    result: '0 results',
+                    success: false,
+                    error: '0 results',
+                    result: undefined as unknown as string,
                 }),
             ];
 
@@ -2283,7 +2489,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                         file_path: 'src/utils/handler.ts',
                         name_path: 'handleRequest',
                     },
-                    result: '',
+                    success: false,
+                    error: 'No usages found',
+                    result: undefined as unknown as string,
                 }),
             ];
 
@@ -2316,7 +2524,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'someFunction',
                     },
-                    result: '0 results found',
+                    success: false,
+                    error: '0 results found',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',
@@ -2354,7 +2564,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'otherFunction',
                     },
-                    result: '0 results found',
+                    success: false,
+                    error: '0 results found',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',
@@ -2391,7 +2603,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'someFunction',
                     },
-                    result: '0 results found for someFunction',
+                    success: false,
+                    error: '0 results found for someFunction',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',
@@ -2467,7 +2681,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                         file_path: 'src/foo.ts',
                         symbol_name: 'MyClass.someFunction',
                     },
-                    result: '0 results found',
+                    success: false,
+                    error: '0 results found',
+                    result: undefined as unknown as string,
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',
@@ -2848,7 +3064,9 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                         file_path: 'src/utils/handler.ts',
                         symbol_name: 'handleRequest',
                     },
-                    result: '',
+                    success: false,
+                    error: 'No usages found',
+                    result: undefined as unknown as string,
                 }),
             ];
 
