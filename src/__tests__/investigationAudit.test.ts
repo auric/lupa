@@ -370,4 +370,66 @@ describe('buildInvestigationAudit preFlattened', () => {
         expect(audit.filesRead.length).toBe(1);
         expect(audit.filesRead[0]!.path).toBe('src/bar.ts');
     });
+
+    it('falls back to flattenToolCalls when preFlattened is empty array', () => {
+        const records = [
+            makeToolCall({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/bar.ts' },
+                result: 'bar file contents',
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(records, []);
+
+        // Empty preFlattened should be treated as undefined, falling back to flattenToolCalls
+        expect(audit.filesRead.length).toBe(1);
+        expect(audit.filesRead[0]!.path).toBe('src/bar.ts');
+    });
+
+    it('excludes failed tool calls from all extractions', () => {
+        const records = [
+            makeToolCall({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: 'Error: timeout',
+                success: false,
+            }),
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: {
+                    symbol_name: 'myFunc',
+                    relative_path: 'src/foo.ts',
+                },
+                result: 'Error: not found',
+                success: false,
+            }),
+            makeToolCall({
+                toolName: 'find_usages',
+                arguments: { symbol_name: 'myFunc', file_path: 'src/foo.ts' },
+                result: 'Error: timeout',
+                success: false,
+            }),
+            makeToolCall({
+                toolName: 'search_for_pattern',
+                arguments: { pattern: 'myFunc' },
+                result: 'Error: search failed',
+                success: false,
+            }),
+            makeToolCall({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/foo.ts'] },
+                result: 'Error: diff failed',
+                success: false,
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(records, undefined);
+
+        expect(audit.filesRead).toHaveLength(0);
+        expect(audit.symbolsResolved).toHaveLength(0);
+        expect(audit.usagesChecked).toHaveLength(0);
+        expect(audit.patternsSearched).toHaveLength(0);
+        expect(audit.diffsExamined).toHaveLength(0);
+    });
 });

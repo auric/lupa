@@ -171,6 +171,8 @@ export class EvidenceAuditor {
             ...new Set(allSupportingCalls.map((tc) => tc.id)),
         ];
 
+        // Title excluded: may reference tool concepts generically (e.g. "read_file
+        // shows missing validation") without claiming the tool was actually called.
         const fabricationText = [
             finding.description,
             finding.verificationEvidence,

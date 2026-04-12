@@ -1170,6 +1170,38 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.verdict).toBe('drop');
         });
 
+        it('matches file path at end of search result string', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/utils/parser.ts',
+                    severity: 'HIGH',
+                    title: 'Parser lacks validation',
+                    description: 'The parser does not validate input',
+                    affectedComponent: 'parseInput()',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'search_for_pattern',
+                    arguments: { pattern: 'parseInput' },
+                    result: 'Found in src/utils/parser.ts',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/utils/parser.ts'] },
+                    result: '+ function parseInput() {}',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // File path at end of string (no trailing boundary char) should still match
+            expect(
+                result.entries[0]!.supportingToolCallIds.length
+            ).toBeGreaterThanOrEqual(1);
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
         it('does not extract non-investigation tools from evidence text', () => {
             const findings = [
                 createTestFinding({
