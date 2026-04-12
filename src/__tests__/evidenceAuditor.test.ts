@@ -657,6 +657,7 @@ describe('EvidenceAuditor', () => {
             const findings = [
                 createTestFinding({
                     title: 'Unused function deleted',
+                    affectedComponent: 'handleClick()',
                     description:
                         'The function handleClick was deleted but callers may break',
                     verificationEvidence:
@@ -692,6 +693,7 @@ describe('EvidenceAuditor', () => {
                 createTestFinding({
                     severity: 'MEDIUM',
                     title: 'Helper function removed',
+                    affectedComponent: 'helper()',
                     description:
                         'The helper was removed but may still be imported elsewhere',
                 }),
@@ -1176,6 +1178,83 @@ describe('EvidenceAuditor', () => {
             // "10 results" should NOT match zero-reference patterns
             // Finding should be kept (references exist, deletion is potentially unsafe)
             expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
+        it('does not drop deletion finding when find_usages was for a different symbol', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    title: 'symbolB was removed',
+                    affectedComponent: 'symbolB()',
+                    description: 'symbolB was deleted from the codebase',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function symbolB() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'symbolA',
+                    },
+                    success: false,
+                    error: '0 results found for symbolA',
+                    result: undefined as unknown as string,
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- function symbolB() { return true; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // find_usages(symbolA) zero results should NOT cause finding about symbolB to drop
+            expect(result.entries[0]!.verdict).not.toBe('drop');
+        });
+
+        it('drops deletion finding when find_usages was for the matching symbol', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    title: 'symbolA was removed',
+                    affectedComponent: 'symbolA()',
+                    description: 'symbolA was deleted from the codebase',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function symbolA() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'symbolA',
+                    },
+                    success: false,
+                    error: '0 results found for symbolA',
+                    result: undefined as unknown as string,
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- function symbolA() { return true; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // find_usages(symbolA) zero results + finding about symbolA → drop
+            expect(result.entries[0]!.verdict).toBe('drop');
+            expect(result.entries[0]!.reason).toContain('Deletion safety');
         });
 
         it('excludes reverse-phrased no-caller findings from contradiction check', () => {

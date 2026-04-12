@@ -505,12 +505,41 @@ export class EvidenceAuditor {
         // Only check find_usages calls on THIS finding's file, not all records.
         // find_symbol is excluded — it resolves symbol definitions, not references.
         // An unrelated find_symbol(Y) finding results shouldn't block deletion drops.
-        const referenceToolCalls = fileSupportingCalls.filter(
+        const allUsageCalls = fileSupportingCalls.filter(
             (tc) =>
                 tc.toolName === 'find_usages' &&
                 ((tc.success && typeof tc.result === 'string') ||
                     isZeroResultCall(tc))
         );
+
+        if (allUsageCalls.length === 0) {
+            return null;
+        }
+
+        // Filter to only find_usages calls targeting the finding's symbol.
+        // Without this, find_usages(symbolA) returning zero results could
+        // incorrectly drop a finding about a DIFFERENT deleted symbolB.
+        const primaryIdentifier = extractPrimaryIdentifier(
+            finding.affectedComponent
+        );
+        const referenceToolCalls =
+            primaryIdentifier &&
+            primaryIdentifier.length >= MIN_IDENTIFIER_LENGTH
+                ? allUsageCalls.filter((tc) => {
+                      const symbolArg = SYMBOL_ARG_KEYS.map(
+                          (key) => tc.arguments[key]
+                      ).find(
+                          (val): val is string =>
+                              typeof val === 'string' && val.length > 0
+                      );
+                      if (!symbolArg) {
+                          return true; // No symbol arg — can't filter, keep it
+                      }
+                      return symbolArg
+                          .toLowerCase()
+                          .includes(primaryIdentifier.toLowerCase());
+                  })
+                : allUsageCalls; // Identifier too short to filter reliably
 
         if (referenceToolCalls.length === 0) {
             return null;
