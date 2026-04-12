@@ -37,8 +37,6 @@ const ZERO_REFERENCE_PATTERNS = [
     /^\s*$/,
 ] as const;
 
-const ZERO_REFERENCE_TOOL_NAMES = new Set(['find_usages', 'find_symbol']);
-
 /**
  * Tools that return toolError() (success: false) for zero results.
  * These are NOT real errors — they indicate "searched and found nothing",
@@ -432,7 +430,7 @@ export class EvidenceAuditor {
                 }
                 const nextChar = normalizedResult[afterMatch]!;
                 // eslint-disable-next-line no-useless-escape
-                if (/[:,(> \t\n\r"';)\[\]{}]/.test(nextChar)) {
+                if (/[:,(>. \t\n\r"';)\[\]{}]/.test(nextChar)) {
                     return true;
                 }
                 searchFrom = idx + 1;
@@ -504,10 +502,12 @@ export class EvidenceAuditor {
             return null;
         }
 
-        // Only check reference tools called on THIS finding's file, not all records
+        // Only check find_usages calls on THIS finding's file, not all records.
+        // find_symbol is excluded — it resolves symbol definitions, not references.
+        // An unrelated find_symbol(Y) finding results shouldn't block deletion drops.
         const referenceToolCalls = fileSupportingCalls.filter(
             (tc) =>
-                ZERO_REFERENCE_TOOL_NAMES.has(tc.toolName) &&
+                tc.toolName === 'find_usages' &&
                 ((tc.success && typeof tc.result === 'string') ||
                     isZeroResultCall(tc))
         );

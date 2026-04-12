@@ -937,7 +937,7 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.verdict).not.toBe('drop');
         });
 
-        it('drops deletion finding when find_symbol returns zero results', () => {
+        it('does not drop deletion finding when only find_symbol shows zero results (find_symbol excluded from deletion check)', () => {
             const findings = [
                 createTestFinding({
                     severity: 'HIGH',
@@ -973,6 +973,94 @@ describe('EvidenceAuditor', () => {
 
             const result = auditor.audit(findings, records);
 
+            // find_symbol is excluded from deletion safety check — only find_usages counts
+            // No find_usages was called → deletion safety can't confirm → not dropped
+            expect(result.entries[0]!.verdict).not.toBe('drop');
+        });
+
+        it('drops deletion finding when find_usages confirms zero references but unrelated find_symbol found results', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    title: 'handleClick was removed',
+                    affectedComponent: 'handleClick()',
+                    description: 'handleClick was deleted from the codebase',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function handleClick() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'handleClick',
+                    },
+                    success: false,
+                    error: 'No usages found for handleClick',
+                    result: undefined as unknown as string,
+                }),
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'unrelatedSymbol',
+                    },
+                    result: 'class unrelatedSymbol { ... }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- function handleClick() { return true; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // find_usages confirms zero refs → deletion is safe → drop
+            // Unrelated find_symbol(Y) with results should NOT block the drop
+            expect(result.entries[0]!.verdict).toBe('drop');
+            expect(result.entries[0]!.reason).toContain('Deletion safety');
+        });
+
+        it('drops deletion finding when find_usages returns zero-result error', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'processData was removed',
+                    affectedComponent: 'processData()',
+                    description: 'processData was deleted from the module',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function processData() { return []; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'processData',
+                    },
+                    success: false,
+                    error: "No usages found for symbol 'processData'",
+                    result: undefined as unknown as string,
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- function processData() { return []; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // Zero-result find_usages (success: false) should be treated as evidence
             expect(result.entries[0]!.verdict).toBe('drop');
             expect(result.entries[0]!.reason).toContain('Deletion safety');
         });
@@ -1019,8 +1107,8 @@ describe('EvidenceAuditor', () => {
 
             const result = auditor.audit(findings, records);
 
-            // find_usages found callers → deletion NOT safe → should NOT be dropped
-            expect(result.entries[0]!.verdict).not.toBe('drop');
+            // find_usages found callers → deletion NOT safe → keep
+            expect(result.entries[0]!.verdict).toBe('keep');
         });
 
         it('keeps finding with deletion language when no reference tools were called', () => {
@@ -1048,8 +1136,8 @@ describe('EvidenceAuditor', () => {
 
             const result = auditor.audit(findings, records);
 
-            // No find_usages or find_symbol called → deletion safety can't confirm zero refs → should NOT drop
-            expect(result.entries[0]!.verdict).not.toBe('drop');
+            // No find_usages or find_symbol called → deletion safety can't confirm zero refs → keep
+            expect(result.entries[0]!.verdict).toBe('keep');
         });
 
         it('does not treat multi-digit counts as zero references in deletion safety', () => {
@@ -2016,8 +2104,8 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
 
         const result = auditor.audit(findings, records);
 
-        // No supporting calls → depth downgrade, not weak-evidence
-        expect(result.entries[0]!.verdict).not.toBe('weak-evidence');
+        // No supporting calls → depth downgrade
+        expect(result.entries[0]!.verdict).toBe('downgrade');
     });
 
     it('skips weak-evidence check when affectedComponent is too short', () => {
@@ -2038,7 +2126,7 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
 
         const result = auditor.audit(findings, records);
 
-        // 'fn' is only 2 chars, skip the check
+        // 'fn' is only 2 chars, skip weak-evidence check
         expect(result.entries[0]!.verdict).not.toBe('weak-evidence');
     });
 
@@ -2431,7 +2519,8 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
 
             const result = auditor.audit(findings, records);
 
-            // "no callers" is a valid claim supported by zero results — should NOT be weak-evidence
+            // "no callers" is a valid claim supported by zero results → not weak-evidence
+            // (may be dropped by deletion safety, which is a separate concern)
             expect(result.entries[0]!.verdict).not.toBe('weak-evidence');
         });
 
