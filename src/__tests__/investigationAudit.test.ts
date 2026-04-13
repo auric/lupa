@@ -433,3 +433,132 @@ describe('buildInvestigationAudit preFlattened', () => {
         expect(audit.diffsExamined).toHaveLength(0);
     });
 });
+
+describe('zero-result tool calls count toward depth', () => {
+    it('counts find_symbol zero-result calls as symbol resolutions', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: {
+                    name_path: 'MissingClass',
+                    file_path: 'src/foo.ts',
+                },
+                success: false,
+                error: "Symbol 'MissingClass' not found in src/foo.ts",
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(calls, undefined);
+
+        expect(audit.symbolsResolved).toHaveLength(1);
+        expect(audit.symbolsResolved[0]).toEqual({
+            name: 'MissingClass',
+            file: 'src/foo.ts',
+            kind: 'unknown',
+        });
+        expect(audit.depthScores.get('src/foo.ts')).toBeDefined();
+        expect(audit.depthScores.get('src/foo.ts')!.score).toBeGreaterThan(0);
+    });
+
+    it('counts find_usages zero-result calls as usage checks', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'find_usages',
+                arguments: { symbol_name: 'deprecatedFn' },
+                success: false,
+                error: 'No usages found for deprecatedFn',
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(calls, undefined);
+
+        expect(audit.usagesChecked).toHaveLength(1);
+        expect(audit.usagesChecked[0]).toEqual({
+            symbol: 'deprecatedFn',
+            referenceCount: 0,
+        });
+    });
+
+    it('counts search_for_pattern zero-result calls as pattern searches', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'search_for_pattern',
+                arguments: { pattern: 'dangerouslySetInnerHTML' },
+                success: false,
+                error: "No matches found for pattern 'dangerouslySetInnerHTML'",
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(calls, undefined);
+
+        expect(audit.patternsSearched).toHaveLength(1);
+        expect(audit.patternsSearched[0]).toEqual({
+            query: 'dangerouslySetInnerHTML',
+            matchCount: 0,
+        });
+    });
+
+    it('does NOT count genuine failures as zero-result investigations', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: { name_path: 'Foo', file_path: 'src/bar.ts' },
+                success: false,
+                error: 'Timeout exceeded',
+            }),
+            makeToolCall({
+                toolName: 'find_usages',
+                arguments: { symbol_name: 'bar' },
+                success: false,
+                error: 'Request failed: rate limited',
+            }),
+            makeToolCall({
+                toolName: 'search_for_pattern',
+                arguments: { pattern: 'baz' },
+                success: false,
+                error: 'Search service unavailable',
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(calls, undefined);
+
+        expect(audit.symbolsResolved).toHaveLength(0);
+        expect(audit.usagesChecked).toHaveLength(0);
+        expect(audit.patternsSearched).toHaveLength(0);
+    });
+
+    it('zero-result find_usages contributes to depth when combined with symbol resolution', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'read_file',
+                arguments: {
+                    file_path: 'src/api.ts',
+                    start_line: 1,
+                    end_line: 50,
+                },
+            }),
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: {
+                    name_path: 'handleRequest',
+                    file_path: 'src/api.ts',
+                },
+                result: 'function handleRequest()',
+            }),
+            makeToolCall({
+                toolName: 'find_usages',
+                arguments: { symbol_name: 'handleRequest' },
+                success: false,
+                error: 'No usages found for handleRequest',
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(calls, undefined);
+        const depth = audit.depthScores.get('src/api.ts');
+
+        expect(depth).toBeDefined();
+        // read(2) + symbols(2) + usages(2) = 6
+        expect(depth!.score).toBe(6);
+        expect(depth!.breakdown).toContain('usages');
+    });
+});

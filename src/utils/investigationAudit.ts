@@ -46,6 +46,43 @@ const KNOWN_KINDS = [
 const DEPTH_PER_SIGNAL = 2;
 const MAX_DEPTH = 10;
 
+/**
+ * Tool names whose "not found" errors represent valid zero-result investigations,
+ * not real failures. Duplicated from EvidenceAuditor to avoid cross-module coupling.
+ */
+const ZERO_RESULT_TOOL_NAMES = new Set([
+    'find_usages',
+    'find_symbol',
+    'search_for_pattern',
+]);
+
+/**
+ * Error message patterns that indicate "found nothing" rather than a real error.
+ * Kept intentionally narrower than EvidenceAuditor's patterns to avoid
+ * misclassifying timeouts or truncation errors as valid investigations.
+ */
+const ZERO_RESULT_ERROR_PATTERNS = [
+    /no usages found/i,
+    /not found/i,
+    /no matches/i,
+    /no results/i,
+] as const;
+
+function isZeroResultCall(call: ToolCallRecord): boolean {
+    if (call.success) {
+        return false;
+    }
+    if (!ZERO_RESULT_TOOL_NAMES.has(call.toolName)) {
+        return false;
+    }
+    if (typeof call.error !== 'string' || call.error.length === 0) {
+        return false;
+    }
+    return ZERO_RESULT_ERROR_PATTERNS.some((pattern) =>
+        pattern.test(call.error!)
+    );
+}
+
 export function flattenToolCalls(
     toolCalls: ToolCallRecord[]
 ): ToolCallRecord[] {
@@ -155,7 +192,7 @@ function extractSymbolsResolved(
         if (call.toolName !== 'find_symbol') {
             continue;
         }
-        if (!call.success) {
+        if (!call.success && !isZeroResultCall(call)) {
             continue;
         }
         const name = getStringArg(call.arguments, 'name_path');
@@ -166,7 +203,9 @@ function extractSymbolsResolved(
         if (!name) {
             continue;
         }
-        const kind = extractKindFromResult(call.result);
+        const kind = call.success
+            ? extractKindFromResult(call.result)
+            : 'unknown';
         const normalized = normalizeRelativePath(file);
         if (!normalized) {
             continue;
@@ -182,14 +221,16 @@ function extractUsagesChecked(calls: ToolCallRecord[]): UsageCheckEntry[] {
         if (call.toolName !== 'find_usages') {
             continue;
         }
-        if (!call.success) {
+        if (!call.success && !isZeroResultCall(call)) {
             continue;
         }
         const symbol = getStringArg(call.arguments, 'symbol_name');
         if (!symbol) {
             continue;
         }
-        const referenceCount = extractNumberFromResult(call.result);
+        const referenceCount = call.success
+            ? extractNumberFromResult(call.result)
+            : 0;
         entries.push({ symbol, referenceCount });
     }
     return entries;
@@ -203,14 +244,16 @@ function extractPatternsSearched(
         if (call.toolName !== 'search_for_pattern') {
             continue;
         }
-        if (!call.success) {
+        if (!call.success && !isZeroResultCall(call)) {
             continue;
         }
         const query = getStringArg(call.arguments, 'pattern');
         if (!query) {
             continue;
         }
-        const matchCount = extractNumberFromResult(call.result);
+        const matchCount = call.success
+            ? extractNumberFromResult(call.result)
+            : 0;
         entries.push({ query, matchCount });
     }
     return entries;

@@ -28,7 +28,7 @@ function makeFinding(
         failureMechanism: overrides.failureMechanism ?? 'runtime_exception',
         verificationEvidence:
             'Verified by reading the diff and tracing the function',
-        supportingToolCalls: ['call-1', 'call-2'],
+        supportingToolCalls: [],
         disproof: {
             attempted: true,
             method: 'counter-search',
@@ -87,65 +87,87 @@ function makeContext(overrides: Partial<ScoringContext> = {}): ScoringContext {
 
 describe('findingScorer', () => {
     describe('scoreFinding', () => {
-        it('should score a perfect finding near 100', () => {
-            const finding = makeFinding();
-            const context = makeContext();
+        it('should score a well-evidenced finding high', () => {
+            const finding = makeFinding({
+                description:
+                    'The function reads .value from a potentially null object, resulting in TypeError at runtime when config input is undefined, as confirmed by symbol definitions and tracing through call analysis',
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'find_symbol',
+                        arguments: {
+                            symbol: 'getValue',
+                            file_path: 'src/services/foo.ts',
+                        },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-2',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/services/foo.ts' },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-3',
+                        toolName: 'find_usages',
+                        arguments: {
+                            symbol: 'getValue',
+                            file_path: 'src/services/foo.ts',
+                        },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-4',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/services/foo.ts' },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-5',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/models/bar.ts' },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-6',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/utils/helpers.ts' },
+                    }),
+                ],
+            });
             const score = scoreFinding(finding, context);
 
-            // supportingToolCalls: 2/2 verified = 25
             // investigationDepth: 4 matching calls = 20
             // disproofAttempted: true = 15
             // lspValidation: verified = 15
-            // severityEvidenceRatio: HIGH needs 2, has 2 = 10
             // modelBias: balanced = 4
             // categoryRisk: logic_error = high = 5
-            // descriptionQuality: >50, <200 chars = 1 (description is ~100 chars)
-            // Total = 95
-            expect(score.overallScore).toBeGreaterThanOrEqual(90);
+            // descriptionQuality: >200 chars = 2
+            // absencePattern: no absence language = 0
+            // affectedComponentVerified: 'getValue' in symbol field = 15
+            // crossFileEvidence: 3 files = 10
+            // evidenceAuditVerdict: none = 0
+            // Total = 86
+            expect(score.overallScore).toBeGreaterThanOrEqual(80);
             expect(score.recommendation).toBe('keep');
-            expect(score.signals).toHaveLength(12);
+            expect(score.signals).toHaveLength(10);
         });
 
         it('should give low score with no supporting evidence', () => {
             const finding = makeFinding({
-                supportingToolCalls: [],
                 disproof: { attempted: false, method: '', result: '' },
                 lspValidation: undefined,
             });
             const context = makeContext({ toolCallRecords: [] });
             const score = scoreFinding(finding, context);
 
-            // supportingToolCalls: 0 claimed = 0
             // investigationDepth: 0 matching = 0
             // disproofAttempted: false = 0
             // lspValidation: undefined = 5
-            // severityEvidenceRatio: HIGH needs 2, 0 verified = 0
             // modelBias: balanced = 4
             // categoryRisk: logic_error = 5
             // descriptionQuality: ~100 chars = 1
-            // Total = 15
+            // affectedComponentVerified: not found = -5
+            // Total = 10
             expect(score.overallScore).toBeLessThan(DROP_THRESHOLD);
             expect(score.recommendation).toBe('drop');
-        });
-
-        it('should penalize fabricated evidence (claimed IDs do not exist)', () => {
-            const finding = makeFinding({
-                supportingToolCalls: ['fake-1', 'fake-2', 'fake-3'],
-            });
-            const context = makeContext();
-            const score = scoreFinding(finding, context);
-
-            // supportingToolCalls: 0/3 verified = 0
-            const supportingSignal = score.signals.find(
-                (s) => s.signal === 'supportingToolCalls'
-            )!;
-            expect(supportingSignal.contribution).toBe(0);
-
-            // severityEvidenceRatio: HIGH needs 2, 0 verified from fake IDs = 0
-            const severitySignal = score.signals.find(
-                (s) => s.signal === 'severityEvidenceRatio'
-            )!;
-            expect(severitySignal.contribution).toBe(0);
         });
 
         it('should give dismissive model bonus over aggressive model', () => {
@@ -181,20 +203,6 @@ describe('findingScorer', () => {
             expect(dismissiveScore.overallScore).toBeGreaterThan(
                 aggressiveScore.overallScore
             );
-        });
-
-        it('should give low severity-evidence ratio for HIGH severity with 0 verified calls', () => {
-            const finding = makeFinding({
-                severity: 'HIGH',
-                supportingToolCalls: [],
-            });
-            const context = makeContext({ toolCallRecords: [] });
-            const score = scoreFinding(finding, context);
-
-            expect(
-                score.signals.find((s) => s.signal === 'severityEvidenceRatio')!
-                    .contribution
-            ).toBe(0);
         });
 
         it('should score LSP verified as high component', () => {
@@ -290,24 +298,43 @@ describe('findingScorer', () => {
         });
 
         it('should recommend downgrade for score between DROP_THRESHOLD and DOWNGRADE_THRESHOLD', () => {
-            // Need a score between 25 and 45
-            // supportingToolCalls: 1/1 = 25, investigationDepth: 0 (no file match) = 0,
-            // disproof: false = 0, lsp: undefined = 5, severityEvidence: MEDIUM needs 1 has 1 = 10,
-            // modelBias: aggressive = 0, categoryRisk: api_misuse = 1, descriptionQuality: <50 = 0
-            // Total = 41
             const finding = makeFinding({
-                supportingToolCalls: ['call-1'],
-                disproof: { attempted: false, method: '', result: '' },
-                lspValidation: undefined,
+                disproof: {
+                    attempted: true,
+                    method: 'counter-search',
+                    result: 'Could not disprove',
+                },
+                lspValidation: {
+                    status: 'inconclusive',
+                    details: 'Uncertain',
+                    claimResults: [],
+                },
                 severity: 'MEDIUM',
-                category: 'api_misuse',
-                description: 'Short desc.',
+                category: 'error_handling_gap',
+                affectedComponent: 'unknownFunction()',
+                description:
+                    'The function returns incorrect value in some edge case scenarios that could cause issues',
             });
             const context = makeContext({
                 toolCallRecords: [
                     makeToolCallRecord({
                         id: 'call-1',
-                        arguments: { file_path: 'other/file.ts' },
+                        toolName: 'read_file',
+                        arguments: {
+                            file_path: 'src/services/foo.ts',
+                        },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-2',
+                        toolName: 'get_file_diff',
+                        arguments: {
+                            file_path: 'src/services/foo.ts',
+                        },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-3',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/models/bar.ts' },
                     }),
                 ],
                 calibrationProfile: {
@@ -317,6 +344,17 @@ describe('findingScorer', () => {
                 },
             });
             const score = scoreFinding(finding, context);
+            // investigationDepth: 2 calls match foo.ts = 10
+            // disproofAttempted: true = 15
+            // lspValidation: inconclusive = 8
+            // modelBias: aggressive = 0
+            // categoryRisk: error_handling_gap = medium = 3
+            // descriptionQuality: ~86 chars = 1
+            // absencePattern: 0
+            // affectedComponentVerified: not found = -5
+            // crossFileEvidence: 2 files = 5
+            // evidenceAuditVerdict: 0
+            // Total = 37
             expect(score.overallScore).toBeGreaterThanOrEqual(DROP_THRESHOLD);
             expect(score.overallScore).toBeLessThan(DOWNGRADE_THRESHOLD);
             expect(score.recommendation).toBe('downgrade');
@@ -463,6 +501,54 @@ describe('findingScorer', () => {
                         id: 'call-1',
                         toolName: 'read_file',
                         arguments: { file_path: 'src/services/foo.ts' },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'affectedComponentVerified'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(-5);
+        });
+
+        it('should not verify affected component via file path substring match', () => {
+            const finding = makeFinding({
+                affectedComponent: 'parseConfig()',
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'read_file',
+                        arguments: {
+                            file_path: 'src/parseConfig.ts',
+                        },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'affectedComponentVerified'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(-5);
+        });
+
+        it('should not verify affected component via query substring match', () => {
+            const finding = makeFinding({
+                affectedComponent: 'handleError()',
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'search_for_pattern',
+                        arguments: {
+                            query: 'handleError implementation',
+                        },
                     }),
                 ],
             });

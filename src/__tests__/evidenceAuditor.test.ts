@@ -4,6 +4,7 @@ import {
     extractClaimedToolNames,
     extractFilesFromArgs,
     extractPrimaryIdentifier,
+    extractSecondaryFiles,
     aggregateToolOutputText,
     isZeroResultCall,
 } from '../services/evidenceAuditor';
@@ -2113,6 +2114,28 @@ describe('isZeroResultCall', () => {
         });
         expect(isZeroResultCall(tc)).toBe(false);
     });
+
+    it('returns false for generic "not found" errors from find_symbol', () => {
+        // Tightened pattern should not match generic "not found" phrasing
+        // that could come from file/network errors
+        const tc = createToolCallRecord({
+            toolName: 'find_symbol',
+            success: false,
+            error: 'Configuration not found',
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(false);
+    });
+
+    it('returns true for find_symbol truncated search error', () => {
+        const tc = createToolCallRecord({
+            toolName: 'find_symbol',
+            success: false,
+            error: "Symbol 'parseConfig' not found in searched files (search was limited due to file count)",
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(true);
+    });
 });
 
 describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
@@ -2516,6 +2539,54 @@ describe('EvidenceAuditor — claim-vs-output cross-referencing', () => {
         const result = auditor.audit(findings, records);
 
         expect(result.entries[0]!.verdict).toBe('weak-evidence');
+    });
+
+    it('flags weak-evidence when identifier only appears in zero-result error text', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'HIGH',
+                affectedComponent: 'parseConfig()',
+                // Use a description that won't trigger pattern-specific checks
+                // (no caller claims, no function behavior claims)
+                description: 'parseConfig may have an issue based on the diff',
+            }),
+        ];
+        const records = [
+            // Zero-result error contains "parseConfig" — but this should NOT
+            // satisfy the identifier-presence check
+            createToolCallRecord({
+                toolName: 'find_usages',
+                arguments: {
+                    file_path: 'src/foo.ts',
+                    symbol_name: 'parseConfig',
+                },
+                success: false,
+                error: "No usages found for symbol 'parseConfig' in file 'src/foo.ts'",
+                result: undefined as unknown as string,
+            }),
+            // Other tool outputs don't contain "parseConfig"
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+                result: 'export function handleRequest() { return null; }',
+            }),
+            createToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/foo.ts'] },
+                result: '+ export function handleRequest() { return null; }',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        // Zero-result error text should not count as positive evidence
+        // of the symbol's behavior
+        expect(result.weakEvidence).toBe(1);
+        expect(result.entries[0]!.verdict).toBe('weak-evidence');
+        expect(result.entries[0]!.reason).toContain('parseConfig');
+        expect(result.entries[0]!.reason).toContain(
+            'not found in any tool output'
+        );
     });
 });
 
@@ -3735,5 +3806,204 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             // Depth score should be > 0, finding should not be downgraded for insufficient depth
             expect(result.entries[0]!.verdict).not.toBe('downgrade');
         });
+    });
+});
+
+describe('extractSecondaryFiles', () => {
+    it('returns empty array when no secondary files exist', () => {
+        const finding = createTestFinding({
+            file: 'src/service.ts',
+            affectedComponent: 'processOrder()',
+            verifiableClaims: [],
+        });
+        expect(extractSecondaryFiles(finding)).toEqual([]);
+    });
+
+    it('extracts file from verifiableClaims that differs from primary', () => {
+        const finding = createTestFinding({
+            file: 'src/service.ts',
+            verifiableClaims: [
+                {
+                    claimType: 'no_callers',
+                    file: 'src/utils.ts',
+                    line: 10,
+                    symbol: 'processConfig',
+                    assertion: 'No callers validate input',
+                },
+            ],
+        });
+        expect(extractSecondaryFiles(finding)).toEqual(['src/utils.ts']);
+    });
+
+    it('excludes verifiableClaim file that matches primary file', () => {
+        const finding = createTestFinding({
+            file: 'src/service.ts',
+            verifiableClaims: [
+                {
+                    claimType: 'no_callers',
+                    file: 'src/service.ts',
+                    line: 10,
+                    symbol: 'processConfig',
+                    assertion: 'test',
+                },
+            ],
+        });
+        expect(extractSecondaryFiles(finding)).toEqual([]);
+    });
+
+    it('extracts file path from affectedComponent text', () => {
+        const finding = createTestFinding({
+            file: 'src/service.ts',
+            affectedComponent: 'processConfig() in src/utils/config.ts',
+        });
+        expect(extractSecondaryFiles(finding)).toEqual(['src/utils/config.ts']);
+    });
+
+    it('extracts file path from description text', () => {
+        const finding = createTestFinding({
+            file: 'src/service.ts',
+            description:
+                'The function processConfig in src/helpers/validator.ts does not validate',
+        });
+        expect(extractSecondaryFiles(finding)).toEqual([
+            'src/helpers/validator.ts',
+        ]);
+    });
+
+    it('ignores bare filenames without directory separator', () => {
+        const finding = createTestFinding({
+            file: 'src/service.ts',
+            affectedComponent: 'processConfig() in config.ts',
+        });
+        expect(extractSecondaryFiles(finding)).toEqual([]);
+    });
+
+    it('deduplicates secondary files', () => {
+        const finding = createTestFinding({
+            file: 'src/service.ts',
+            affectedComponent: 'processConfig() in src/utils.ts',
+            verifiableClaims: [
+                {
+                    claimType: 'no_callers',
+                    file: 'src/utils.ts',
+                    line: 10,
+                    symbol: 'processConfig',
+                    assertion: 'test',
+                },
+            ],
+        });
+        expect(extractSecondaryFiles(finding)).toEqual(['src/utils.ts']);
+    });
+});
+
+describe('EvidenceAuditor cross-file affectedComponent', () => {
+    const auditor = new EvidenceAuditor();
+
+    it('includes tool calls from secondary file referenced in verifiableClaims', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'MEDIUM',
+                file: 'src/service.ts',
+                affectedComponent: 'processConfig()',
+                description:
+                    'processConfig does not validate input from read_file',
+                verifiableClaims: [
+                    {
+                        claimType: 'no_callers',
+                        file: 'src/utils.ts',
+                        line: 10,
+                        symbol: 'processConfig',
+                        assertion: 'No input validation',
+                    },
+                ],
+                disproof: {
+                    attempted: true,
+                    method: 'Checked with read_file',
+                    result: 'Not disproved',
+                },
+            }),
+        ];
+        const records = [
+            // Tool call on primary file (diff)
+            createToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/service.ts'] },
+                result: '+ import { processConfig } from "./utils"',
+            }),
+            // Tool call on primary file (read_file) — satisfies depth
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/service.ts' },
+                result: 'import { processConfig } from "./utils";\ncallService();',
+            }),
+            // Tool call on secondary file (read_file showing processConfig body)
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/utils.ts' },
+                result: 'function processConfig(input) { return input; }',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        // Without the cross-file fix, the read_file on src/utils.ts wouldn't
+        // be included, and checkClaimVsOutput might flag this as weak-evidence
+        // because "processConfig" only appears in the secondary file's output.
+        expect(result.entries[0]!.verdict).toBe('keep');
+    });
+
+    it('cross-file tool calls prevent false fabrication detection', () => {
+        const findings = [
+            createTestFinding({
+                severity: 'MEDIUM',
+                file: 'src/service.ts',
+                affectedComponent: 'validateInput()',
+                description: 'validateInput in src/validator.ts is wrong',
+                verificationEvidence:
+                    'read_file on src/validator.ts confirmed no validation',
+                verifiableClaims: [
+                    {
+                        claimType: 'no_callers',
+                        file: 'src/validator.ts',
+                        line: 5,
+                        symbol: 'validateInput',
+                        assertion: 'Missing validation',
+                    },
+                ],
+                disproof: {
+                    attempted: true,
+                    method: 'Checked with find_usages',
+                    result: 'Not disproved',
+                },
+            }),
+        ];
+        const records = [
+            // Tool calls on the secondary file — these should now be included
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/validator.ts' },
+                result: 'function validateInput(x) { return x; }',
+            }),
+            createToolCallRecord({
+                toolName: 'find_usages',
+                arguments: {
+                    file_path: 'src/validator.ts',
+                    symbol_name: 'validateInput',
+                },
+                result: 'src/service.ts:10 — validateInput(data)',
+            }),
+            // Diff on primary file — satisfies depth + fabrication escape hatch
+            createToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/service.ts'] },
+                result: '+ validateInput(data)',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        // Without cross-file fix, read_file claim on src/validator.ts
+        // would be detected as fabricated (no tools called on src/service.ts)
+        expect(result.entries[0]!.verdict).not.toBe('drop');
     });
 });

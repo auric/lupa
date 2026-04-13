@@ -58,7 +58,7 @@ const ZERO_RESULT_TOOL_NAMES = new Set([
  */
 const ZERO_RESULT_ERROR_PATTERNS = [
     /no usages found/i,
-    /not found/i,
+    /symbol\b.+\bnot found/i,
     /no matches/i,
     /no results/i,
     /\b0 results/i,
@@ -239,7 +239,32 @@ export class EvidenceAuditor {
             finding.file,
             flatRecords
         );
-        const allSupportingCalls = [...matchingCalls, ...globalSearchCalls];
+
+        // Cross-file support: when affectedComponent references a symbol in
+        // a different file (e.g., "processConfig() in src/utils.ts"), also
+        // include tool calls that targeted that secondary file. Without this,
+        // evidence checks would miss legitimate investigation of the consumer.
+        const secondaryFiles = extractSecondaryFiles(finding);
+        const secondaryFileCalls: ToolCallRecord[] = [];
+        const primaryIds = new Set([
+            ...matchingCalls.map((tc) => tc.id),
+            ...globalSearchCalls.map((tc) => tc.id),
+        ]);
+        for (const secondaryFile of secondaryFiles) {
+            const calls = this.findToolCallsForFile(secondaryFile, flatRecords);
+            for (const tc of calls) {
+                if (!primaryIds.has(tc.id)) {
+                    secondaryFileCalls.push(tc);
+                    primaryIds.add(tc.id);
+                }
+            }
+        }
+
+        const allSupportingCalls = [
+            ...matchingCalls,
+            ...globalSearchCalls,
+            ...secondaryFileCalls,
+        ];
         const supportingToolCallIdsAll = [
             ...new Set(allSupportingCalls.map((tc) => tc.id)),
         ];
@@ -673,8 +698,16 @@ export class EvidenceAuditor {
             return null;
         }
 
-        // Aggregate all tool output text from supporting calls
-        const outputText = aggregateToolOutputText(fileSupportingCalls);
+        // Aggregate tool output text, excluding zero-result error text.
+        // Zero-result calls like "No usages found for parseConfig" contain the
+        // symbol name in their error text, which would falsely satisfy the
+        // identifier-presence check. These calls still count as supporting
+        // evidence (the tool was called), but their error text shouldn't be
+        // used for claim-vs-output cross-referencing.
+        const nonZeroResultCalls = fileSupportingCalls.filter(
+            (tc) => !isZeroResultCall(tc)
+        );
+        const outputText = aggregateToolOutputText(nonZeroResultCalls);
         if (outputText.length === 0) {
             return null;
         }
@@ -948,6 +981,61 @@ export function extractClaimedToolNames(text: string): string[] {
     }
 
     return found;
+}
+
+/**
+ * Extract secondary file paths from a finding's metadata.
+ * Looks in verifiableClaims (explicit file references) and in
+ * affectedComponent/description for inline file path references.
+ * Returns deduplicated file paths that differ from the finding's primary file.
+ */
+export function extractSecondaryFiles(finding: RecordedFinding): string[] {
+    const normalizedPrimary = normalizeRelativePath(finding.file);
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    const addFile = (raw: string): void => {
+        const normalized = normalizeRelativePath(raw);
+        if (
+            normalized &&
+            normalized !== normalizedPrimary &&
+            !seen.has(normalized)
+        ) {
+            seen.add(normalized);
+            result.push(raw);
+        }
+    };
+
+    // 1. Explicit file references from verifiable claims
+    for (const claim of finding.verifiableClaims) {
+        if (claim.file) {
+            addFile(claim.file);
+        }
+    }
+
+    // 2. File path references in affectedComponent text
+    // Matches patterns like "processConfig() in src/utils.ts"
+    const FILE_PATH_PATTERN =
+        /(?:^|[\s(,])(\S+\.(?:ts|tsx|js|jsx|mts|mjs|py|go|rs|java|cs|rb|c|cpp|h|hpp))(?=[\s),.:;]|$)/gi;
+
+    const textsToSearch = [
+        finding.affectedComponent,
+        finding.description,
+    ].filter(Boolean);
+
+    for (const text of textsToSearch) {
+        let m: RegExpExecArray | null;
+        FILE_PATH_PATTERN.lastIndex = 0;
+        while ((m = FILE_PATH_PATTERN.exec(text!)) !== null) {
+            const candidate = m[1]!;
+            // Must look like a path (contain / or \), not just "file.ts"
+            if (candidate.includes('/') || candidate.includes('\\')) {
+                addFile(candidate);
+            }
+        }
+    }
+
+    return result;
 }
 
 /**

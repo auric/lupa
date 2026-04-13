@@ -1,8 +1,4 @@
-import type {
-    RecordedFinding,
-    FindingCategory,
-    FindingSeverity,
-} from '../types/findingTypes';
+import type { RecordedFinding, FindingCategory } from '../types/findingTypes';
 import { CONCRETE_FAILURE_MECHANISMS } from '../types/findingTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
@@ -48,13 +44,6 @@ const MEDIUM_RISK_CATEGORIES: ReadonlySet<FindingCategory> = new Set([
     'resource_leak',
 ]);
 
-const SEVERITY_EVIDENCE_REQUIREMENTS: Record<FindingSeverity, number> = {
-    CRITICAL: 3,
-    HIGH: 2,
-    MEDIUM: 1,
-    LOW: 0,
-};
-
 function toolCallMatchesFile(record: ToolCallRecord, file: string): boolean {
     const normalizedFile = file.replace(/\\/g, '/');
     const fileName = normalizedFile.split('/').pop()!;
@@ -72,32 +61,6 @@ function toolCallMatchesFile(record: ToolCallRecord, file: string): boolean {
             normalized === fileName
         );
     });
-}
-
-function scoreSupportingToolCalls(
-    finding: RecordedFinding,
-    toolCallRecords: ToolCallRecord[]
-): SignalBreakdown {
-    const weight = 25;
-    const claimed = finding.supportingToolCalls;
-    if (claimed.length === 0) {
-        return {
-            signal: 'supportingToolCalls',
-            rawValue: 0,
-            weight,
-            contribution: 0,
-        };
-    }
-
-    const recordIds = new Set(toolCallRecords.map((r) => r.id));
-    const verified = claimed.filter((id) => recordIds.has(id)).length;
-    const rawValue = verified / claimed.length;
-    return {
-        signal: 'supportingToolCalls',
-        rawValue,
-        weight,
-        contribution: rawValue * weight,
-    };
 }
 
 function scoreInvestigationDepth(
@@ -159,44 +122,6 @@ function scoreLspValidation(finding: RecordedFinding): SignalBreakdown {
     return {
         signal: 'lspValidation',
         rawValue: contribution / weight,
-        weight,
-        contribution,
-    };
-}
-
-function scoreSeverityEvidenceRatio(
-    finding: RecordedFinding,
-    toolCallRecords: ToolCallRecord[]
-): SignalBreakdown {
-    const weight = 10;
-    const required = SEVERITY_EVIDENCE_REQUIREMENTS[finding.severity];
-
-    if (required === 0) {
-        return {
-            signal: 'severityEvidenceRatio',
-            rawValue: 1,
-            weight,
-            contribution: 10,
-        };
-    }
-
-    const recordIds = new Set(toolCallRecords.map((r) => r.id));
-    const verifiedCount = finding.supportingToolCalls.filter((id) =>
-        recordIds.has(id)
-    ).length;
-
-    let contribution: number;
-    if (verifiedCount >= required) {
-        contribution = 10;
-    } else if (verifiedCount >= required - 1 && verifiedCount > 0) {
-        contribution = 5;
-    } else {
-        contribution = 0;
-    }
-
-    return {
-        signal: 'severityEvidenceRatio',
-        rawValue: verifiedCount,
         weight,
         contribution,
     };
@@ -342,10 +267,8 @@ const SYMBOL_TOKEN_PATTERN = /\b([a-zA-Z_]\w{2,})\b/g;
 const TOOL_ARG_SYMBOL_FIELDS: ReadonlySet<string> = new Set([
     'symbol',
     'symbol_name',
-    'relative_path',
-    'file_path',
-    'file',
-    'query',
+    'name',
+    'name_path',
 ]);
 
 function scoreAffectedComponentVerified(
@@ -471,11 +394,9 @@ export function scoreFinding(
     // Flatten nested calls so subagent-produced tool calls are included in scoring
     const flatRecords = flattenToolCalls(context.toolCallRecords);
     const signals: SignalBreakdown[] = [
-        scoreSupportingToolCalls(finding, flatRecords),
         scoreInvestigationDepth(finding, flatRecords),
         scoreDisproofAttempted(finding),
         scoreLspValidation(finding),
-        scoreSeverityEvidenceRatio(finding, flatRecords),
         scoreModelBias(context.calibrationProfile),
         scoreCategoryRisk(finding),
         scoreDescriptionQuality(finding),
