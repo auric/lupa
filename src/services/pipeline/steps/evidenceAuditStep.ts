@@ -35,6 +35,11 @@ export function createEvidenceAuditStep(): PipelineStep {
             );
 
             for (const entry of auditResult.entries) {
+                context.findingStore.updateEvidenceVerdict(
+                    entry.finding.id,
+                    entry.verdict
+                );
+
                 switch (entry.verdict) {
                     case 'drop':
                         findingsDropped.push(entry.finding.title);

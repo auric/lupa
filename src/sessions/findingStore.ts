@@ -97,4 +97,14 @@ export class FindingStore {
             finding.severity = severity;
         }
     }
+
+    updateEvidenceVerdict(
+        id: string,
+        verdict: RecordedFinding['evidenceVerdict']
+    ): void {
+        const finding = this.findings.get(id);
+        if (finding) {
+            finding.evidenceVerdict = verdict;
+        }
+    }
 }

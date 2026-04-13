@@ -2906,7 +2906,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.weakEvidence).toBe(1);
             expect(result.entries[0]!.verdict).toBe('weak-evidence');
             expect(result.entries[0]!.reason).toContain(
-                'function name not found in read_file, diff, find_symbol, or search_for_pattern output'
+                'no read_file, get_file_diff, find_symbol, or search_for_pattern call was made'
             );
         });
 
@@ -3353,6 +3353,7 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                     arguments: {
                         symbol_name: 'processRequest',
                         relative_path: 'src/api.ts',
+                        include_body: true,
                     },
                     result: 'function processRequest(req: Request) { validate(req); }',
                 }),
@@ -3366,6 +3367,77 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             const result = auditor.audit(findings, records);
 
             // find_symbol output contains 'processRequest' → body was "read"
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
+        it('flags weak-evidence when find_symbol called without include_body', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/api.ts',
+                    title: 'processRequest never validates input',
+                    description:
+                        'processRequest does not validate the incoming request',
+                    affectedComponent: 'processRequest()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: {
+                        symbol_name: 'processRequest',
+                        relative_path: 'src/api.ts',
+                        include_body: false,
+                    },
+                    result: 'Symbol: processRequest\nKind: function\nLine: 42',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/api.ts'] },
+                    result: '+ export { handler };',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // find_symbol without include_body only returns metadata → body not actually read
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+            expect(result.entries[0]!.reason).toContain(
+                'function name not found'
+            );
+        });
+
+        it('keeps finding when find_symbol called with include_body true', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/api.ts',
+                    title: 'processRequest never validates input',
+                    description:
+                        'processRequest does not validate the incoming request',
+                    affectedComponent: 'processRequest()',
+                    severity: 'MEDIUM',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: {
+                        symbol_name: 'processRequest',
+                        relative_path: 'src/api.ts',
+                        include_body: true,
+                    },
+                    result: 'function processRequest(req: Request) {\n  if (!req.body) throw new Error("missing body");\n  return handle(req);\n}',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/api.ts'] },
+                    result: '+ export { handler };',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // find_symbol with include_body: true returns full body → function was read
             expect(result.entries[0]!.verdict).toBe('keep');
         });
 

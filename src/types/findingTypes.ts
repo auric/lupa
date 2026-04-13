@@ -59,6 +59,7 @@ export interface RecordedFinding {
     disproof: FindingDisproof;
     verifiableClaims: VerifiableClaim[];
     lspValidation: LspValidationStatus | undefined;
+    evidenceVerdict?: 'keep' | 'drop' | 'downgrade' | 'weak-evidence';
 }
 
 export interface FindingDisproof {

@@ -831,12 +831,13 @@ export class EvidenceAuditor {
                 typeof tc.result === 'string'
         );
 
-        // Also check find_symbol — with include_body it returns function bodies
+        // Also check find_symbol — only when include_body is true (otherwise only metadata is returned)
         const findSymbolCalls = fileSupportingCalls.filter(
             (tc) =>
                 tc.success &&
                 tc.toolName === 'find_symbol' &&
-                typeof tc.result === 'string'
+                typeof tc.result === 'string' &&
+                (tc.arguments as Record<string, unknown>)?.include_body === true
         );
 
         // Also check search_for_pattern — grep results can show the function

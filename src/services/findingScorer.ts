@@ -391,6 +391,24 @@ function scoreAffectedComponentVerified(
     };
 }
 
+function scoreEvidenceAuditVerdict(finding: RecordedFinding): SignalBreakdown {
+    const signal = 'evidenceAuditVerdict';
+    const weight = 15;
+
+    if (finding.evidenceVerdict === 'weak-evidence') {
+        return { signal, rawValue: 1, weight, contribution: -weight };
+    }
+    if (finding.evidenceVerdict === 'downgrade') {
+        return {
+            signal,
+            rawValue: 0.5,
+            weight,
+            contribution: -Math.round(weight * 0.5),
+        };
+    }
+    return { signal, rawValue: 0, weight, contribution: 0 };
+}
+
 function scoreCrossFileEvidence(
     finding: RecordedFinding,
     toolCallRecords: ToolCallRecord[]
@@ -464,6 +482,7 @@ export function scoreFinding(
         scoreAbsencePattern(finding),
         scoreAffectedComponentVerified(finding, flatRecords),
         scoreCrossFileEvidence(finding, flatRecords),
+        scoreEvidenceAuditVerdict(finding),
     ];
 
     if (

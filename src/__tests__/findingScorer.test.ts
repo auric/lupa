@@ -103,7 +103,7 @@ describe('findingScorer', () => {
             // Total = 95
             expect(score.overallScore).toBeGreaterThanOrEqual(90);
             expect(score.recommendation).toBe('keep');
-            expect(score.signals).toHaveLength(11);
+            expect(score.signals).toHaveLength(12);
         });
 
         it('should give low score with no supporting evidence', () => {
@@ -638,6 +638,69 @@ describe('findingScorer', () => {
             expect(componentSignal.contribution).toBe(-5);
             expect(crossFileSignal.contribution).toBe(0);
             expect(score.recommendation).toBe('drop');
+        });
+    });
+
+    describe('evidenceAuditVerdict signal', () => {
+        it('should apply -15 penalty for weak-evidence verdict', () => {
+            const finding = makeFinding({ evidenceVerdict: 'weak-evidence' });
+            const context = makeContext();
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'evidenceAuditVerdict'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(-15);
+        });
+
+        it('should apply -8 penalty for downgrade verdict', () => {
+            const finding = makeFinding({ evidenceVerdict: 'downgrade' });
+            const context = makeContext();
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'evidenceAuditVerdict'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(-8);
+        });
+
+        it('should apply 0 contribution for keep verdict', () => {
+            const finding = makeFinding({ evidenceVerdict: 'keep' });
+            const context = makeContext();
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'evidenceAuditVerdict'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(0);
+        });
+
+        it('should apply 0 contribution when verdict is undefined', () => {
+            const finding = makeFinding();
+            const context = makeContext();
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'evidenceAuditVerdict'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(0);
+        });
+
+        it('should noticeably lower score for weak-evidence finding vs same finding without verdict', () => {
+            const baseContext = makeContext();
+            const withoutVerdict = scoreFinding(makeFinding(), baseContext);
+            const withVerdict = scoreFinding(
+                makeFinding({ evidenceVerdict: 'weak-evidence' }),
+                baseContext
+            );
+
+            expect(withVerdict.overallScore).toBe(
+                withoutVerdict.overallScore - 15
+            );
         });
     });
 });
