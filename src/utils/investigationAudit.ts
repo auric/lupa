@@ -63,7 +63,7 @@ const ZERO_RESULT_TOOL_NAMES = new Set([
  */
 const ZERO_RESULT_ERROR_PATTERNS = [
     /no usages found/i,
-    /not found/i,
+    /symbol\b.+\bnot found/i,
     /no matches/i,
     /no results/i,
 ] as const;
