@@ -1,5 +1,9 @@
 import { Log } from './loggingService';
-import type { RecordedFinding, FindingSeverity } from '../types/findingTypes';
+import type {
+    RecordedFinding,
+    FindingSeverity,
+    EvidenceVerdict,
+} from '../types/findingTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { InvestigationDepth } from '../types/investigationTypes';
 import { INVESTIGATION_TOOLS, DIFF_TOOLS } from '../models/toolConstants';
@@ -110,7 +114,7 @@ const NO_CALLERS_REVERSE_PATTERN =
 const FUNCTION_BEHAVIOR_PATTERN =
     /\b(?:doesn['\u2019]t|does not|don['\u2019]t|do not|isn['\u2019]t|aren['\u2019]t|wasn['\u2019]t|weren['\u2019]t|fail(?:s|ed|ing)? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:\w+ly\s+)?(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!i)|clos|releas|dispos|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
 
-export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade' | 'weak-evidence';
+export { type EvidenceVerdict } from '../types/findingTypes';
 
 export interface EvidenceAuditEntry {
     finding: RecordedFinding;
@@ -478,6 +482,54 @@ export class EvidenceAuditor {
     }
 
     /**
+     * Check whether a symbol argument matches the finding's primary identifier.
+     * Uses case-insensitive exact or dotted-suffix matching to prevent
+     * substring false matches (e.g. "set" matching "resetConnection").
+     */
+    private matchesSymbolArg(
+        symbolArg: string,
+        primaryIdentifier: string
+    ): boolean {
+        const lower = primaryIdentifier.toLowerCase();
+        const argLower = symbolArg.toLowerCase();
+        return argLower === lower || argLower.endsWith('.' + lower);
+    }
+
+    /**
+     * Filter tool call records to find_usages calls that target the finding's symbol.
+     * Shared by checkDeletionSafety and checkCallerClaimContradiction.
+     */
+    private filterUsageCallsForSymbol(
+        allSupportingCalls: ToolCallRecord[],
+        primaryIdentifier: string
+    ): ToolCallRecord[] {
+        const usageCalls = allSupportingCalls.filter(
+            (tc) =>
+                tc.toolName === 'find_usages' &&
+                ((tc.success && typeof tc.result === 'string') ||
+                    isZeroResultCall(tc))
+        );
+        if (
+            !primaryIdentifier ||
+            primaryIdentifier.length < MIN_IDENTIFIER_LENGTH
+        ) {
+            return usageCalls;
+        }
+        return usageCalls.filter((tc) => {
+            const symbolArg = SYMBOL_ARG_KEYS.map(
+                (key) => tc.arguments[key]
+            ).find(
+                (val): val is string =>
+                    typeof val === 'string' && val.length > 0
+            );
+            if (!symbolArg) {
+                return true; // No symbol arg — can't filter, keep it
+            }
+            return this.matchesSymbolArg(symbolArg, primaryIdentifier);
+        });
+    }
+
+    /**
      * Check whether a finding about deleted/removed code was proven safe.
      *
      * Only triggers when ALL conditions are met:
@@ -502,44 +554,13 @@ export class EvidenceAuditor {
             return null;
         }
 
-        // Only check find_usages calls on THIS finding's file, not all records.
-        // find_symbol is excluded — it resolves symbol definitions, not references.
-        // An unrelated find_symbol(Y) finding results shouldn't block deletion drops.
-        const allUsageCalls = fileSupportingCalls.filter(
-            (tc) =>
-                tc.toolName === 'find_usages' &&
-                ((tc.success && typeof tc.result === 'string') ||
-                    isZeroResultCall(tc))
-        );
-
-        if (allUsageCalls.length === 0) {
-            return null;
-        }
-
-        // Filter to only find_usages calls targeting the finding's symbol.
-        // Without this, find_usages(symbolA) returning zero results could
-        // incorrectly drop a finding about a DIFFERENT deleted symbolB.
         const primaryIdentifier = extractPrimaryIdentifier(
             finding.affectedComponent
         );
-        const referenceToolCalls =
-            primaryIdentifier &&
-            primaryIdentifier.length >= MIN_IDENTIFIER_LENGTH
-                ? allUsageCalls.filter((tc) => {
-                      const symbolArg = SYMBOL_ARG_KEYS.map(
-                          (key) => tc.arguments[key]
-                      ).find(
-                          (val): val is string =>
-                              typeof val === 'string' && val.length > 0
-                      );
-                      if (!symbolArg) {
-                          return true; // No symbol arg — can't filter, keep it
-                      }
-                      return symbolArg
-                          .toLowerCase()
-                          .includes(primaryIdentifier.toLowerCase());
-                  })
-                : allUsageCalls; // Identifier too short to filter reliably
+        const referenceToolCalls = this.filterUsageCallsForSymbol(
+            fileSupportingCalls,
+            primaryIdentifier ?? ''
+        );
 
         if (referenceToolCalls.length === 0) {
             return null;
@@ -735,18 +756,6 @@ export class EvidenceAuditor {
             return null;
         }
 
-        // Check if find_usages was called on this file
-        const allUsageCalls = fileSupportingCalls.filter(
-            (tc) =>
-                tc.toolName === 'find_usages' &&
-                ((tc.success && typeof tc.result === 'string') ||
-                    isZeroResultCall(tc))
-        );
-
-        if (allUsageCalls.length === 0) {
-            return null;
-        }
-
         // Filter to only find_usages calls targeting the claimed symbol
         const primaryIdentifier = extractPrimaryIdentifier(
             finding.affectedComponent
@@ -754,19 +763,10 @@ export class EvidenceAuditor {
         if (!primaryIdentifier) {
             return null;
         }
-        const usageCalls = allUsageCalls.filter((tc) => {
-            const symbolArg = SYMBOL_ARG_KEYS.map(
-                (key) => tc.arguments[key]
-            ).find(
-                (val): val is string =>
-                    typeof val === 'string' && val.length > 0
-            );
-            return (
-                symbolArg !== undefined &&
-                (symbolArg === primaryIdentifier ||
-                    symbolArg.endsWith('.' + primaryIdentifier))
-            );
-        });
+        const usageCalls = this.filterUsageCallsForSymbol(
+            fileSupportingCalls,
+            primaryIdentifier
+        );
 
         if (usageCalls.length === 0) {
             return null;

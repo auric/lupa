@@ -1257,6 +1257,85 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.reason).toContain('Deletion safety');
         });
 
+        it('does not drop deletion finding when short identifier is a substring of find_usages symbol', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    title: 'set was removed',
+                    affectedComponent: 'set()',
+                    description: 'set was deleted from the codebase',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function set() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'resetConnection',
+                    },
+                    success: false,
+                    error: '0 results found for resetConnection',
+                    result: undefined as unknown as string,
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- function set() { return true; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // "set" is too short (< MIN_IDENTIFIER_LENGTH) so all usage calls are kept,
+            // but even if it weren't, "resetConnection" should NOT match "set" via substring.
+            // The finding should NOT be dropped because find_usages was for a different symbol.
+            expect(result.entries[0]!.verdict).not.toBe('drop');
+        });
+
+        it('does not drop deletion finding when identifier is a substring of find_usages symbol', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'MEDIUM',
+                    title: 'connect was removed',
+                    affectedComponent: 'connect()',
+                    description: 'connect was deleted from the codebase',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function connect() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'resetConnection',
+                    },
+                    success: false,
+                    error: '0 results found for resetConnection',
+                    result: undefined as unknown as string,
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- function connect() { return true; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // "connect" is long enough to filter, but "resetConnection" does NOT
+            // exact-match or dotted-suffix-match "connect" → no matching usage calls → keep
+            expect(result.entries[0]!.verdict).not.toBe('drop');
+        });
+
         it('excludes reverse-phrased no-caller findings from contradiction check', () => {
             const findings = [
                 createTestFinding({

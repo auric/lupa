@@ -19,6 +19,8 @@ export const ALLOWED_FINDING_CATEGORIES = [
 ] as const;
 export type FindingCategory = (typeof ALLOWED_FINDING_CATEGORIES)[number];
 
+export type EvidenceVerdict = 'keep' | 'drop' | 'downgrade' | 'weak-evidence';
+
 export const FAILURE_MECHANISMS = [
     'wrong_return_value',
     'runtime_exception',
@@ -59,7 +61,7 @@ export interface RecordedFinding {
     disproof: FindingDisproof;
     verifiableClaims: VerifiableClaim[];
     lspValidation: LspValidationStatus | undefined;
-    evidenceVerdict?: 'keep' | 'drop' | 'downgrade' | 'weak-evidence';
+    evidenceVerdict?: EvidenceVerdict;
 }
 
 export interface FindingDisproof {

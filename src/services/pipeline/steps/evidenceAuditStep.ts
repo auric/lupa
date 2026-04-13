@@ -52,6 +52,9 @@ export function createEvidenceAuditStep(): PipelineStep {
                         break;
                     case 'downgrade':
                     case 'weak-evidence': {
+                        // Note: we also apply a scoring penalty via scoreEvidenceAuditVerdict
+                        // in findingScorer.ts. The double penalization is intentional:
+                        // severity downgrade affects display priority, score penalty affects keep/drop.
                         const newSeverity = downgradeSeverity(
                             entry.finding.severity
                         );
