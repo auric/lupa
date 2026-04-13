@@ -771,12 +771,18 @@ describe('EvidenceAuditor', () => {
                 }),
                 createToolCallRecord({
                     toolName: 'find_usages',
-                    arguments: { file_path: 'src/foo.ts', symbol_name: 'fn' },
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'someFunction',
+                    },
                     result: '3 references found in src/bar.ts, src/baz.ts',
                 }),
                 createToolCallRecord({
                     toolName: 'find_symbol',
-                    arguments: { file_path: 'src/foo.ts', symbol_name: 'fn' },
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'someFunction',
+                    },
                 }),
                 createToolCallRecord({
                     toolName: 'get_file_diff',

@@ -112,7 +112,7 @@ const NO_CALLERS_REVERSE_PATTERN =
  * Pattern matching findings that claim something about a function's internal behavior.
  */
 const FUNCTION_BEHAVIOR_PATTERN =
-    /\b(?:doesn['\u2019]t|does not|don['\u2019]t|do not|isn['\u2019]t|aren['\u2019]t|wasn['\u2019]t|weren['\u2019]t|fail(?:s|ed|ing)? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:\w+ly\s+)?(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!i)|clos|releas|dispos|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
+    /\b(?:never|doesn['\u2019]t|does not|don['\u2019]t|do not|isn['\u2019]t|aren['\u2019]t|wasn['\u2019]t|weren['\u2019]t|fail(?:s|ed|ing)? to|missing|lacks?|no|incorrectly|improperly|unsafely|wrongly|(?:is|are|was|were)\s+not)\s+(?:\w+ly\s+)?(?:handl|check|validat|verif|sanitiz|escap|guard|protect|catch|throw|return|log(?!i)|clos|releas|dispos|initializ|init(?!ial)|deserializ|pars|process|encod|decod)\w*\b/;
 
 export { type EvidenceVerdict } from '../types/findingTypes';
 
@@ -555,9 +555,12 @@ export class EvidenceAuditor {
         const primaryIdentifier = extractPrimaryIdentifier(
             finding.affectedComponent
         );
+        if (!primaryIdentifier) {
+            return null;
+        }
         const referenceToolCalls = this.filterUsageCallsForSymbol(
             fileSupportingCalls,
-            primaryIdentifier ?? ''
+            primaryIdentifier
         );
 
         if (referenceToolCalls.length === 0) {
