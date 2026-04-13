@@ -2723,6 +2723,87 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.entries[0]!.verdict).not.toBe('weak-evidence');
         });
 
+        it('does NOT skip caller check when "no callers" is followed by a verb (implies callers exist)', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'Return value ignored by callers',
+                    affectedComponent: 'parseConfig()',
+                    description:
+                        'parseConfig returns null on error but no callers check the return value',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function parseConfig() { return null; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'parseConfig',
+                    },
+                    success: false,
+                    error: 'No usages found for parseConfig',
+                    result: undefined as unknown as string,
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ parseConfig',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'parseConfig',
+                        include_body: true,
+                    },
+                    result: 'function parseConfig() { return null; }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // "no callers check" implies callers exist but none do X — contradiction with zero results
+            expect(result.entries[0]!.verdict).toBe('weak-evidence');
+        });
+
+        it('skips caller check for "no callers validate" with unused code pattern', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'Unused function processData',
+                    affectedComponent: 'processData()',
+                    description: 'processData is dead code with no references',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function processData() { }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'processData',
+                    },
+                    success: false,
+                    error: '0 results found',
+                    result: undefined as unknown as string,
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // "dead code" unconditionally skips caller contradiction check
+            expect(result.entries[0]!.verdict).not.toBe('weak-evidence');
+        });
+
         it('skips caller check for LOW severity', () => {
             const findings = [
                 createTestFinding({

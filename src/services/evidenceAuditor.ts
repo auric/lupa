@@ -96,10 +96,17 @@ const CALLER_CLAIM_PATTERN =
 
 /**
  * Pattern matching findings that explicitly state there are no callers.
- * Used to exclude "no callers" findings from the caller claim contradiction check.
+ * Must distinguish "no callers exist" (skip) from "no callers check X" (don't skip).
+ * The latter implies callers DO exist but none do X — a caller claim that should be checked.
  */
 const NO_CALLERS_PATTERN =
-    /\b(?:no|zero|0|unused|dead|orphan)\s+(?:callers?|call[\s-]*sites?|references?|usages?|consumers?|upstream\s+code)\b/;
+    /\b(?:no|zero|0)\s+(?:callers?|call[\s-]*sites?|references?|usages?|consumers?|upstream\s+code)\s*(?:[.,;:!)\]}]|$|(?:were\s+)?found|exist|detected|identified|known|present|remain|for\s+\w|(?:in|across|throughout|within)\s+(?:the\s+)?(?:code|project|repo|module|package|(?:entire\s+)?codebase))/i;
+
+/**
+ * Pattern matching "unused/dead/orphan code" — unconditionally skip caller contradiction check.
+ */
+const UNUSED_CODE_PATTERN =
+    /\b(?:unused|dead|orphan(?:ed)?)\s+(?:code|function|method|class|callers?|references?|variable)\b/i;
 
 /**
  * Pattern matching "callers don't exist" style reverse phrasing.
@@ -752,6 +759,7 @@ export class EvidenceAuditor {
         // If the finding explicitly says "no callers"/"unused", that's a different claim — skip
         if (
             NO_CALLERS_PATTERN.test(lowerText) ||
+            UNUSED_CODE_PATTERN.test(lowerText) ||
             NO_CALLERS_REVERSE_PATTERN.test(lowerText)
         ) {
             return null;
