@@ -333,7 +333,7 @@ describe('EvidenceAuditor', () => {
             expect(result.kept).toBe(1);
         });
 
-        it('populates supportingToolCalls with matching record IDs', () => {
+        it('populates supportingToolCallIds on audit entry with matching record IDs', () => {
             const findings = [
                 createTestFinding({
                     description: 'read_file and find_usages confirmed',
@@ -362,9 +362,42 @@ describe('EvidenceAuditor', () => {
                 }),
             ];
 
+            const result = auditor.audit(findings, records);
+
+            expect(result.entries[0]!.supportingToolCallIds).toEqual([
+                'tc-1',
+                'tc-2',
+            ]);
+        });
+
+        it('does not mutate finding.supportingToolCalls', () => {
+            const findings = [
+                createTestFinding({
+                    supportingToolCalls: [],
+                    description: 'read_file confirmed the issue',
+                    disproof: {
+                        attempted: true,
+                        method: 'Used read_file to verify',
+                        result: 'Confirmed',
+                    },
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    id: 'tc-1',
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                }),
+                createToolCallRecord({
+                    id: 'tc-2',
+                    toolName: 'find_usages',
+                    arguments: { file_path: 'src/foo.ts', symbol_name: 'x' },
+                }),
+            ];
+
             auditor.audit(findings, records);
 
-            expect(findings[0]!.supportingToolCalls).toEqual(['tc-1', 'tc-2']);
+            expect(findings[0]!.supportingToolCalls).toEqual([]);
         });
 
         it('handles multiple findings independently', () => {
@@ -435,7 +468,7 @@ describe('EvidenceAuditor', () => {
             ];
 
             const result = auditor.audit(findings, records);
-            expect(findings[0]!.supportingToolCalls).toEqual([]);
+            expect(result.entries[0]!.supportingToolCallIds).toEqual([]);
             // Failed call excluded → no tools on file → read_file claim is fabricated → drop
             expect(result.entries[0]!.verdict).toBe('drop');
         });
@@ -474,7 +507,9 @@ describe('EvidenceAuditor', () => {
             const result = auditor.audit(findings, records);
 
             // Zero-result find_usages should be included as supporting evidence
-            expect(findings[0]!.supportingToolCalls).toContain('tc-zero');
+            expect(result.entries[0]!.supportingToolCallIds).toContain(
+                'tc-zero'
+            );
             expect(result.entries[0]!.actualToolsOnFile).toContain(
                 'find_usages'
             );
@@ -505,7 +540,7 @@ describe('EvidenceAuditor', () => {
             const result = auditor.audit(findings, records);
 
             expect(result.kept).toBe(1);
-            expect(findings[0]!.supportingToolCalls.length).toBe(1);
+            expect(result.entries[0]!.supportingToolCallIds.length).toBe(1);
         });
 
         it('uses verificationEvidence field when available', () => {

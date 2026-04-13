@@ -178,8 +178,8 @@ function getToolCallText(tc: ToolCallRecord): string | undefined {
  * 2. Insufficient investigation: HIGH+ findings with only shallow tool use
  * 3. Missing file-level investigation: no investigation tools targeted the file
  *
- * Also populates `supportingToolCalls` on each finding with IDs of
- * matching tool call records for downstream validators.
+ * Stores supporting tool call IDs in `EvidenceAuditEntry.supportingToolCallIds`
+ * for downstream validators. Does NOT mutate the finding itself.
  */
 export class EvidenceAuditor {
     audit(
@@ -254,8 +254,6 @@ export class EvidenceAuditor {
         const actualToolsOnFile = [
             ...new Set(allSupportingCalls.map((tc) => tc.toolName)),
         ];
-
-        finding.supportingToolCalls = supportingToolCallIdsAll;
 
         const deletionVerdict = this.checkDeletionSafety(
             finding,
