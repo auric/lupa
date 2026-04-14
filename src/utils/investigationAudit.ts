@@ -78,8 +78,13 @@ function isZeroResultCall(call: ToolCallRecord): boolean {
     if (typeof call.error !== 'string' || call.error.length === 0) {
         return false;
     }
+    // Exclude genuine failures — timeouts and truncations are not zero-result investigations
+    const errorText = call.error;
+    if (/timed?\s*out|timeout|truncat|search was limited/i.test(errorText)) {
+        return false;
+    }
     return ZERO_RESULT_ERROR_PATTERNS.some((pattern) =>
-        pattern.test(call.error!)
+        pattern.test(errorText)
     );
 }
 

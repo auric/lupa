@@ -7,6 +7,7 @@ import {
     scoreAll,
     DROP_THRESHOLD,
     DOWNGRADE_THRESHOLD,
+    toolCallMatchesFile,
     type ScoringContext,
 } from '../services/findingScorer';
 
@@ -786,6 +787,51 @@ describe('findingScorer', () => {
 
             expect(withVerdict.overallScore).toBe(
                 withoutVerdict.overallScore - 15
+            );
+        });
+    });
+
+    describe('toolCallMatchesFile', () => {
+        it('should not match partial path overlap (afoo.ts vs foo.ts)', () => {
+            const record = makeToolCallRecord({
+                arguments: { file_path: 'src/services/afoo.ts' },
+            });
+            expect(toolCallMatchesFile(record, 'foo.ts')).toBe(false);
+        });
+
+        it('should match when paths are equal', () => {
+            const record = makeToolCallRecord({
+                arguments: { file_path: 'src/services/foo.ts' },
+            });
+            expect(toolCallMatchesFile(record, 'src/services/foo.ts')).toBe(
+                true
+            );
+        });
+
+        it('should match when argument ends with /file', () => {
+            const record = makeToolCallRecord({
+                arguments: { file_path: 'project/src/services/foo.ts' },
+            });
+            expect(toolCallMatchesFile(record, 'src/services/foo.ts')).toBe(
+                true
+            );
+        });
+
+        it('should handle get_file_diff with array file_paths argument', () => {
+            const record = makeToolCallRecord({
+                toolName: 'get_file_diff',
+                arguments: {
+                    file_paths: ['src/services/foo.ts', 'src/services/bar.ts'],
+                },
+            });
+            expect(toolCallMatchesFile(record, 'src/services/foo.ts')).toBe(
+                true
+            );
+            expect(toolCallMatchesFile(record, 'src/services/bar.ts')).toBe(
+                true
+            );
+            expect(toolCallMatchesFile(record, 'src/services/baz.ts')).toBe(
+                false
             );
         });
     });

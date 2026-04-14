@@ -44,20 +44,27 @@ const MEDIUM_RISK_CATEGORIES: ReadonlySet<FindingCategory> = new Set([
     'resource_leak',
 ]);
 
-function toolCallMatchesFile(record: ToolCallRecord, file: string): boolean {
+export function toolCallMatchesFile(
+    record: ToolCallRecord,
+    file: string
+): boolean {
     const normalizedFile = file.replace(/\\/g, '/');
     const fileName = normalizedFile.split('/').pop()!;
     // Check structured argument fields for exact path matches
     // instead of substring matching on serialized JSON
-    const argValues = Object.values(record.arguments).filter(
-        (v): v is string => typeof v === 'string'
+    const argValues = Object.values(record.arguments).flatMap((v) =>
+        typeof v === 'string'
+            ? [v]
+            : Array.isArray(v)
+              ? v.filter((x): x is string => typeof x === 'string')
+              : []
     );
     return argValues.some((v) => {
         const normalized = v.replace(/\\/g, '/');
         return (
             normalized === normalizedFile ||
-            normalized.endsWith(normalizedFile) ||
-            normalizedFile.endsWith(normalized) ||
+            normalized.endsWith('/' + normalizedFile) ||
+            normalizedFile.endsWith('/' + normalized) ||
             normalized === fileName
         );
     });

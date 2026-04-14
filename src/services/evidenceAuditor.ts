@@ -155,8 +155,13 @@ export function isZeroResultCall(tc: ToolCallRecord): boolean {
     if (typeof tc.error !== 'string' || tc.error.length === 0) {
         return false;
     }
+    // Exclude genuine failures — timeouts and truncations are not zero-result investigations
+    const errorText = tc.error;
+    if (/timed?\s*out|timeout|truncat|search was limited/i.test(errorText)) {
+        return false;
+    }
     return ZERO_RESULT_ERROR_PATTERNS.some((pattern) =>
-        pattern.test(tc.error!)
+        pattern.test(errorText)
     );
 }
 
@@ -564,7 +569,7 @@ export class EvidenceAuditor {
      *
      * Only triggers when ALL conditions are met:
      * 1. Evidence text mentions deletion/removal
-     * 2. A reference-checking tool (find_usages, find_symbol) was called
+     * 2. A reference-checking tool (find_usages) was called
      *    specifically for this finding's file and returned zero references
      * 3. The finding is NOT about test coverage or test removal
      *    (zero references for a deleted test is expected, not proof of safety)

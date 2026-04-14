@@ -527,6 +527,36 @@ describe('zero-result tool calls count toward depth', () => {
         expect(audit.patternsSearched).toHaveLength(0);
     });
 
+    it('does NOT count find_symbol timeout with no-results phrasing as zero-result', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: { name_path: 'X', file_path: 'src/foo.ts' },
+                success: false,
+                error: "Symbol 'X' search timed out with no results",
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(calls, undefined);
+
+        expect(audit.symbolsResolved).toHaveLength(0);
+    });
+
+    it('does NOT count find_symbol truncated search as zero-result', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: { name_path: 'Foo', file_path: 'src/bar.ts' },
+                success: false,
+                error: "Symbol 'Foo' not found in searched files (search was limited due to file count)",
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(calls, undefined);
+
+        expect(audit.symbolsResolved).toHaveLength(0);
+    });
+
     it('zero-result find_usages contributes to depth when combined with symbol resolution', () => {
         const calls: ToolCallRecord[] = [
             makeToolCall({

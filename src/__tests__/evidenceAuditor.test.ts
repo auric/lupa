@@ -2127,14 +2127,34 @@ describe('isZeroResultCall', () => {
         expect(isZeroResultCall(tc)).toBe(false);
     });
 
-    it('returns true for find_symbol truncated search error', () => {
+    it('returns false for find_symbol truncated search error', () => {
         const tc = createToolCallRecord({
             toolName: 'find_symbol',
             success: false,
             error: "Symbol 'parseConfig' not found in searched files (search was limited due to file count)",
             result: undefined as unknown as string,
         });
-        expect(isZeroResultCall(tc)).toBe(true);
+        expect(isZeroResultCall(tc)).toBe(false);
+    });
+
+    it('returns false for find_symbol timeout with no-results phrasing', () => {
+        const tc = createToolCallRecord({
+            toolName: 'find_symbol',
+            success: false,
+            error: "Symbol 'X' search timed out with no results",
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(false);
+    });
+
+    it('returns false for find_symbol with results truncated phrasing', () => {
+        const tc = createToolCallRecord({
+            toolName: 'find_symbol',
+            success: false,
+            error: 'search was limited ... results truncated',
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(false);
     });
 });
 
