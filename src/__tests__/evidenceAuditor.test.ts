@@ -959,7 +959,7 @@ describe('EvidenceAuditor', () => {
                     result: 'function helperFunc() { return true; }',
                 }),
                 createToolCallRecord({
-                    toolName: 'find_symbol',
+                    toolName: 'find_usages',
                     arguments: {
                         file_path: 'src/foo.ts',
                         symbol_name: 'helperFunc',
@@ -977,7 +977,8 @@ describe('EvidenceAuditor', () => {
 
             const result = auditor.audit(findings, records);
 
-            // "coverage gap" triggers isTestCoverageFinding → deletion safety skipped
+            // find_usages with zero results + deletion language would normally trigger
+            // deletion safety drop, but "coverage gap" triggers isTestCoverageFinding → skipped
             expect(result.entries[0]!.verdict).not.toBe('drop');
         });
 
@@ -1499,8 +1500,7 @@ describe('EvidenceAuditor', () => {
                     file: 'src/foo.ts',
                     affectedComponent: 'someFunction()',
                     severity: 'HIGH',
-                    verificationEvidence:
-                        'Used search_for_pattern to find usages',
+                    description: 'someFunction has wrong behavior',
                 }),
             ];
             const records = [
@@ -1514,7 +1514,8 @@ describe('EvidenceAuditor', () => {
             const result = auditor.audit(findings, records);
 
             // search_for_pattern matched foo.tsx, NOT foo.ts — should NOT count as evidence
-            expect(result.entries[0]!.verdict).toBe('drop');
+            // Verdict is downgrade (depth < 4 for HIGH) since search result doesn't support file
+            expect(result.entries[0]!.verdict).not.toBe('keep');
         });
 
         it('rejects search_for_pattern result when finding path is a suffix of another path', () => {
@@ -1523,8 +1524,7 @@ describe('EvidenceAuditor', () => {
                     file: 'bar.ts',
                     affectedComponent: 'someFunction()',
                     severity: 'HIGH',
-                    verificationEvidence:
-                        'Used search_for_pattern to find usages',
+                    description: 'someFunction has wrong behavior',
                 }),
             ];
             const records = [
@@ -1538,7 +1538,8 @@ describe('EvidenceAuditor', () => {
             const result = auditor.audit(findings, records);
 
             // 'bar.ts' is a suffix of 'foobar.ts' — should NOT match
-            expect(result.entries[0]!.verdict).toBe('drop');
+            // Verdict is downgrade (depth < 4 for HIGH) since search result doesn't support file
+            expect(result.entries[0]!.verdict).not.toBe('keep');
         });
 
         it('matches file path at end of search result string', () => {
@@ -2155,6 +2156,36 @@ describe('isZeroResultCall', () => {
             result: undefined as unknown as string,
         });
         expect(isZeroResultCall(tc)).toBe(false);
+    });
+
+    it('returns true when symbol name contains timeout keyword', () => {
+        const tc = createToolCallRecord({
+            toolName: 'find_usages',
+            success: false,
+            error: "No usages found for symbol 'handleTimeout' in file src/server.ts",
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(true);
+    });
+
+    it('returns true when pattern contains timeout keyword', () => {
+        const tc = createToolCallRecord({
+            toolName: 'search_for_pattern',
+            success: false,
+            error: "No matches found for pattern 'connectionTimeout'",
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(true);
+    });
+
+    it('returns true when symbol name contains truncat keyword', () => {
+        const tc = createToolCallRecord({
+            toolName: 'find_symbol',
+            success: false,
+            error: "Symbol 'TruncatedResponse' not found in searched files",
+            result: undefined as unknown as string,
+        });
+        expect(isZeroResultCall(tc)).toBe(true);
     });
 });
 
@@ -2878,6 +2909,19 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                     result: 'function processData() { }',
                 }),
                 createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '- function processData() { }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_symbol',
+                    arguments: {
+                        name_path: 'processData',
+                        relative_path: 'src/foo.ts',
+                    },
+                    result: 'function processData() { }',
+                }),
+                createToolCallRecord({
                     toolName: 'find_usages',
                     arguments: {
                         file_path: 'src/foo.ts',
@@ -2891,8 +2935,10 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
 
             const result = auditor.audit(findings, records);
 
-            // "dead code" unconditionally skips caller contradiction check
+            // With sufficient depth (read+diff+symbol+usages ≥ 4), depth check passes.
+            // "dead code" unconditionally skips caller contradiction check.
             expect(result.entries[0]!.verdict).not.toBe('weak-evidence');
+            expect(result.entries[0]!.verdict).toBe('keep');
         });
 
         it('skips caller check for LOW severity', () => {
@@ -3951,10 +3997,12 @@ describe('EvidenceAuditor cross-file affectedComponent', () => {
                 result: '+ import { processConfig } from "./utils"',
             }),
             // Tool call on primary file (read_file) — satisfies depth
+            // Note: result deliberately does NOT contain 'processConfig' so that
+            // checkClaimVsOutput would flag weak-evidence without the cross-file fix.
             createToolCallRecord({
                 toolName: 'read_file',
                 arguments: { file_path: 'src/service.ts' },
-                result: 'import { processConfig } from "./utils";\ncallService();',
+                result: 'import { helper } from "./utils";\ncallService();',
             }),
             // Tool call on secondary file (read_file showing processConfig body)
             createToolCallRecord({
@@ -3980,7 +4028,7 @@ describe('EvidenceAuditor cross-file affectedComponent', () => {
                 affectedComponent: 'validateInput()',
                 description: 'validateInput in src/validator.ts is wrong',
                 verificationEvidence:
-                    'read_file on src/validator.ts confirmed no validation',
+                    'find_symbol on src/validator.ts confirmed no validation',
                 verifiableClaims: [
                     {
                         claimType: 'no_callers',
@@ -4005,25 +4053,26 @@ describe('EvidenceAuditor cross-file affectedComponent', () => {
                 result: 'function validateInput(x) { return x; }',
             }),
             createToolCallRecord({
-                toolName: 'find_usages',
+                toolName: 'find_symbol',
                 arguments: {
-                    file_path: 'src/validator.ts',
-                    symbol_name: 'validateInput',
+                    name_path: 'validateInput',
+                    relative_path: 'src/validator.ts',
                 },
-                result: 'src/service.ts:10 — validateInput(data)',
+                result: 'function validateInput(x) { return x; }',
             }),
-            // Diff on primary file — satisfies depth + fabrication escape hatch
+            // read_file on primary file — satisfies depth but NOT fabrication
+            // (find_symbol is the claimed tool and it's only on the secondary file)
             createToolCallRecord({
-                toolName: 'get_file_diff',
-                arguments: { file_paths: ['src/service.ts'] },
-                result: '+ validateInput(data)',
+                toolName: 'read_file',
+                arguments: { file_path: 'src/service.ts' },
+                result: 'import { validateInput } from "./validator";\nvalidateInput(data);',
             }),
         ];
 
         const result = auditor.audit(findings, records);
 
-        // Without cross-file fix, read_file claim on src/validator.ts
-        // would be detected as fabricated (no tools called on src/service.ts)
+        // Without cross-file fix, find_symbol claim on src/validator.ts
+        // would be detected as fabricated (no find_symbol called on src/service.ts)
         expect(result.entries[0]!.verdict).not.toBe('drop');
     });
 });

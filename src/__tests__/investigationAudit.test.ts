@@ -392,34 +392,39 @@ describe('buildInvestigationAudit preFlattened', () => {
             makeToolCall({
                 toolName: 'read_file',
                 arguments: { file_path: 'src/foo.ts' },
-                result: 'Error: timeout',
+                result: undefined as unknown as string,
+                error: 'Error: timeout',
                 success: false,
             }),
             makeToolCall({
                 toolName: 'find_symbol',
                 arguments: {
-                    symbol_name: 'myFunc',
+                    name_path: 'myFunc',
                     relative_path: 'src/foo.ts',
                 },
-                result: 'Error: not found',
+                result: undefined as unknown as string,
+                error: 'Error: rate limited',
                 success: false,
             }),
             makeToolCall({
                 toolName: 'find_usages',
                 arguments: { symbol_name: 'myFunc', file_path: 'src/foo.ts' },
-                result: 'Error: timeout',
+                result: undefined as unknown as string,
+                error: 'Error: timeout',
                 success: false,
             }),
             makeToolCall({
                 toolName: 'search_for_pattern',
                 arguments: { pattern: 'myFunc' },
-                result: 'Error: search failed',
+                result: undefined as unknown as string,
+                error: 'Error: search failed',
                 success: false,
             }),
             makeToolCall({
                 toolName: 'get_file_diff',
                 arguments: { file_paths: ['src/foo.ts'] },
-                result: 'Error: diff failed',
+                result: undefined as unknown as string,
+                error: 'Error: diff failed',
                 success: false,
             }),
         ];
@@ -555,6 +560,57 @@ describe('zero-result tool calls count toward depth', () => {
         const audit = buildInvestigationAudit(calls, undefined);
 
         expect(audit.symbolsResolved).toHaveLength(0);
+    });
+
+    it('counts zero-result when symbol name contains timeout keyword', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'find_usages',
+                arguments: {
+                    symbol_name: 'handleTimeout',
+                    file_path: 'src/server.ts',
+                },
+                success: false,
+                error: "No usages found for symbol 'handleTimeout' in file src/server.ts",
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(calls, undefined);
+
+        expect(audit.usagesChecked).toHaveLength(1);
+    });
+
+    it('counts zero-result when pattern contains timeout keyword', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'search_for_pattern',
+                arguments: { pattern: 'connectionTimeout' },
+                success: false,
+                error: "No matches found for pattern 'connectionTimeout'",
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(calls, undefined);
+
+        expect(audit.patternsSearched).toHaveLength(1);
+    });
+
+    it('counts zero-result when symbol name contains truncat keyword', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: {
+                    name_path: 'TruncatedResponse',
+                    file_path: 'src/types.ts',
+                },
+                success: false,
+                error: "Symbol 'TruncatedResponse' not found in searched files",
+            }),
+        ];
+
+        const audit = buildInvestigationAudit(calls, undefined);
+
+        expect(audit.symbolsResolved).toHaveLength(1);
     });
 
     it('zero-result find_usages contributes to depth when combined with symbol resolution', () => {

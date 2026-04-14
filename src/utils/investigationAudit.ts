@@ -78,9 +78,15 @@ function isZeroResultCall(call: ToolCallRecord): boolean {
     if (typeof call.error !== 'string' || call.error.length === 0) {
         return false;
     }
-    // Exclude genuine failures — timeouts and truncations are not zero-result investigations
+    // Exclude genuine failures — timeouts and truncations are not zero-result investigations.
+    // Strip quoted symbol names first so symbols like 'handleTimeout' don't false-match.
     const errorText = call.error;
-    if (/timed?\s*out|timeout|truncat|search was limited/i.test(errorText)) {
+    const errorTextWithoutSymbol = errorText.replace(/'[^']*'/g, '');
+    if (
+        /timed?\s*out|timeout|truncat|search was limited/i.test(
+            errorTextWithoutSymbol
+        )
+    ) {
         return false;
     }
     return ZERO_RESULT_ERROR_PATTERNS.some((pattern) =>
