@@ -346,29 +346,39 @@ function scoreCrossFileEvidence(
     const weight = 10;
 
     const normalize = (p: string) => p.replace(/\\/g, '/');
-    const distinctFiles = new Set<string>();
-    distinctFiles.add(normalize(finding.file));
+    const findingNorm = normalize(finding.file);
 
-    for (const record of toolCallRecords) {
-        for (const val of Object.values(record.arguments)) {
-            if (typeof val !== 'string') {
-                continue;
-            }
+    // Get tool calls that target the finding's file
+    const findingCalls = toolCallRecords.filter((r) =>
+        toolCallMatchesFile(r, findingNorm)
+    );
+
+    // From those calls, collect other file-like arguments (cross-file evidence)
+    const distinctOtherFiles = new Set<string>();
+    for (const record of findingCalls) {
+        const argValues = Object.values(record.arguments).flatMap((v) =>
+            typeof v === 'string'
+                ? [v]
+                : Array.isArray(v)
+                  ? v.filter((x): x is string => typeof x === 'string')
+                  : []
+        );
+        for (const val of argValues) {
             const norm = normalize(val);
             if (
+                norm !== findingNorm &&
                 norm.includes('/') &&
-                /\.\w+$/.test(norm) &&
-                toolCallRecords.some((r) => toolCallMatchesFile(r, norm))
+                /\.\w+$/.test(norm)
             ) {
-                distinctFiles.add(norm);
+                distinctOtherFiles.add(norm);
             }
         }
     }
 
     let contribution: number;
-    if (distinctFiles.size >= 3) {
+    if (distinctOtherFiles.size >= 2) {
         contribution = 10;
-    } else if (distinctFiles.size === 2) {
+    } else if (distinctOtherFiles.size === 1) {
         contribution = 5;
     } else {
         contribution = 0;
@@ -376,7 +386,7 @@ function scoreCrossFileEvidence(
 
     return {
         signal: 'crossFileEvidence',
-        rawValue: distinctFiles.size,
+        rawValue: distinctOtherFiles.size,
         weight,
         contribution,
     };

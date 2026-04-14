@@ -25,22 +25,6 @@ const SYMBOL_ARG_KEYS = ['symbol_name', 'name', 'name_path'] as const;
 const DELETION_LANGUAGE_PATTERN =
     /\b(deleted|removed|no longer|was removed|was deleted|dropped|eliminated|got rid of)\b/i;
 
-const ZERO_REFERENCE_PATTERNS = [
-    /\b0 results/i,
-    /no results/i,
-    /not found/i,
-    /no references/i,
-    /\b0 usages/i,
-    /no usages/i,
-    /no callers/i,
-    /\b0 callers/i,
-    /no matches/i,
-    /\b0 matches/i,
-    /no occurrences/i,
-    /\b0 occurrences/i,
-    /^\s*$/,
-] as const;
-
 /**
  * Tools that return toolError() (success: false) for zero results.
  * These are NOT real errors — they indicate "searched and found nothing",
@@ -610,14 +594,9 @@ export class EvidenceAuditor {
             return null;
         }
 
-        const hasZeroReferences = referenceToolCalls.every((tc) => {
-            if (isZeroResultCall(tc)) {
-                return true;
-            }
-            return ZERO_REFERENCE_PATTERNS.some((pattern) =>
-                pattern.test(tc.result as string)
-            );
-        });
+        const hasZeroReferences = referenceToolCalls.every((tc) =>
+            isZeroResultCall(tc)
+        );
 
         if (!hasZeroReferences) {
             return null;
@@ -826,14 +805,7 @@ export class EvidenceAuditor {
         }
 
         // Check if ALL find_usages calls returned zero results
-        const allZero = usageCalls.every((tc) => {
-            if (isZeroResultCall(tc)) {
-                return true;
-            }
-            return ZERO_REFERENCE_PATTERNS.some((pattern) =>
-                pattern.test(tc.result as string)
-            );
-        });
+        const allZero = usageCalls.every((tc) => isZeroResultCall(tc));
 
         if (!allZero) {
             return null;

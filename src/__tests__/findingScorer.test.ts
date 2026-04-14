@@ -123,19 +123,25 @@ describe('findingScorer', () => {
                     }),
                     makeToolCallRecord({
                         id: 'call-5',
-                        toolName: 'read_file',
-                        arguments: { file_path: 'src/models/bar.ts' },
+                        toolName: 'find_usages',
+                        arguments: {
+                            file_path: 'src/services/foo.ts',
+                            related: 'src/models/bar.ts',
+                        },
                     }),
                     makeToolCallRecord({
                         id: 'call-6',
-                        toolName: 'read_file',
-                        arguments: { file_path: 'src/utils/helpers.ts' },
+                        toolName: 'find_usages',
+                        arguments: {
+                            file_path: 'src/services/foo.ts',
+                            related: 'src/utils/helpers.ts',
+                        },
                     }),
                 ],
             });
             const score = scoreFinding(finding, context);
 
-            // investigationDepth: 4 matching calls = 20
+            // investigationDepth: 6 matching calls = 20
             // disproofAttempted: true = 15
             // lspValidation: verified = 15
             // modelBias: balanced = 4
@@ -143,7 +149,7 @@ describe('findingScorer', () => {
             // descriptionQuality: >200 chars = 2
             // absencePattern: no absence language = 0
             // affectedComponentVerified: 'getValue' in symbol field = 15
-            // crossFileEvidence: 3 files = 10
+            // crossFileEvidence: 2 other files = 10
             // evidenceAuditVerdict: none = 0
             // Total = 86
             expect(score.overallScore).toBeGreaterThanOrEqual(80);
@@ -334,8 +340,11 @@ describe('findingScorer', () => {
                     }),
                     makeToolCallRecord({
                         id: 'call-3',
-                        toolName: 'read_file',
-                        arguments: { file_path: 'src/models/bar.ts' },
+                        toolName: 'find_usages',
+                        arguments: {
+                            file_path: 'src/services/foo.ts',
+                            related: 'src/models/bar.ts',
+                        },
                     }),
                 ],
                 calibrationProfile: {
@@ -345,7 +354,7 @@ describe('findingScorer', () => {
                 },
             });
             const score = scoreFinding(finding, context);
-            // investigationDepth: 2 calls match foo.ts = 10
+            // investigationDepth: 3 calls match foo.ts = 15
             // disproofAttempted: true = 15
             // lspValidation: inconclusive = 8
             // modelBias: aggressive = 0
@@ -353,9 +362,9 @@ describe('findingScorer', () => {
             // descriptionQuality: ~86 chars = 1
             // absencePattern: 0
             // affectedComponentVerified: not found = -5
-            // crossFileEvidence: 2 files = 5
+            // crossFileEvidence: 1 other file = 5
             // evidenceAuditVerdict: 0
-            // Total = 37
+            // Total = 42
             expect(score.overallScore).toBeGreaterThanOrEqual(DROP_THRESHOLD);
             expect(score.overallScore).toBeLessThan(DOWNGRADE_THRESHOLD);
             expect(score.recommendation).toBe('downgrade');
@@ -564,7 +573,7 @@ describe('findingScorer', () => {
     });
 
     describe('crossFileEvidence signal', () => {
-        it('should give max bonus for 3+ distinct files investigated', () => {
+        it('should give max bonus for 3+ distinct other files from finding-targeted calls', () => {
             const finding = makeFinding({
                 file: 'src/services/foo.ts',
                 affectedComponent: 'processData()',
@@ -573,18 +582,27 @@ describe('findingScorer', () => {
                 toolCallRecords: [
                     makeToolCallRecord({
                         id: 'call-1',
-                        toolName: 'read_file',
-                        arguments: { file_path: 'src/services/foo.ts' },
+                        toolName: 'find_usages',
+                        arguments: {
+                            file_path: 'src/services/foo.ts',
+                            related_file: 'src/models/bar.ts',
+                        },
                     }),
                     makeToolCallRecord({
                         id: 'call-2',
-                        toolName: 'read_file',
-                        arguments: { file_path: 'src/models/bar.ts' },
+                        toolName: 'find_symbol',
+                        arguments: {
+                            file_path: 'src/services/foo.ts',
+                            other: 'src/utils/helpers.ts',
+                        },
                     }),
                     makeToolCallRecord({
                         id: 'call-3',
                         toolName: 'read_file',
-                        arguments: { file_path: 'src/utils/helpers.ts' },
+                        arguments: {
+                            file_path: 'src/services/foo.ts',
+                            ref: 'src/types/index.ts',
+                        },
                     }),
                 ],
             });
@@ -618,10 +636,10 @@ describe('findingScorer', () => {
             )!;
             expect(signal).toBeDefined();
             expect(signal.contribution).toBe(0);
-            expect(signal.rawValue).toBe(1);
+            expect(signal.rawValue).toBe(0);
         });
 
-        it('should give moderate bonus for 2-file investigation', () => {
+        it('should give moderate bonus for calls targeting finding file that reference another file', () => {
             const finding = makeFinding({
                 file: 'src/services/foo.ts',
                 affectedComponent: 'validateInput()',
@@ -634,12 +652,8 @@ describe('findingScorer', () => {
                         arguments: {
                             symbol: 'validateInput',
                             file_path: 'src/services/foo.ts',
+                            related: 'src/models/schema.ts',
                         },
-                    }),
-                    makeToolCallRecord({
-                        id: 'call-2',
-                        toolName: 'read_file',
-                        arguments: { file_path: 'src/models/schema.ts' },
                     }),
                 ],
             });
@@ -650,7 +664,69 @@ describe('findingScorer', () => {
             )!;
             expect(signal).toBeDefined();
             expect(signal.contribution).toBe(5);
-            expect(signal.rawValue).toBe(2);
+            expect(signal.rawValue).toBe(1);
+        });
+
+        it('should give zero contribution when all calls only target the finding file', () => {
+            const finding = makeFinding({
+                file: 'src/services/foo.ts',
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/services/foo.ts' },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-2',
+                        toolName: 'find_symbol',
+                        arguments: {
+                            symbol: 'MyClass',
+                            file_path: 'src/services/foo.ts',
+                        },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-3',
+                        toolName: 'get_file_diff',
+                        arguments: { file_path: 'src/services/foo.ts' },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'crossFileEvidence'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(0);
+            expect(signal.rawValue).toBe(0);
+        });
+
+        it('should give positive contribution when finding-targeted calls also reference another file', () => {
+            const finding = makeFinding({
+                file: 'src/services/foo.ts',
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'find_usages',
+                        arguments: {
+                            file_path: 'src/services/foo.ts',
+                            related_file: 'src/models/bar.ts',
+                        },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'crossFileEvidence'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(5);
+            expect(signal.rawValue).toBe(1);
         });
     });
 
@@ -673,13 +749,19 @@ describe('findingScorer', () => {
                     }),
                     makeToolCallRecord({
                         id: 'call-2',
-                        toolName: 'read_file',
-                        arguments: { file_path: 'src/models/session.ts' },
+                        toolName: 'find_usages',
+                        arguments: {
+                            file_path: 'src/services/auth.ts',
+                            related: 'src/models/session.ts',
+                        },
                     }),
                     makeToolCallRecord({
                         id: 'call-3',
-                        toolName: 'read_file',
-                        arguments: { file_path: 'src/utils/crypto.ts' },
+                        toolName: 'find_usages',
+                        arguments: {
+                            file_path: 'src/services/auth.ts',
+                            related: 'src/utils/crypto.ts',
+                        },
                     }),
                 ],
             });

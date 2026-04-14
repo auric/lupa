@@ -95,7 +95,7 @@ describe('buildInvestigationAudit', () => {
         });
     });
 
-    it('defaults file to "unknown" when find_symbol has no file_path', () => {
+    it('filters out find_symbol entries when no file_path is available', () => {
         const calls: ToolCallRecord[] = [
             makeToolCall({
                 toolName: 'find_symbol',
@@ -105,7 +105,7 @@ describe('buildInvestigationAudit', () => {
         ];
 
         const audit = buildInvestigationAudit(calls, undefined);
-        expect(audit.symbolsResolved[0].file).toBe('unknown');
+        expect(audit.symbolsResolved).toHaveLength(0);
     });
 
     it('builds usage entries from find_usages calls', () => {
@@ -388,6 +388,10 @@ describe('buildInvestigationAudit preFlattened', () => {
     });
 
     it('excludes failed tool calls from all extractions', () => {
+        // Error messages deliberately include zero-result phrases combined with
+        // timeout/failure indicators, so isZeroResultCall's timeout guard is
+        // actually exercised (without it, these would be misclassified as
+        // valid zero-result investigations and included instead of excluded).
         const records = [
             makeToolCall({
                 toolName: 'read_file',
@@ -403,21 +407,21 @@ describe('buildInvestigationAudit preFlattened', () => {
                     relative_path: 'src/foo.ts',
                 },
                 result: undefined as unknown as string,
-                error: 'Error: rate limited',
+                error: "Symbol 'myFunc' not found - search timed out",
                 success: false,
             }),
             makeToolCall({
                 toolName: 'find_usages',
                 arguments: { symbol_name: 'myFunc', file_path: 'src/foo.ts' },
                 result: undefined as unknown as string,
-                error: 'Error: timeout',
+                error: 'No usages found - request timed out',
                 success: false,
             }),
             makeToolCall({
                 toolName: 'search_for_pattern',
                 arguments: { pattern: 'myFunc' },
                 result: undefined as unknown as string,
-                error: 'Error: search failed',
+                error: 'No matches found - search timed out',
                 success: false,
             }),
             makeToolCall({

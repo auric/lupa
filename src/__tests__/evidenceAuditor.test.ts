@@ -982,15 +982,16 @@ describe('EvidenceAuditor', () => {
             expect(result.entries[0]!.verdict).not.toBe('drop');
         });
 
-        it('does not drop deletion finding when only find_symbol shows zero results (find_symbol excluded from deletion check)', () => {
+        it('does not drop deletion finding when isTestCoverageFinding matches (coverage exception)', () => {
             const findings = [
                 createTestFinding({
                     severity: 'HIGH',
-                    title: 'someFunction was deleted',
+                    title: 'someFunction was deleted, coverage gap remains',
                     affectedComponent: 'someFunction()',
-                    description: 'someFunction was removed from the codebase',
+                    description:
+                        'someFunction was removed but untested code paths remain',
                     verificationEvidence:
-                        'Used find_symbol to check for remaining references',
+                        'Used find_usages to check for remaining references',
                 }),
             ];
             const records = [
@@ -1000,7 +1001,7 @@ describe('EvidenceAuditor', () => {
                     result: 'function someFunction() { return true; }',
                 }),
                 createToolCallRecord({
-                    toolName: 'find_symbol',
+                    toolName: 'find_usages',
                     arguments: {
                         file_path: 'src/foo.ts',
                         symbol_name: 'someFunction',
@@ -1018,8 +1019,8 @@ describe('EvidenceAuditor', () => {
 
             const result = auditor.audit(findings, records);
 
-            // find_symbol is excluded from deletion safety check — only find_usages counts
-            // No find_usages was called → deletion safety can't confirm → not dropped
+            // find_usages with zero results + deletion language would trigger deletion safety drop,
+            // but "untested" triggers isTestCoverageFinding → deletion safety skipped
             expect(result.entries[0]!.verdict).not.toBe('drop');
         });
 
@@ -1221,6 +1222,45 @@ describe('EvidenceAuditor', () => {
             // "10 results" should NOT match zero-reference patterns
             // Finding should be kept (references exist, deletion is potentially unsafe)
             expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
+        it('does not false-match "not found" in source code of successful find_usages as zero-reference', () => {
+            const findings = [
+                createTestFinding({
+                    file: 'src/utils.ts',
+                    severity: 'MEDIUM',
+                    title: 'Deprecated function removed',
+                    description: 'The deprecated utility was deleted',
+                    affectedComponent: 'handleError()',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/utils.ts' },
+                    result: 'function handleError() { throw new Error("Not found"); }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/utils.ts',
+                        symbol_name: 'handleError',
+                    },
+                    // Successful call with actual usages — source code contains "Not found"
+                    result: 'src/api.ts:10: handleError(new Error("Not found"))\nsrc/routes.ts:20: handleError(err)',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/utils.ts'] },
+                    result: '- function handleError() { throw new Error("Not found"); }',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // Successful find_usages with actual references should NOT be treated as zero-reference
+            // even though the source text contains "Not found"
+            expect(result.entries[0]!.verdict).not.toBe('drop');
         });
 
         it('does not drop deletion finding when find_usages was for a different symbol', () => {
@@ -1505,6 +1545,16 @@ describe('EvidenceAuditor', () => {
             ];
             const records = [
                 createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function someFunction() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ function someFunction() {}',
+                }),
+                createToolCallRecord({
                     toolName: 'search_for_pattern',
                     arguments: { pattern: 'something' },
                     result: 'src/foo.tsx:10: const x = something;',
@@ -1514,8 +1564,9 @@ describe('EvidenceAuditor', () => {
             const result = auditor.audit(findings, records);
 
             // search_for_pattern matched foo.tsx, NOT foo.ts — should NOT count as evidence
-            // Verdict is downgrade (depth < 4 for HIGH) since search result doesn't support file
-            expect(result.entries[0]!.verdict).not.toBe('keep');
+            expect(result.entries[0]!.actualToolsOnFile).not.toContain(
+                'search_for_pattern'
+            );
         });
 
         it('rejects search_for_pattern result when finding path is a suffix of another path', () => {
@@ -1529,6 +1580,16 @@ describe('EvidenceAuditor', () => {
             ];
             const records = [
                 createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'bar.ts' },
+                    result: 'function someFunction() { return true; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['bar.ts'] },
+                    result: '+ function someFunction() {}',
+                }),
+                createToolCallRecord({
                     toolName: 'search_for_pattern',
                     arguments: { pattern: 'something' },
                     result: 'foobar.ts:10: const x = something;',
@@ -1538,8 +1599,9 @@ describe('EvidenceAuditor', () => {
             const result = auditor.audit(findings, records);
 
             // 'bar.ts' is a suffix of 'foobar.ts' — should NOT match
-            // Verdict is downgrade (depth < 4 for HIGH) since search result doesn't support file
-            expect(result.entries[0]!.verdict).not.toBe('keep');
+            expect(result.entries[0]!.actualToolsOnFile).not.toContain(
+                'search_for_pattern'
+            );
         });
 
         it('matches file path at end of search result string', () => {
@@ -2763,6 +2825,45 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
             expect(result.entries[0]!.verdict).toBe('keep');
         });
 
+        it('does not false-match "no results" in source code of successful find_usages as zero-reference for caller claims', () => {
+            const findings = [
+                createTestFinding({
+                    severity: 'HIGH',
+                    title: 'Callers do not handle error return from searchHandler',
+                    affectedComponent: 'searchHandler()',
+                    description:
+                        'The callers of searchHandler ignore the error return',
+                }),
+            ];
+            const records = [
+                createToolCallRecord({
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/foo.ts' },
+                    result: 'function searchHandler() { return "no results found"; }',
+                }),
+                createToolCallRecord({
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/foo.ts',
+                        symbol_name: 'searchHandler',
+                    },
+                    // Successful call with actual usages — source contains "no results"
+                    result: 'src/api.ts:5: searchHandler(query) // returns "no results" if empty\nsrc/routes.ts:12: searchHandler(input)',
+                }),
+                createToolCallRecord({
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/foo.ts'] },
+                    result: '+ searchHandler updated',
+                }),
+            ];
+
+            const result = auditor.audit(findings, records);
+
+            // Successful find_usages with actual references should NOT trigger weak-evidence
+            // even though the source text contains "no results"
+            expect(result.entries[0]!.verdict).toBe('keep');
+        });
+
         it('keeps finding when some find_usages calls return results', () => {
             const findings = [
                 createTestFinding({
@@ -2899,7 +3000,8 @@ describe('EvidenceAuditor — pattern-specific checks', () => {
                     severity: 'HIGH',
                     title: 'Unused function processData',
                     affectedComponent: 'processData()',
-                    description: 'processData is dead code with no references',
+                    description:
+                        'processData is dead code, callers should be investigated',
                 }),
             ];
             const records = [
@@ -3990,11 +4092,12 @@ describe('EvidenceAuditor cross-file affectedComponent', () => {
             }),
         ];
         const records = [
-            // Tool call on primary file (diff)
+            // Tool call on primary file (diff) — deliberately does NOT mention
+            // processConfig so the secondary file is the only source of that identifier.
             createToolCallRecord({
                 toolName: 'get_file_diff',
                 arguments: { file_paths: ['src/service.ts'] },
-                result: '+ import { processConfig } from "./utils"',
+                result: '+ import { helper } from "./utils"',
             }),
             // Tool call on primary file (read_file) — satisfies depth
             // Note: result deliberately does NOT contain 'processConfig' so that
@@ -4060,13 +4163,8 @@ describe('EvidenceAuditor cross-file affectedComponent', () => {
                 },
                 result: 'function validateInput(x) { return x; }',
             }),
-            // read_file on primary file — satisfies depth but NOT fabrication
-            // (find_symbol is the claimed tool and it's only on the secondary file)
-            createToolCallRecord({
-                toolName: 'read_file',
-                arguments: { file_path: 'src/service.ts' },
-                result: 'import { validateInput } from "./validator";\nvalidateInput(data);',
-            }),
+            // No read_file on primary file — without cross-file support,
+            // allSupportingCalls would be empty → fabrication detected → drop.
         ];
 
         const result = auditor.audit(findings, records);
