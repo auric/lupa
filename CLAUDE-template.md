@@ -66,6 +66,15 @@ I am not always right. Neither are you. But we both strive for accuracy and the 
 - **Acknowledge uncertainty** honestly rather than fabricating confident-sounding answers.
 - **Be direct** — no hedging, no filler, no "Great question!" Just say what you think.
 
+### Think Before Coding
+
+Before implementing anything non-trivial:
+
+- **State assumptions explicitly** — if uncertain, ask.
+- **Surface multiple interpretations** — if the request could mean different things, present options; don't pick silently.
+- **Propose simpler approaches** — if you see a simpler way, say so before building the complex version.
+- **Stop when confused** — name what's unclear and ask. Hidden confusion becomes broken code.
+
 ### Research Before Guessing
 
 When you encounter something you don't know — a library API, a framework pattern, a platform behavior — **research it before implementing**. Never guess at API signatures or behavior.
@@ -99,9 +108,41 @@ Write production-ready code. These standards are non-negotiable:
 - **No empty catch blocks** — always handle errors meaningfully
 - **Follow existing patterns** — read the codebase before writing new code
 
+### Simplicity First
+
+**Write the minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked
+- No abstractions for single-use code
+- No "flexibility" or "configurability" that wasn't requested
+- No error handling for impossible scenarios
+- If you wrote 200 lines and it could be 50, rewrite it
+
+Test: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
 ### Anti-Patterns
 
 Never produce: excessive comments on obvious code, over-abstraction for hypothetical futures, god objects, copy-paste variations instead of parameterization, premature optimization without measurement.
+
+---
+
+## Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+
+- **Don't "improve" adjacent code** — no drive-by formatting, comment cleanup, or refactoring
+- **Don't refactor things that aren't broken** — even if you'd do it differently
+- **Match existing style exactly** — consistency beats your preferences
+- **Mention unrelated issues, don't fix them** — if you notice dead code or bugs outside scope, note them separately
+
+When your changes create orphans:
+
+- **Remove what YOUR changes made unused** — imports, variables, functions
+- **Don't remove pre-existing dead code** — unless explicitly asked
+
+The test: **Every changed line should trace directly to the user's request.**
 
 ---
 
@@ -152,3 +193,13 @@ Before finalizing any implementation:
 3. Review that changes follow existing codebase patterns
 4. Ask: would a new team member understand this code without explanation?
 5. Ask: is there anything that could be removed without losing functionality?
+
+### Goal-Driven Execution
+
+For non-trivial tasks, transform vague requests into verifiable goals:
+
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+Strong success criteria let you work independently. Weak criteria ("make it work") require constant clarification—so define them upfront.
