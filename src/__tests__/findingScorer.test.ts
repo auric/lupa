@@ -92,6 +92,14 @@ describe('findingScorer', () => {
             const finding = makeFinding({
                 description:
                     'The function reads .value from a potentially null object, resulting in TypeError at runtime when config input is undefined, as confirmed by symbol definitions and tracing through call analysis',
+                supportingToolCalls: [
+                    'call-1',
+                    'call-2',
+                    'call-3',
+                    'call-4',
+                    'call-5',
+                    'call-6',
+                ],
             });
             const context = makeContext({
                 toolCallRecords: [
@@ -123,18 +131,16 @@ describe('findingScorer', () => {
                     }),
                     makeToolCallRecord({
                         id: 'call-5',
-                        toolName: 'find_usages',
+                        toolName: 'read_file',
                         arguments: {
-                            file_path: 'src/services/foo.ts',
-                            related: 'src/models/bar.ts',
+                            file_path: 'src/models/bar.ts',
                         },
                     }),
                     makeToolCallRecord({
                         id: 'call-6',
-                        toolName: 'find_usages',
+                        toolName: 'read_file',
                         arguments: {
-                            file_path: 'src/services/foo.ts',
-                            related: 'src/utils/helpers.ts',
+                            file_path: 'src/utils/helpers.ts',
                         },
                     }),
                 ],
@@ -340,10 +346,9 @@ describe('findingScorer', () => {
                     }),
                     makeToolCallRecord({
                         id: 'call-3',
-                        toolName: 'find_usages',
+                        toolName: 'read_file',
                         arguments: {
                             file_path: 'src/services/foo.ts',
-                            related: 'src/models/bar.ts',
                         },
                     }),
                 ],
@@ -362,9 +367,9 @@ describe('findingScorer', () => {
             // descriptionQuality: ~86 chars = 1
             // absencePattern: 0
             // affectedComponentVerified: not found = -5
-            // crossFileEvidence: 1 other file = 5
+            // crossFileEvidence: 0 other files = 0
             // evidenceAuditVerdict: 0
-            // Total = 42
+            // Total = 37
             expect(score.overallScore).toBeGreaterThanOrEqual(DROP_THRESHOLD);
             expect(score.overallScore).toBeLessThan(DOWNGRADE_THRESHOLD);
             expect(score.recommendation).toBe('downgrade');
@@ -570,38 +575,83 @@ describe('findingScorer', () => {
             expect(signal).toBeDefined();
             expect(signal.contribution).toBe(-5);
         });
-    });
 
-    describe('crossFileEvidence signal', () => {
-        it('should give max bonus for 3+ distinct other files from finding-targeted calls', () => {
+        it('should not verify when token is a substring of a symbol arg but not a boundary match', () => {
             const finding = makeFinding({
-                file: 'src/services/foo.ts',
-                affectedComponent: 'processData()',
+                affectedComponent: 'Config',
             });
             const context = makeContext({
                 toolCallRecords: [
                     makeToolCallRecord({
                         id: 'call-1',
-                        toolName: 'find_usages',
+                        toolName: 'find_symbol',
                         arguments: {
+                            symbol_name: 'parseConfigHandler',
                             file_path: 'src/services/foo.ts',
-                            related_file: 'src/models/bar.ts',
                         },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'affectedComponentVerified'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(-5);
+        });
+
+        it('should verify when token matches as dotted suffix of a symbol arg', () => {
+            const finding = makeFinding({
+                affectedComponent: 'handleRequest()',
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'find_symbol',
+                        arguments: {
+                            symbol_name: 'MyClass.handleRequest',
+                            file_path: 'src/services/foo.ts',
+                        },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'affectedComponentVerified'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(15);
+        });
+    });
+
+    describe('crossFileEvidence signal', () => {
+        it('should give max bonus when supportingToolCalls reference 2+ other files', () => {
+            const finding = makeFinding({
+                file: 'src/services/foo.ts',
+                affectedComponent: 'processData()',
+                supportingToolCalls: ['call-1', 'call-2', 'call-3'],
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/services/foo.ts' },
                     }),
                     makeToolCallRecord({
                         id: 'call-2',
-                        toolName: 'find_symbol',
-                        arguments: {
-                            file_path: 'src/services/foo.ts',
-                            other: 'src/utils/helpers.ts',
-                        },
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/models/bar.ts' },
                     }),
                     makeToolCallRecord({
                         id: 'call-3',
-                        toolName: 'read_file',
+                        toolName: 'find_usages',
                         arguments: {
-                            file_path: 'src/services/foo.ts',
-                            ref: 'src/types/index.ts',
+                            file_path: 'src/utils/helpers.ts',
+                            symbol_name: 'processData',
                         },
                     }),
                 ],
@@ -613,7 +663,7 @@ describe('findingScorer', () => {
             )!;
             expect(signal).toBeDefined();
             expect(signal.contribution).toBe(10);
-            expect(signal.rawValue).toBeGreaterThanOrEqual(3);
+            expect(signal.rawValue).toBeGreaterThanOrEqual(2);
         });
 
         it('should give no bonus for single-file investigation', () => {
@@ -639,10 +689,11 @@ describe('findingScorer', () => {
             expect(signal.rawValue).toBe(0);
         });
 
-        it('should give moderate bonus for calls targeting finding file that reference another file', () => {
+        it('should give moderate bonus when supportingToolCalls reference 1 other file', () => {
             const finding = makeFinding({
                 file: 'src/services/foo.ts',
                 affectedComponent: 'validateInput()',
+                supportingToolCalls: ['call-1', 'call-2'],
             });
             const context = makeContext({
                 toolCallRecords: [
@@ -652,8 +703,12 @@ describe('findingScorer', () => {
                         arguments: {
                             symbol: 'validateInput',
                             file_path: 'src/services/foo.ts',
-                            related: 'src/models/schema.ts',
                         },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-2',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/models/schema.ts' },
                     }),
                 ],
             });
@@ -703,7 +758,7 @@ describe('findingScorer', () => {
             expect(signal.rawValue).toBe(0);
         });
 
-        it('should give positive contribution when finding-targeted calls also reference another file', () => {
+        it('should give positive contribution from finding-targeted call with get_file_diff array arg', () => {
             const finding = makeFinding({
                 file: 'src/services/foo.ts',
             });
@@ -711,10 +766,12 @@ describe('findingScorer', () => {
                 toolCallRecords: [
                     makeToolCallRecord({
                         id: 'call-1',
-                        toolName: 'find_usages',
+                        toolName: 'get_file_diff',
                         arguments: {
-                            file_path: 'src/services/foo.ts',
-                            related_file: 'src/models/bar.ts',
+                            file_paths: [
+                                'src/services/foo.ts',
+                                'src/models/bar.ts',
+                            ],
                         },
                     }),
                 ],
@@ -727,6 +784,63 @@ describe('findingScorer', () => {
             expect(signal).toBeDefined();
             expect(signal.contribution).toBe(5);
             expect(signal.rawValue).toBe(1);
+        });
+
+        it('should give zero contribution for unrelated tool calls not in supportingToolCalls', () => {
+            const finding = makeFinding({
+                file: 'src/services/foo.ts',
+                supportingToolCalls: [],
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/models/bar.ts' },
+                    }),
+                    makeToolCallRecord({
+                        id: 'call-2',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/utils/helpers.ts' },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'crossFileEvidence'
+            )!;
+            expect(signal).toBeDefined();
+            expect(signal.contribution).toBe(0);
+            expect(signal.rawValue).toBe(0);
+        });
+
+        it('should reject prose-like strings that contain spaces', () => {
+            const finding = makeFinding({
+                file: 'src/services/foo.ts',
+                supportingToolCalls: ['call-1'],
+            });
+            const context = makeContext({
+                toolCallRecords: [
+                    makeToolCallRecord({
+                        id: 'call-1',
+                        toolName: 'search_for_pattern',
+                        arguments: {
+                            query: 'function missing from src/models/bar.ts and other files',
+                            file_path: 'src/services/foo.ts',
+                        },
+                    }),
+                ],
+            });
+            const score = scoreFinding(finding, context);
+
+            const signal = score.signals.find(
+                (s) => s.signal === 'crossFileEvidence'
+            )!;
+            expect(signal).toBeDefined();
+            // The query arg contains a space so should be rejected as a path
+            expect(signal.contribution).toBe(0);
+            expect(signal.rawValue).toBe(0);
         });
     });
 
@@ -749,18 +863,16 @@ describe('findingScorer', () => {
                     }),
                     makeToolCallRecord({
                         id: 'call-2',
-                        toolName: 'find_usages',
+                        toolName: 'read_file',
                         arguments: {
-                            file_path: 'src/services/auth.ts',
-                            related: 'src/models/session.ts',
+                            file_path: 'src/models/session.ts',
                         },
                     }),
                     makeToolCallRecord({
                         id: 'call-3',
-                        toolName: 'find_usages',
+                        toolName: 'read_file',
                         arguments: {
-                            file_path: 'src/services/auth.ts',
-                            related: 'src/utils/crypto.ts',
+                            file_path: 'src/utils/crypto.ts',
                         },
                     }),
                 ],

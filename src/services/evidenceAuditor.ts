@@ -20,7 +20,7 @@ const MIN_IDENTIFIER_LENGTH = 3;
 /**
  * Tool argument keys that reference symbols (not file paths).
  */
-const SYMBOL_ARG_KEYS = ['symbol_name', 'name', 'name_path'] as const;
+const SYMBOL_ARG_KEYS = ['symbol_name', 'name', 'name_path', 'symbol'] as const;
 
 const DELETION_LANGUAGE_PATTERN =
     /\b(deleted|removed|no longer|was removed|was deleted|dropped|eliminated|got rid of)\b/i;
