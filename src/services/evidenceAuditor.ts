@@ -613,7 +613,7 @@ export class EvidenceAuditor {
     }
 
     private isTestCoverageFinding(finding: RecordedFinding): boolean {
-        if (/\.(test|spec)\.(ts|js|tsx|jsx)$/.test(finding.file)) {
+        if (/\.(test|spec)\.(ts|tsx|js|jsx|mts|mjs)$/.test(finding.file)) {
             return true;
         }
         const text = `${finding.title} ${finding.description}`.toLowerCase();
@@ -1031,7 +1031,11 @@ export function extractSecondaryFiles(finding: RecordedFinding): string[] {
         while ((m = FILE_PATH_PATTERN.exec(text!)) !== null) {
             const candidate = m[1]!;
             // Must look like a path (contain / or \), not just "file.ts"
-            if (candidate.includes('/') || candidate.includes('\\')) {
+            // Exclude URLs (contain ://)
+            if (
+                (candidate.includes('/') || candidate.includes('\\')) &&
+                !candidate.includes('://')
+            ) {
                 addFile(candidate);
             }
         }
