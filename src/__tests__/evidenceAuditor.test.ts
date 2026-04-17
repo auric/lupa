@@ -4067,7 +4067,12 @@ describe('extractSecondaryFiles', () => {
 describe('EvidenceAuditor cross-file affectedComponent', () => {
     const auditor = new EvidenceAuditor();
 
-    it('includes tool calls from secondary file referenced in verifiableClaims', () => {
+    it('flags weak-evidence when function body only read from secondary file', () => {
+        // This test verifies that checkFunctionBodyNotRead requires the primary
+        // file to be read. If a finding claims "processConfig in src/service.ts
+        // has a bug" but processConfig was only read from src/utils.ts, that's
+        // weak evidence — the LLM made claims about a file without reading the
+        // function body from that file.
         const findings = [
             createTestFinding({
                 severity: 'MEDIUM',
@@ -4101,13 +4106,16 @@ describe('EvidenceAuditor cross-file affectedComponent', () => {
             }),
             // Tool call on primary file (read_file) — satisfies depth
             // Note: result deliberately does NOT contain 'processConfig' so that
-            // checkClaimVsOutput would flag weak-evidence without the cross-file fix.
+            // checkFunctionBodyNotRead correctly flags weak-evidence.
             createToolCallRecord({
                 toolName: 'read_file',
                 arguments: { file_path: 'src/service.ts' },
                 result: 'import { helper } from "./utils";\ncallService();',
             }),
             // Tool call on secondary file (read_file showing processConfig body)
+            // This is included in supporting evidence but checkFunctionBodyNotRead
+            // correctly ignores it since function body claims must be verified
+            // against the primary file (finding.file).
             createToolCallRecord({
                 toolName: 'read_file',
                 arguments: { file_path: 'src/utils.ts' },
@@ -4117,10 +4125,11 @@ describe('EvidenceAuditor cross-file affectedComponent', () => {
 
         const result = auditor.audit(findings, records);
 
-        // Without the cross-file fix, the read_file on src/utils.ts wouldn't
-        // be included, and checkClaimVsOutput might flag this as weak-evidence
-        // because "processConfig" only appears in the secondary file's output.
-        expect(result.entries[0]!.verdict).toBe('keep');
+        // checkFunctionBodyNotRead filters to primary-file calls only.
+        // The function name 'processConfig' doesn't appear in src/service.ts reads,
+        // so this is correctly flagged as weak-evidence.
+        expect(result.entries[0]!.verdict).toBe('weak-evidence');
+        expect(result.entries[0]!.reason).toContain('processConfig');
     });
 
     it('cross-file tool calls prevent false fabrication detection', () => {

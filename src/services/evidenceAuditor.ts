@@ -842,8 +842,24 @@ export class EvidenceAuditor {
             return null;
         }
 
+        // Filter to only tool calls that target the primary file.
+        // fileSupportingCalls may include secondary-file calls, but function body
+        // claims require evidence from the primary file specifically.
+        const primaryFileCalls = this.findToolCallsForFile(
+            finding.file,
+            fileSupportingCalls
+        );
+
+        // For search_for_pattern, use result-text matching since it's a global search
+        // without file_path argument. findGlobalSearchCallsMentioningFile checks if
+        // the finding's file path appears in the search results.
+        const primarySearchCalls = this.findGlobalSearchCallsMentioningFile(
+            finding.file,
+            fileSupportingCalls
+        );
+
         // Check read_file calls specifically (primary source for function body)
-        const readFileCalls = fileSupportingCalls.filter(
+        const readFileCalls = primaryFileCalls.filter(
             (tc) =>
                 tc.success &&
                 tc.toolName === 'read_file' &&
@@ -851,7 +867,7 @@ export class EvidenceAuditor {
         );
 
         // Also check get_file_diff — diffs can show the function implementation
-        const diffCalls = fileSupportingCalls.filter(
+        const diffCalls = primaryFileCalls.filter(
             (tc) =>
                 tc.success &&
                 tc.toolName === 'get_file_diff' &&
@@ -859,7 +875,7 @@ export class EvidenceAuditor {
         );
 
         // Also check find_symbol — only when include_body is true (otherwise only metadata is returned)
-        const findSymbolCalls = fileSupportingCalls.filter(
+        const findSymbolCalls = primaryFileCalls.filter(
             (tc) =>
                 tc.success &&
                 tc.toolName === 'find_symbol' &&
@@ -868,7 +884,7 @@ export class EvidenceAuditor {
         );
 
         // Also check search_for_pattern — grep results can show the function
-        const searchPatternCalls = fileSupportingCalls.filter(
+        const searchPatternCalls = primarySearchCalls.filter(
             (tc) =>
                 tc.success &&
                 tc.toolName === 'search_for_pattern' &&
