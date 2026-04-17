@@ -450,7 +450,7 @@ export class EvidenceAuditor {
                 const leftOk =
                     idx === 0 ||
                     // eslint-disable-next-line no-useless-escape
-                    /[/ \t\n\r"',;>()\[\]{}]/.test(normalizedResult[idx - 1]!);
+                    /[/ \t\n\r"',;<>()\[\]{}]/.test(normalizedResult[idx - 1]!);
                 if (!leftOk) {
                     searchFrom = idx + 1;
                     continue;
