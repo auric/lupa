@@ -28,10 +28,14 @@ export function createEvidenceAuditStep(): PipelineStep {
             context.progressCallback?.('Auditing evidence trail...', 0.3);
 
             const findings = context.findingStore.getAll();
+            const allToolCallRecords = [
+                ...context.toolCallRecords,
+                ...context.additionalToolCallRecords,
+            ];
             const evidenceAuditor = new EvidenceAuditor();
             const auditResult = evidenceAuditor.audit(
                 findings,
-                context.toolCallRecords
+                allToolCallRecords
             );
 
             for (const entry of auditResult.entries) {

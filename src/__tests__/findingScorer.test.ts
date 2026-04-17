@@ -147,7 +147,7 @@ describe('findingScorer', () => {
             });
             const score = scoreFinding(finding, context);
 
-            // investigationDepth: 6 matching calls = 20
+            // investigationDepth: 4 matching calls (call-5 targets bar.ts, call-6 targets helpers.ts) = 20
             // disproofAttempted: true = 15
             // lspValidation: verified = 15
             // modelBias: balanced = 4
