@@ -107,4 +107,11 @@ export class FindingStore {
             finding.evidenceVerdict = verdict;
         }
     }
+
+    updateSupportingToolCalls(id: string, toolCallIds: string[]): void {
+        const finding = this.findings.get(id);
+        if (finding) {
+            finding.supportingToolCalls = toolCallIds;
+        }
+    }
 }

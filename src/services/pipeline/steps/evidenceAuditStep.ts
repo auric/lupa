@@ -39,6 +39,10 @@ export function createEvidenceAuditStep(): PipelineStep {
                     entry.finding.id,
                     entry.verdict
                 );
+                context.findingStore.updateSupportingToolCalls(
+                    entry.finding.id,
+                    entry.supportingToolCallIds
+                );
 
                 switch (entry.verdict) {
                     case 'drop':

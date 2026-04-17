@@ -206,6 +206,30 @@ describe('FindingStore', () => {
         expect(store.getAll()[0]!.severity).toBe('HIGH');
     });
 
+    it('updateSupportingToolCalls updates the tool call IDs for a finding', () => {
+        const store = new FindingStore();
+        const finding = store.record(makeFinding({ supportingToolCalls: [] }));
+
+        store.updateSupportingToolCalls(finding.id, ['call-1', 'call-2']);
+
+        expect(store.getById(finding.id)!.supportingToolCalls).toEqual([
+            'call-1',
+            'call-2',
+        ]);
+    });
+
+    it('updateSupportingToolCalls is no-op for unknown id', () => {
+        const store = new FindingStore();
+        const finding = store.record(
+            makeFinding({ supportingToolCalls: ['original'] })
+        );
+
+        store.updateSupportingToolCalls('nonexistent', ['new-call']);
+        expect(store.getById(finding.id)!.supportingToolCalls).toEqual([
+            'original',
+        ]);
+    });
+
     it('restores findings and next id from a snapshot', () => {
         const store = new FindingStore();
         const original = store.record(
