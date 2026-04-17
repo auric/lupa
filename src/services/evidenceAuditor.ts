@@ -1016,8 +1016,9 @@ export function extractSecondaryFiles(finding: RecordedFinding): string[] {
 
     // 2. File path references in affectedComponent text
     // Matches patterns like "processConfig() in src/utils.ts"
+    // Delimiters: whitespace, parens, commas, quotes, brackets, angle brackets
     const FILE_PATH_PATTERN =
-        /(?:^|[\s(,])(\S+\.(?:ts|tsx|js|jsx|mts|mjs|py|go|rs|java|cs|rb|c|cpp|h|hpp))(?=[\s),.:;]|$)/gi;
+        /(?:^|[\s(,"'[<])(\S+\.(?:ts|tsx|js|jsx|mts|mjs|py|go|rs|java|cs|rb|c|cpp|h|hpp))(?=[\s),.:;"'\]>]|$)/gi;
 
     const textsToSearch = [
         finding.affectedComponent,
