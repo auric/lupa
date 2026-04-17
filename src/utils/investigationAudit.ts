@@ -9,7 +9,9 @@ import type {
 } from '../types/investigationTypes';
 
 export function normalizeRelativePath(p: string): string {
-    const slashed = p.replace(/\\/g, '/').replace(/^\.\//, '');
+    let slashed = p.replace(/\\/g, '/').replace(/^\.\//, '');
+    // Strip Windows drive letter (e.g., C:/)
+    slashed = slashed.replace(/^[A-Za-z]:\//, '');
     const segments = slashed.split('/');
     const resolved: string[] = [];
     for (const seg of segments) {

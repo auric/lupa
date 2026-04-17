@@ -324,6 +324,15 @@ describe('normalizeRelativePath', () => {
             'src/baz/file.ts'
         );
     });
+
+    it('strips Windows drive letter prefix', () => {
+        expect(normalizeRelativePath('C:\\Users\\src\\file.ts')).toBe(
+            'Users/src/file.ts'
+        );
+        expect(normalizeRelativePath('D:/projects/app/index.ts')).toBe(
+            'projects/app/index.ts'
+        );
+    });
 });
 
 describe('formatCompactAudit', () => {

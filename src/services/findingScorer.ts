@@ -21,6 +21,7 @@ export interface SignalBreakdown {
     rawValue: number;
     weight: number;
     contribution: number;
+    details?: string;
 }
 
 export interface FindingScore {
