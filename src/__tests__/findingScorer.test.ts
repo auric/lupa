@@ -409,7 +409,7 @@ describe('findingScorer', () => {
             const finding = makeFinding({
                 description:
                     'The function lacks error handling for network failures',
-                failureMechanism: 'missing_error_handling',
+                failureMechanism: 'contract_violation',
             });
             const context = makeContext();
             const score = scoreFinding(finding, context);
@@ -462,7 +462,7 @@ describe('findingScorer', () => {
             const absenceFinding = makeFinding({
                 description:
                     "The function doesn't handle errors from the API call",
-                failureMechanism: 'missing_handling',
+                failureMechanism: 'contract_violation',
             });
             const context = makeContext();
 
@@ -897,7 +897,7 @@ describe('findingScorer', () => {
                 disproof: { attempted: false, method: '', result: '' },
                 lspValidation: undefined,
                 description: "The function doesn't check for null",
-                failureMechanism: 'missing_null_check',
+                failureMechanism: 'resource_leak',
             });
             const context = makeContext({
                 toolCallRecords: [
