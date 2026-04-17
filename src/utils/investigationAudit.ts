@@ -209,21 +209,24 @@ function extractSymbolsResolved(
             continue;
         }
         const name = getStringArg(call.arguments, 'name_path');
-        const file =
-            getStringArg(call.arguments, 'relative_path') ??
-            getStringArg(call.arguments, 'file_path') ??
-            '';
+        const rawRelPath = getStringArg(call.arguments, 'relative_path');
+        const filePath = getStringArg(call.arguments, 'file_path');
+        // Treat '.' as workspace-wide search — prefer file_path if available
+        const rawFile =
+            !rawRelPath || rawRelPath === '.' ? (filePath ?? '') : rawRelPath;
         if (!name) {
             continue;
         }
         const kind = call.success
             ? extractKindFromResult(call.result)
             : 'unknown';
-        const normalized = normalizeRelativePath(file);
-        if (!normalized) {
+        const normalized = normalizeRelativePath(rawFile);
+        // For workspace-wide searches with no file_path, use '*' sentinel
+        const finalFile = normalized || (rawRelPath === '.' ? '*' : '');
+        if (!finalFile) {
             continue;
         }
-        entries.push({ name, file: normalized, kind });
+        entries.push({ name, file: finalFile, kind });
     }
     return entries;
 }

@@ -108,6 +108,47 @@ describe('buildInvestigationAudit', () => {
         expect(audit.symbolsResolved).toHaveLength(0);
     });
 
+    it('handles find_symbol with relative_path="." (workspace-wide search)', () => {
+        // When relative_path='.' and file_path is available, prefer file_path
+        const callsWithFilePath: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: {
+                    name_path: 'MyClass',
+                    relative_path: '.',
+                    file_path: 'src/model.ts',
+                },
+                result: 'Found class definition at line 10',
+            }),
+        ];
+        const audit1 = buildInvestigationAudit(callsWithFilePath, undefined);
+        expect(audit1.symbolsResolved).toHaveLength(1);
+        expect(audit1.symbolsResolved[0]).toEqual({
+            name: 'MyClass',
+            file: 'src/model.ts',
+            kind: 'class',
+        });
+
+        // When relative_path='.' and no file_path, use '*' sentinel for workspace-wide
+        const callsNoFilePath: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: {
+                    name_path: 'GlobalFunc',
+                    relative_path: '.',
+                },
+                result: 'Found function definition',
+            }),
+        ];
+        const audit2 = buildInvestigationAudit(callsNoFilePath, undefined);
+        expect(audit2.symbolsResolved).toHaveLength(1);
+        expect(audit2.symbolsResolved[0]).toEqual({
+            name: 'GlobalFunc',
+            file: '*',
+            kind: 'function',
+        });
+    });
+
     it('builds usage entries from find_usages calls', () => {
         const calls: ToolCallRecord[] = [
             makeToolCall({
