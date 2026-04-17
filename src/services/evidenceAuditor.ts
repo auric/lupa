@@ -296,9 +296,11 @@ export class EvidenceAuditor {
         }
 
         if (claimedTools.length > 0) {
+            // Pass only primary-file calls (matchingCalls), not allSupportingCalls,
+            // to correctly detect fabrication when only secondary files were investigated.
             const fabricated = this.findFabricatedClaims(
                 claimedTools,
-                allSupportingCalls
+                matchingCalls
             );
             if (fabricated.length > 0) {
                 const reason = `Fabricated evidence: claimed ${fabricated.join(', ')} but ${fabricated.length === 1 ? 'this tool was' : 'these tools were'} never called on "${finding.file}"`;

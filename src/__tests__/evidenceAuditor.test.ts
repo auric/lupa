@@ -4149,7 +4149,14 @@ describe('EvidenceAuditor cross-file affectedComponent', () => {
             }),
         ];
         const records = [
-            // Tool calls on the secondary file — these should now be included
+            // Tool call on primary file — required to avoid fabrication detection
+            // since the disproof mentions find_usages (a file-targeted tool).
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/service.ts' },
+                result: 'import { validateInput } from "./validator";',
+            }),
+            // Tool calls on the secondary file — these are included via cross-file support
             createToolCallRecord({
                 toolName: 'read_file',
                 arguments: { file_path: 'src/validator.ts' },
@@ -4163,14 +4170,51 @@ describe('EvidenceAuditor cross-file affectedComponent', () => {
                 },
                 result: 'function validateInput(x) { return x; }',
             }),
-            // No read_file on primary file — without cross-file support,
-            // allSupportingCalls would be empty → fabrication detected → drop.
         ];
 
         const result = auditor.audit(findings, records);
 
-        // Without cross-file fix, find_symbol claim on src/validator.ts
-        // would be detected as fabricated (no find_symbol called on src/service.ts)
+        // Cross-file support includes secondary file tool calls in allSupportingCalls.
+        // Primary file read_file prevents fabrication, secondary calls provide depth.
         expect(result.entries[0]!.verdict).not.toBe('drop');
+    });
+
+    it('detects fabrication when only secondary file investigated but claim is about primary file', () => {
+        // Bug fix CP1: findFabricatedClaims should only check primary-file calls
+        // to determine hasFileTargetedCall, not allSupportingCalls.
+        const findings = [
+            createTestFinding({
+                severity: 'MEDIUM',
+                file: 'src/services/foo.ts',
+                affectedComponent: 'processData() in src/models/bar.ts',
+                description: 'read_file on foo.ts shows the issue clearly',
+                disproof: {
+                    attempted: true,
+                    method: 'Checked with read_file',
+                    result: 'Confirmed',
+                },
+            }),
+        ];
+        const records = [
+            // Only tool call is on the secondary file from affectedComponent
+            // No read_file on primary file src/services/foo.ts
+            createToolCallRecord({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/models/bar.ts' },
+                result: 'function processData() { return null; }',
+            }),
+        ];
+
+        const result = auditor.audit(findings, records);
+
+        // The LLM claimed "read_file on foo.ts" but only bar.ts was read.
+        // Without the fix, allSupportingCalls includes the bar.ts call,
+        // hasFileTargetedCall would be true, and fabrication wouldn't be detected.
+        // With the fix, only matchingCalls (primary file) is checked, so
+        // fabrication IS detected since no FILE_TARGETED_TOOL was called on foo.ts.
+        expect(result.dropped).toBe(1);
+        expect(result.entries[0]!.verdict).toBe('drop');
+        expect(result.entries[0]!.reason).toContain('Fabricated evidence');
+        expect(result.entries[0]!.reason).toContain('read_file');
     });
 });
