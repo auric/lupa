@@ -153,7 +153,8 @@
         "clean": "rimraf -g ./*.vsix && rimraf ./dist",
         "test": "npx vitest run",
         "test:watch": "vitest",
-        "test:coverage": "vitest run --coverage"
+        "test:coverage": "vitest run --coverage",
+        "headless": "node scripts/eval/launchHeadless.js"
     },
     "devDependencies": {
         "@radix-ui/react-accordion": "^1.2.12",
