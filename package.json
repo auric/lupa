@@ -176,7 +176,7 @@
         "@types/vscode": "^1.107.0",
         "@vitejs/plugin-react": "^6.0.1",
         "@vitest/coverage-v8": "^4.1.4",
-        "@vscode/vsce": "^3.9.0",
+        "@vscode/vsce": "^3.9.1",
         "babel-plugin-react-compiler": "^1.0.0",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
