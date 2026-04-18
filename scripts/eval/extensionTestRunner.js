@@ -15,6 +15,59 @@ const fs = require('node:fs');
 
 // Must stay in sync with package.json `publisher` + `name`.
 const EXTENSION_ID = 'Auric.lupa';
+const WAIT_FOR_COPILOT_TIMEOUT_MS = 30_000;
+
+/**
+ * Waits for Copilot's language-model provider to register after
+ * copilot-chat.activate() returns. Registration is async (auth check,
+ * token validation, service connection), so the first selectChatModels
+ * call often sees an empty list. Uses onDidChangeChatModels for
+ * event-driven wake-up plus a 1s polling fallback, bounded by timeoutMs.
+ *
+ * @param {typeof vscode} vscodeApi
+ * @param {number} timeoutMs
+ * @returns {Promise<vscode.LanguageModelChat[]>}
+ */
+async function waitForCopilotModels(vscodeApi, timeoutMs) {
+    const initial = await vscodeApi.lm.selectChatModels({ vendor: 'copilot' });
+    if (initial.length > 0) {
+        return initial;
+    }
+    return new Promise((resolve) => {
+        let settled = false;
+        const cleanup = () => {
+            settled = true;
+            event.dispose();
+            clearInterval(interval);
+            clearTimeout(timeout);
+        };
+        const check = async () => {
+            if (settled) {
+                return;
+            }
+            const found = await vscodeApi.lm.selectChatModels({
+                vendor: 'copilot',
+            });
+            if (!settled && found.length > 0) {
+                cleanup();
+                resolve(found);
+            }
+        };
+        const event = vscodeApi.lm.onDidChangeChatModels(() => {
+            void check();
+        });
+        const interval = setInterval(() => {
+            void check();
+        }, 1000);
+        const timeout = setTimeout(() => {
+            if (settled) {
+                return;
+            }
+            cleanup();
+            resolve([]);
+        }, timeoutMs);
+    });
+}
 
 async function run() {
     const rawArgs = process.env.LUPA_HEADLESS_ARGS;
@@ -50,10 +103,15 @@ async function run() {
         );
     }
     await copilotChat.activate();
-    const models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+    const models = await waitForCopilotModels(
+        vscode,
+        WAIT_FOR_COPILOT_TIMEOUT_MS
+    );
     if (models.length === 0) {
         throw new Error(
-            'No Copilot chat models available — Copilot is installed but not authenticated. Re-run `npm run headless:setup` and complete the GitHub Copilot sign-in flow.'
+            'No Copilot chat models available after 30s — Copilot is installed but ' +
+                'not authenticated, or model provider failed to register. Re-run ' +
+                '`npm run headless:setup` and complete the GitHub Copilot sign-in flow.'
         );
     }
 
