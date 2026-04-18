@@ -9,7 +9,6 @@ import * as z from 'zod';
 import { PRAnalysisCoordinator } from './services/prAnalysisCoordinator';
 import { StatusBarService } from './services/statusBarService';
 import { getErrorMessage } from './utils/errorUtils';
-import type { IServiceRegistry } from './services/serviceManager';
 import {
     runHeadless,
     type HeadlessRunnerOptions,
@@ -27,7 +26,6 @@ z.config(z.locales.en());
  * to the fully-wired service registry without going through UI commands.
  */
 export interface LupaExtensionApi {
-    waitForServices(): Promise<IServiceRegistry>;
     runHeadless(opts: HeadlessRunnerOptions): Promise<HeadlessAnalysisResult>;
 }
 
@@ -45,8 +43,6 @@ export async function activate(
         console.log('Lupa extension activated successfully');
 
         return {
-            waitForServices: () =>
-                prAnalysisCoordinator.waitForInitialization(),
             runHeadless: async (opts) => {
                 const services =
                     await prAnalysisCoordinator.waitForInitialization();
