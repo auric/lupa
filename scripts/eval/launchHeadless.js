@@ -18,14 +18,25 @@
  *     [--out <jsonPath>] \
  *     [--silent]
  *
+ * First-time setup: the spawned VS Code instance uses an isolated
+ * extensions/auth profile, so Copilot must be installed and signed in
+ * once via `npm run headless:setup` before this launcher can reach any
+ * language model.
+ *
  * Exits 0 on analysis completion regardless of finding count. Exits
  * non-zero on fatal errors (missing workspace, unknown args, launch
  * failure, unhandled exceptions inside the extension host).
  */
 
+const fs = require('node:fs');
 const path = require('node:path');
 const { runTests } = require('@vscode/test-electron');
 const { parseHeadlessArgs, HeadlessArgError } = require('./headlessArgs');
+const {
+    USER_DATA_DIR,
+    EXTENSIONS_DIR,
+    VSCODE_CACHE_DIR,
+} = require('./headlessPaths');
 
 async function main() {
     let args;
@@ -39,6 +50,13 @@ async function main() {
         throw err;
     }
 
+    if (!fs.existsSync(USER_DATA_DIR) || !fs.existsSync(EXTENSIONS_DIR)) {
+        process.stderr.write(
+            'Headless profile not initialized. Run `npm run headless:setup` first.\n'
+        );
+        process.exit(1);
+    }
+
     const repoRoot = path.resolve(__dirname, '..', '..');
     const extensionTestsPath = path.resolve(
         __dirname,
@@ -47,9 +65,15 @@ async function main() {
 
     try {
         await runTests({
+            version: 'stable',
+            cachePath: VSCODE_CACHE_DIR,
             extensionDevelopmentPath: repoRoot,
             extensionTestsPath,
-            launchArgs: [args.workspace],
+            launchArgs: [
+                '--user-data-dir=' + USER_DATA_DIR,
+                '--extensions-dir=' + EXTENSIONS_DIR,
+                args.workspace,
+            ],
             extensionTestsEnv: {
                 LUPA_HEADLESS_ARGS: JSON.stringify(args),
             },

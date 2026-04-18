@@ -3,3 +3,4 @@
 /coverage/*
 /tsconfig.tsbuildinfo
 /.cache/*
+/.vscode-test/

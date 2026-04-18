@@ -11,6 +11,8 @@ reuses the same `AnalysisEngine` pipeline the production UI paths use.
 | Layer                 | File                                           | Runs in                |
 | --------------------- | ---------------------------------------------- | ---------------------- |
 | CLI arg parser        | `scripts/eval/headlessArgs.js`                 | Node (launcher)        |
+| Shared paths          | `scripts/eval/headlessPaths.js`                | Node (launcher/setup)  |
+| Interactive setup     | `scripts/eval/setupHeadless.js`                | Node (launcher)        |
 | Launcher              | `scripts/eval/launchHeadless.js`               | Node (launcher)        |
 | Extension-host runner | `scripts/eval/extensionTestRunner.js`          | VS Code extension host |
 | Programmatic API      | `src/extension.ts` → `LupaExtensionApi`        | VS Code extension host |
@@ -99,7 +101,7 @@ npm run headless -- \
 `--base` and `--head` accept three forms, resolved by `diffResolver.ts`:
 
 - A git ref (`main`, `feature/x`, short or full SHA) — resolved via `git
-  rev-parse` inside the workspace.
+rev-parse` inside the workspace.
 - `sha:<sha>` — explicit SHA form, useful when a branch name is ambiguous.
 - `dir:<path>` — compare two directory snapshots instead of git refs. Used by
   Kind-A synthetic fixtures (Quest 8.1) that ship as plain directories, not
@@ -108,6 +110,37 @@ npm run headless -- \
 Exit codes: `0` on analysis completion regardless of finding count, `1` on
 fatal runtime error (missing workspace, unknown model, unresolvable refs,
 unhandled exception inside the host), `2` on CLI argument errors.
+
+## First-time setup
+
+`@vscode/test-electron` spawns VS Code with its own user-data and
+extensions directories, isolated from the user's regular install. The
+Copilot extension and the associated GitHub authentication therefore have
+to be provisioned inside that isolated profile once:
+
+- `.vscode-test/lupa-headless-profile/` — persistent `--user-data-dir`
+  (holds the Copilot auth token once signed in).
+- `.vscode-test/lupa-headless-extensions/` — persistent `--extensions-dir`
+  (holds the installed `GitHub.copilot` and `GitHub.copilot-chat` VSIXes).
+
+Both paths are gitignored under `.vscode-test/`, which also holds the
+shared VS Code download cache used by `runTests` and the setup script.
+
+Run the one-time flow:
+
+```bash
+npm run headless:setup
+```
+
+This downloads VS Code into the cache, installs `GitHub.copilot` and
+`GitHub.copilot-chat` into the persistent extensions directory, and
+launches VS Code interactively so the user can complete the "GitHub
+Copilot: Sign In" flow. After the VS Code window is closed, the auth
+token persists in the profile and every subsequent `npm run headless`
+run reuses it — no further sign-in needed.
+
+Re-running `npm run headless:setup` is safe (idempotent) and is the
+correct recovery path if Copilot auth ever expires.
 
 ## Future: pure-Node path
 

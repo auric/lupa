@@ -43,6 +43,20 @@ async function run() {
         );
     }
 
+    const copilotChat = vscode.extensions.getExtension('GitHub.copilot-chat');
+    if (!copilotChat) {
+        throw new Error(
+            'GitHub.copilot-chat extension not installed in the headless VS Code profile. Run `npm run headless:setup`.'
+        );
+    }
+    await copilotChat.activate();
+    const models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+    if (models.length === 0) {
+        throw new Error(
+            'No Copilot chat models available — Copilot is installed but not authenticated. Re-run `npm run headless:setup` and complete the GitHub Copilot sign-in flow.'
+        );
+    }
+
     const cts = new vscode.CancellationTokenSource();
     let timeoutHandle;
     if (args.timeoutMs && args.timeoutMs > 0) {
