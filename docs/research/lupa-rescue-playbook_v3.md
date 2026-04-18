@@ -376,6 +376,10 @@ Done:
 
 ### Quest 4.3 — Stop filename echo in subagent prompts
 
+**As** the main agent receiving a subagent batch result,
+**I want** filenames to travel in the structured `filesTouched` field rather than be echoed inside the prose summary,
+**so that** my context doesn't accumulate the same path strings wave after wave.
+
 Done:
 
 - Remove "report files examined" instruction from subagent prompts.
@@ -385,7 +389,11 @@ Done:
 
 ### Quest 4.4 — Opaque IDs for large outputs (deferred decision)
 
-Implementing agent: weigh complexity vs gain. Defer if not worth it now; revisit after Phase 6.
+**As** the main agent,
+**I want** long subagent outputs replaced with an opaque ID I can dereference on demand,
+**so that** large prose blocks never re-enter my context unless I deliberately ask for them.
+
+Implementing agent: weigh complexity vs gain. Defer if not worth it now; revisit after Phase 6 compaction data lands.
 
 ---
 
@@ -411,6 +419,10 @@ Done:
 - Eval: zero `2-file dense PR → 1 subagent` outcomes.
 
 ### Quest 5.2 — Concern-decomposition as a first-class artifact
+
+**As** the main agent planning a review,
+**I want** my concern decomposition stored as explicit structured data,
+**so that** subagent tasks, the audit step, and the final synthesis can all cross-reference the same concerns instead of reparsing prose.
 
 Done:
 
@@ -441,6 +453,10 @@ Done:
 
 ### Quest 6.1 — Model-callable `compact_history` tool
 
+**As** the main agent on a long review,
+**I want** a tool I can call to roll up older turns into a tight summary when my own reading of the context starts to blur,
+**so that** I can recover reasoning fidelity without losing hypotheses, files I examined, or finding IDs.
+
 Done:
 
 - `compact_history` tool summarizes turns older than last N (default 8) into ≤ 600 tokens, preserving hypotheses, files examined, finding IDs, open questions.
@@ -450,6 +466,10 @@ Done:
 - Compaction count tracked, surfaced in iteration-status display.
 
 ### Quest 6.2 — Replace `cleanupContext` deletion with summarization at 70 %
+
+**As** the analysis engine approaching the context window,
+**I want** to summarize old tool results instead of silently deleting them,
+**so that** I stop losing evidence the later pipeline stages need.
 
 Done:
 
@@ -475,6 +495,10 @@ Done:
 
 ### Quest 7.1 — Delete or merge legacy tools
 
+**As** an older model facing the Lupa tool surface,
+**I want** dead and duplicate tools removed from my option list,
+**so that** every tool I see points at a clearly distinct capability and I'm not paying cognitive tax to disambiguate them.
+
 | Tool                    | Decision                                                         | Rationale                                       |
 | ----------------------- | ---------------------------------------------------------------- | ----------------------------------------------- |
 | `update_plan`           | **Remove**. Replace with PR-overview's `reviewPlan` (Quest 3.1). | 2 calls in Raptor 350-call trace.               |
@@ -493,6 +517,10 @@ Done:
 - Snapshot test on rendered tool list per profile.
 
 ### Quest 7.2 — Per-model tool budget as a calibration constant
+
+**As** the maintainer,
+**I want** every model profile to declare the maximum tool count it will ever be offered,
+**so that** regressions that re-introduce tool bloat are caught at build time, not in an eval four weeks later.
 
 Done:
 
@@ -526,6 +554,10 @@ Done:
 
 ### Quest 8.1 — Cross-model eval harness
 
+**As** the team hill-climbing on prompt and tool changes,
+**I want** a repeatable harness that runs Lupa against a sealed set of labelled fixture PRs on every supported model,
+**so that** every change produces comparable precision / recall / F1 numbers I can stand on.
+
 Done:
 
 - `scripts/eval/run-eval.ts` runner.
@@ -555,6 +587,10 @@ Done:
 
 ### Quest 9.1 — Optional multi-pass with consensus
 
+**As** a reviewer running Lupa on a large, ambiguous PR,
+**I want** the option to run several independent passes and merge their findings by consensus,
+**so that** idiosyncratic misses on any one pass are covered by the others.
+
 Small/clear PR → single pass. Large/ambiguous → 3 parallel passes with embedding consensus.
 
 Done:
@@ -571,6 +607,10 @@ Done:
 
 ### Quest 10.1 — Claude Haiku 4.5 / Sonnet 4.5 calibration + Copilot system-message workaround
 
+**As** a reviewer on a Claude-family model routed through the Copilot API,
+**I want** the system prompt to survive the API's system-message stripping and use the XML-heavy style Claude prefers,
+**so that** Claude runs end-to-end without degraded instruction following.
+
 Copilot API historically strips system messages for Claude (litellm#19873). Workaround: wrap full system prompt in `<system_instructions>...</system_instructions>` in the **first user message**. Restate the 3 most important rules at the end. Claude follows XML strongly (Anthropic docs on XML tag usage).
 
 Done:
@@ -581,6 +621,10 @@ Done:
 - Document workaround in `ARCHITECTURE.md`.
 
 ### Quest 10.2 — Phase-aware webview UI
+
+**As** a human watching a review run,
+**I want** the UI to show which phase the analysis is in and how long it has spent there,
+**so that** I can tell "still investigating" from "stuck" without reading logs.
 
 Done:
 
@@ -714,6 +758,10 @@ Done:
 - Feature flag `lupa.pipeline.v2` so we can revert per-analysis.
 
 ### Quest 12.2 — Role-specialized agents
+
+**As** the architecture,
+**I want** the Reviewer, Investigator, Verifier, and Synthesizer to have disjoint tool surfaces and prompts,
+**so that** each role optimizes for a single job and the Investigator can never accidentally post a finding or short-circuit verification.
 
 Topology:
 
