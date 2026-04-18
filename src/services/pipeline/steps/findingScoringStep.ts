@@ -16,7 +16,7 @@ export function createFindingScoringStep(): PipelineStep {
         name: 'finding-scoring',
         label: 'Finding Scoring',
         description:
-            'Composite scoring with 12 signals — drops or downgrades findings below quality thresholds',
+            'Composite scoring with 10 signals (11 with feedbackHistory) — drops or downgrades findings below quality thresholds',
         kind: 'programmatic',
 
         shouldRun(context: PipelineContext): boolean {

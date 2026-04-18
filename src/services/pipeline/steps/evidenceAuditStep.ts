@@ -28,31 +28,58 @@ export function createEvidenceAuditStep(): PipelineStep {
             context.progressCallback?.('Auditing evidence trail...', 0.3);
 
             const findings = context.findingStore.getAll();
+            const allToolCallRecords = [
+                ...context.toolCallRecords,
+                ...context.additionalToolCallRecords,
+            ];
             const evidenceAuditor = new EvidenceAuditor();
             const auditResult = evidenceAuditor.audit(
                 findings,
-                context.toolCallRecords
+                allToolCallRecords
             );
 
             for (const entry of auditResult.entries) {
-                if (entry.verdict === 'drop') {
-                    findingsDropped.push(entry.finding.title);
-                    context.findingStore.remove(entry.finding.id);
-                    dismissHypothesesForDroppedFinding(
-                        entry.finding.id,
-                        context.executionContext.reasoningChain,
-                        'Finding dropped by evidence audit'
-                    );
-                } else if (entry.verdict === 'downgrade') {
-                    const newSeverity = downgradeSeverity(
-                        entry.finding.severity
-                    );
-                    if (newSeverity) {
-                        findingsDowngraded.push(entry.finding.title);
-                        context.findingStore.updateSeverity(
+                context.findingStore.updateEvidenceVerdict(
+                    entry.finding.id,
+                    entry.verdict
+                );
+                context.findingStore.updateSupportingToolCalls(
+                    entry.finding.id,
+                    entry.supportingToolCallIds
+                );
+
+                switch (entry.verdict) {
+                    case 'drop':
+                        findingsDropped.push(entry.finding.title);
+                        context.findingStore.remove(entry.finding.id);
+                        dismissHypothesesForDroppedFinding(
                             entry.finding.id,
-                            newSeverity
+                            context.executionContext.reasoningChain,
+                            'Finding dropped by evidence audit'
                         );
+                        break;
+                    case 'downgrade':
+                    case 'weak-evidence': {
+                        // Note: we also apply a scoring penalty via scoreEvidenceAuditVerdict
+                        // in findingScorer.ts. The double penalization is intentional:
+                        // severity downgrade affects display priority, score penalty affects keep/drop.
+                        const newSeverity = downgradeSeverity(
+                            entry.finding.severity
+                        );
+                        if (newSeverity) {
+                            findingsDowngraded.push(entry.finding.title);
+                            context.findingStore.updateSeverity(
+                                entry.finding.id,
+                                newSeverity
+                            );
+                        }
+                        break;
+                    }
+                    case 'keep':
+                        break;
+                    default: {
+                        const _exhaustive: never = entry.verdict;
+                        break;
                     }
                 }
             }

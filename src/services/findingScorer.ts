@@ -1,12 +1,11 @@
-import type {
-    RecordedFinding,
-    FindingCategory,
-    FindingSeverity,
-} from '../types/findingTypes';
+import type { RecordedFinding, FindingCategory } from '../types/findingTypes';
 import { CONCRETE_FAILURE_MECHANISMS } from '../types/findingTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { ModelCalibrationProfile } from '../models/modelCalibration';
-import { flattenToolCalls } from '../utils/investigationAudit';
+import {
+    flattenToolCalls,
+    normalizeRelativePath,
+} from '../utils/investigationAudit';
 
 export interface ScoringContext {
     toolCallRecords: ToolCallRecord[];
@@ -22,6 +21,7 @@ export interface SignalBreakdown {
     rawValue: number;
     weight: number;
     contribution: number;
+    details?: string;
 }
 
 export interface FindingScore {
@@ -48,56 +48,34 @@ const MEDIUM_RISK_CATEGORIES: ReadonlySet<FindingCategory> = new Set([
     'resource_leak',
 ]);
 
-const SEVERITY_EVIDENCE_REQUIREMENTS: Record<FindingSeverity, number> = {
-    CRITICAL: 3,
-    HIGH: 2,
-    MEDIUM: 1,
-    LOW: 0,
-};
+function normalizeForComparison(file: string): string {
+    return normalizeRelativePath(file);
+}
 
-function toolCallMatchesFile(record: ToolCallRecord, file: string): boolean {
-    const normalizedFile = file.replace(/\\/g, '/');
+export function toolCallMatchesFile(
+    record: ToolCallRecord,
+    file: string
+): boolean {
+    const normalizedFile = normalizeForComparison(file);
     const fileName = normalizedFile.split('/').pop()!;
     // Check structured argument fields for exact path matches
     // instead of substring matching on serialized JSON
-    const argValues = Object.values(record.arguments).filter(
-        (v): v is string => typeof v === 'string'
+    const argValues = Object.values(record.arguments).flatMap((v) =>
+        typeof v === 'string'
+            ? [v]
+            : Array.isArray(v)
+              ? v.filter((x): x is string => typeof x === 'string')
+              : []
     );
     return argValues.some((v) => {
-        const normalized = v.replace(/\\/g, '/');
+        const normalized = normalizeForComparison(v);
         return (
             normalized === normalizedFile ||
-            normalized.endsWith(normalizedFile) ||
-            normalizedFile.endsWith(normalized) ||
+            normalized.endsWith('/' + normalizedFile) ||
+            normalizedFile.endsWith('/' + normalized) ||
             normalized === fileName
         );
     });
-}
-
-function scoreSupportingToolCalls(
-    finding: RecordedFinding,
-    toolCallRecords: ToolCallRecord[]
-): SignalBreakdown {
-    const weight = 25;
-    const claimed = finding.supportingToolCalls;
-    if (claimed.length === 0) {
-        return {
-            signal: 'supportingToolCalls',
-            rawValue: 0,
-            weight,
-            contribution: 0,
-        };
-    }
-
-    const recordIds = new Set(toolCallRecords.map((r) => r.id));
-    const verified = claimed.filter((id) => recordIds.has(id)).length;
-    const rawValue = verified / claimed.length;
-    return {
-        signal: 'supportingToolCalls',
-        rawValue,
-        weight,
-        contribution: rawValue * weight,
-    };
 }
 
 function scoreInvestigationDepth(
@@ -159,44 +137,6 @@ function scoreLspValidation(finding: RecordedFinding): SignalBreakdown {
     return {
         signal: 'lspValidation',
         rawValue: contribution / weight,
-        weight,
-        contribution,
-    };
-}
-
-function scoreSeverityEvidenceRatio(
-    finding: RecordedFinding,
-    toolCallRecords: ToolCallRecord[]
-): SignalBreakdown {
-    const weight = 10;
-    const required = SEVERITY_EVIDENCE_REQUIREMENTS[finding.severity];
-
-    if (required === 0) {
-        return {
-            signal: 'severityEvidenceRatio',
-            rawValue: 1,
-            weight,
-            contribution: 10,
-        };
-    }
-
-    const recordIds = new Set(toolCallRecords.map((r) => r.id));
-    const verifiedCount = finding.supportingToolCalls.filter((id) =>
-        recordIds.has(id)
-    ).length;
-
-    let contribution: number;
-    if (verifiedCount >= required) {
-        contribution = 10;
-    } else if (verifiedCount >= required - 1 && verifiedCount > 0) {
-        contribution = 5;
-    } else {
-        contribution = 0;
-    }
-
-    return {
-        signal: 'severityEvidenceRatio',
-        rawValue: verifiedCount,
         weight,
         contribution,
     };
@@ -342,10 +282,8 @@ const SYMBOL_TOKEN_PATTERN = /\b([a-zA-Z_]\w{2,})\b/g;
 const TOOL_ARG_SYMBOL_FIELDS: ReadonlySet<string> = new Set([
     'symbol',
     'symbol_name',
-    'relative_path',
-    'file_path',
-    'file',
-    'query',
+    'name',
+    'name_path',
 ]);
 
 function scoreAffectedComponentVerified(
@@ -369,19 +307,26 @@ function scoreAffectedComponentVerified(
         };
     }
 
-    const verified = [...tokens].some((token) =>
-        toolCallRecords.some((r) => {
+    const verified = [...tokens].some((token) => {
+        const lowerToken = token.toLowerCase();
+        return toolCallRecords.some((r) => {
             for (const [key, val] of Object.entries(r.arguments)) {
                 if (!TOOL_ARG_SYMBOL_FIELDS.has(key)) {
                     continue;
                 }
-                if (typeof val === 'string' && val.includes(token)) {
-                    return true;
+                if (typeof val === 'string') {
+                    const lowerVal = val.toLowerCase();
+                    if (
+                        lowerVal === lowerToken ||
+                        lowerVal.endsWith('.' + lowerToken)
+                    ) {
+                        return true;
+                    }
                 }
             }
             return false;
-        })
-    );
+        });
+    });
 
     return {
         signal: 'affectedComponentVerified',
@@ -391,46 +336,81 @@ function scoreAffectedComponentVerified(
     };
 }
 
+function scoreEvidenceAuditVerdict(finding: RecordedFinding): SignalBreakdown {
+    const signal = 'evidenceAuditVerdict';
+    const weight = 15;
+
+    if (finding.evidenceVerdict === 'weak-evidence') {
+        return { signal, rawValue: 1, weight, contribution: -weight };
+    }
+    if (finding.evidenceVerdict === 'downgrade') {
+        return {
+            signal,
+            rawValue: 0.5,
+            weight,
+            contribution: -Math.round(weight * 0.5),
+        };
+    }
+    return { signal, rawValue: 0, weight, contribution: 0 };
+}
+
 function scoreCrossFileEvidence(
     finding: RecordedFinding,
     toolCallRecords: ToolCallRecord[]
 ): SignalBreakdown {
     const weight = 10;
 
-    const normalize = (p: string) => p.replace(/\\/g, '/');
-    const distinctFiles = new Set<string>();
-    distinctFiles.add(normalize(finding.file));
+    const findingNorm = normalizeForComparison(finding.file);
+    if (!findingNorm) {
+        return {
+            signal: 'crossFileEvidence',
+            rawValue: 0,
+            weight,
+            contribution: 0,
+        };
+    }
 
-    for (const record of toolCallRecords) {
-        for (const val of Object.values(record.arguments)) {
-            if (typeof val !== 'string') {
-                continue;
-            }
-            const norm = normalize(val);
+    // Collect relevant tool calls: those targeting finding file OR claimed as supporting
+    const supportingIds = new Set(finding.supportingToolCalls ?? []);
+    const relevantCalls = toolCallRecords.filter(
+        (r) => toolCallMatchesFile(r, findingNorm) || supportingIds.has(r.id)
+    );
+
+    // Extract distinct file-path-like arguments from relevant calls
+    const distinctOtherFiles = new Set<string>();
+    for (const record of relevantCalls) {
+        const argValues = Object.values(record.arguments).flatMap((v) =>
+            typeof v === 'string'
+                ? [v]
+                : Array.isArray(v)
+                  ? v.filter((x): x is string => typeof x === 'string')
+                  : []
+        );
+        for (const val of argValues) {
+            const norm = normalizeForComparison(val);
             if (
+                norm &&
+                norm !== findingNorm &&
                 norm.includes('/') &&
                 /\.\w+$/.test(norm) &&
-                toolCallRecords.some((r) => toolCallMatchesFile(r, norm))
+                !norm.includes(' ')
             ) {
-                distinctFiles.add(norm);
+                distinctOtherFiles.add(norm);
             }
         }
     }
 
-    let contribution: number;
-    if (distinctFiles.size >= 3) {
-        contribution = 10;
-    } else if (distinctFiles.size === 2) {
-        contribution = 5;
-    } else {
-        contribution = 0;
-    }
+    const count = distinctOtherFiles.size;
+    const contribution = count >= 2 ? 10 : count === 1 ? 5 : 0;
 
     return {
         signal: 'crossFileEvidence',
-        rawValue: distinctFiles.size,
+        rawValue: count,
         weight,
         contribution,
+        ...(count > 0
+            ? { details: `${count} other file(s) in relevant tool calls` }
+            : { details: 'No cross-file evidence in relevant calls' }),
     };
 }
 
@@ -453,17 +433,16 @@ export function scoreFinding(
     // Flatten nested calls so subagent-produced tool calls are included in scoring
     const flatRecords = flattenToolCalls(context.toolCallRecords);
     const signals: SignalBreakdown[] = [
-        scoreSupportingToolCalls(finding, flatRecords),
         scoreInvestigationDepth(finding, flatRecords),
         scoreDisproofAttempted(finding),
         scoreLspValidation(finding),
-        scoreSeverityEvidenceRatio(finding, flatRecords),
         scoreModelBias(context.calibrationProfile),
         scoreCategoryRisk(finding),
         scoreDescriptionQuality(finding),
         scoreAbsencePattern(finding),
         scoreAffectedComponentVerified(finding, flatRecords),
         scoreCrossFileEvidence(finding, flatRecords),
+        scoreEvidenceAuditVerdict(finding),
     ];
 
     if (

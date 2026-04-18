@@ -8,6 +8,29 @@ import type {
     InvestigationDepth,
 } from '../types/investigationTypes';
 
+export function normalizeRelativePath(p: string): string {
+    let slashed = p.replace(/\\/g, '/').replace(/^\.\//, '');
+    // Strip Windows drive letter (e.g., C:/)
+    slashed = slashed.replace(/^[A-Za-z]:\//, '');
+    const segments = slashed.split('/');
+    const resolved: string[] = [];
+    for (const seg of segments) {
+        if (seg === '' || seg === '.') {
+            continue;
+        }
+        if (
+            seg === '..' &&
+            resolved.length > 0 &&
+            resolved[resolved.length - 1] !== '..'
+        ) {
+            resolved.pop();
+        } else {
+            resolved.push(seg);
+        }
+    }
+    return resolved.join('/');
+}
+
 const KNOWN_KINDS = [
     'function',
     'class',
@@ -24,6 +47,54 @@ const KNOWN_KINDS = [
 ];
 const DEPTH_PER_SIGNAL = 2;
 const MAX_DEPTH = 10;
+
+/**
+ * Tool names whose "not found" errors represent valid zero-result investigations,
+ * not real failures. Duplicated from EvidenceAuditor to avoid cross-module coupling.
+ */
+const ZERO_RESULT_TOOL_NAMES = new Set([
+    'find_usages',
+    'find_symbol',
+    'search_for_pattern',
+]);
+
+/**
+ * Error message patterns that indicate "found nothing" rather than a real error.
+ * Kept intentionally narrower than EvidenceAuditor's patterns to avoid
+ * misclassifying timeouts or truncation errors as valid investigations.
+ */
+const ZERO_RESULT_ERROR_PATTERNS = [
+    /no usages found/i,
+    /symbol\b.+\bnot found/i,
+    /no matches/i,
+    /no results/i,
+] as const;
+
+function isZeroResultCall(call: ToolCallRecord): boolean {
+    if (call.success) {
+        return false;
+    }
+    if (!ZERO_RESULT_TOOL_NAMES.has(call.toolName)) {
+        return false;
+    }
+    if (typeof call.error !== 'string' || call.error.length === 0) {
+        return false;
+    }
+    // Exclude genuine failures — timeouts and truncations are not zero-result investigations.
+    // Strip quoted symbol names first so symbols like 'handleTimeout' don't false-match.
+    const errorText = call.error;
+    const errorTextWithoutSymbol = errorText.replace(/'[^']*'/g, '');
+    if (
+        /timed?\s*out|timeout|truncat|search was limited/i.test(
+            errorTextWithoutSymbol
+        )
+    ) {
+        return false;
+    }
+    return ZERO_RESULT_ERROR_PATTERNS.some((pattern) =>
+        pattern.test(errorText)
+    );
+}
 
 export function flattenToolCalls(
     toolCalls: ToolCallRecord[]
@@ -105,13 +176,23 @@ function extractFileReads(calls: ToolCallRecord[]): FileReadEntry[] {
         if (call.toolName !== 'read_file') {
             continue;
         }
+        if (!call.success) {
+            continue;
+        }
         const filePath = getStringArg(call.arguments, 'file_path');
         if (!filePath) {
             continue;
         }
         const startLine = getNumberArg(call.arguments, 'start_line') ?? 0;
         const endLine = getNumberArg(call.arguments, 'end_line') ?? 0;
-        entries.push({ path: filePath, lineRange: [startLine, endLine] });
+        const normalized = normalizeRelativePath(filePath);
+        if (!normalized) {
+            continue;
+        }
+        entries.push({
+            path: normalized,
+            lineRange: [startLine, endLine],
+        });
     }
     return entries;
 }
@@ -124,16 +205,28 @@ function extractSymbolsResolved(
         if (call.toolName !== 'find_symbol') {
             continue;
         }
+        if (!call.success && !isZeroResultCall(call)) {
+            continue;
+        }
         const name = getStringArg(call.arguments, 'name_path');
-        const file =
-            getStringArg(call.arguments, 'relative_path') ??
-            getStringArg(call.arguments, 'file_path') ??
-            'unknown';
+        const rawRelPath = getStringArg(call.arguments, 'relative_path');
+        const filePath = getStringArg(call.arguments, 'file_path');
+        // Treat '.' as workspace-wide search — prefer file_path if available
+        const rawFile =
+            !rawRelPath || rawRelPath === '.' ? (filePath ?? '') : rawRelPath;
         if (!name) {
             continue;
         }
-        const kind = extractKindFromResult(call.result);
-        entries.push({ name, file, kind });
+        const kind = call.success
+            ? extractKindFromResult(call.result)
+            : 'unknown';
+        const normalized = normalizeRelativePath(rawFile);
+        // For workspace-wide searches with no file_path, use '*' sentinel
+        const finalFile = normalized || (rawRelPath === '.' ? '*' : '');
+        if (!finalFile) {
+            continue;
+        }
+        entries.push({ name, file: finalFile, kind });
     }
     return entries;
 }
@@ -144,11 +237,16 @@ function extractUsagesChecked(calls: ToolCallRecord[]): UsageCheckEntry[] {
         if (call.toolName !== 'find_usages') {
             continue;
         }
+        if (!call.success && !isZeroResultCall(call)) {
+            continue;
+        }
         const symbol = getStringArg(call.arguments, 'symbol_name');
         if (!symbol) {
             continue;
         }
-        const referenceCount = extractNumberFromResult(call.result);
+        const referenceCount = call.success
+            ? extractNumberFromResult(call.result)
+            : 0;
         entries.push({ symbol, referenceCount });
     }
     return entries;
@@ -162,11 +260,16 @@ function extractPatternsSearched(
         if (call.toolName !== 'search_for_pattern') {
             continue;
         }
+        if (!call.success && !isZeroResultCall(call)) {
+            continue;
+        }
         const query = getStringArg(call.arguments, 'pattern');
         if (!query) {
             continue;
         }
-        const matchCount = extractNumberFromResult(call.result);
+        const matchCount = call.success
+            ? extractNumberFromResult(call.result)
+            : 0;
         entries.push({ query, matchCount });
     }
     return entries;
@@ -178,8 +281,14 @@ function extractDiffsExamined(calls: ToolCallRecord[]): string[] {
         if (call.toolName !== 'get_file_diff') {
             continue;
         }
+        if (!call.success) {
+            continue;
+        }
         for (const p of parseDiffFilePaths(call.arguments)) {
-            paths.add(p);
+            const normalized = normalizeRelativePath(p);
+            if (normalized) {
+                paths.add(normalized);
+            }
         }
     }
     return [...paths];
@@ -196,18 +305,28 @@ function computeDepthScores(
 
     const allFiles = new Set<string>();
     for (const f of filesRead) {
-        allFiles.add(f.path);
+        if (f.path) {
+            allFiles.add(f.path);
+        }
     }
     for (const d of diffsExamined) {
-        allFiles.add(d);
+        if (d) {
+            allFiles.add(d);
+        }
     }
     for (const s of symbolsResolved) {
-        allFiles.add(s.file);
+        if (s.file) {
+            allFiles.add(s.file);
+        }
     }
 
-    const diffSet = new Set(diffsExamined);
-    const readSet = new Set(filesRead.map((f) => f.path));
-    const symbolFiles = new Set(symbolsResolved.map((s) => s.file));
+    const diffSet = new Set(diffsExamined.filter((d) => d.length > 0));
+    const readSet = new Set(
+        filesRead.map((f) => f.path).filter((p) => p.length > 0)
+    );
+    const symbolFiles = new Set(
+        symbolsResolved.map((s) => s.file).filter((f) => f.length > 0)
+    );
 
     const usageSymbols = new Set(usagesChecked.map((u) => u.symbol));
     const symbolToFile = new Map<string, Set<string>>();
@@ -263,9 +382,10 @@ function computeDepthScores(
 }
 
 export function buildInvestigationAudit(
-    toolCalls: ToolCallRecord[]
+    toolCalls: ToolCallRecord[],
+    preFlattened: ToolCallRecord[] | undefined
 ): InvestigationAudit {
-    if (toolCalls.length === 0) {
+    if (toolCalls.length === 0 && !preFlattened?.length) {
         return {
             filesRead: [],
             symbolsResolved: [],
@@ -276,7 +396,9 @@ export function buildInvestigationAudit(
         };
     }
 
-    const flat = flattenToolCalls(toolCalls);
+    const flat = preFlattened?.length
+        ? preFlattened
+        : flattenToolCalls(toolCalls);
     const filesRead = extractFileReads(flat);
     const symbolsResolved = extractSymbolsResolved(flat);
     const usagesChecked = extractUsagesChecked(flat);
