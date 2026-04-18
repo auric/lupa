@@ -15,6 +15,7 @@ const USER_DATA_DIR = path.join(ROOT, 'lupa-headless-profile');
 const EXTENSIONS_DIR = path.join(ROOT, 'lupa-headless-extensions');
 const VSCODE_CACHE_DIR = path.join(ROOT, 'vscode');
 const SETUP_MARKER = path.join(ROOT, '.lupa-headless-ready');
+const SENTINEL_PATH = path.join(ROOT, '.lupa-headless-last.json');
 
 const REQUIRED_EXTENSIONS = ['GitHub.copilot-chat'];
 
@@ -63,6 +64,7 @@ module.exports = {
     EXTENSIONS_DIR,
     VSCODE_CACHE_DIR,
     SETUP_MARKER,
+    SENTINEL_PATH,
     REQUIRED_EXTENSIONS,
     resolveInstalledExtensionPath,
 };

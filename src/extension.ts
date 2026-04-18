@@ -14,6 +14,7 @@ import {
     type HeadlessRunnerOptions,
     type HeadlessAnalysisResult,
 } from './eval/headlessRunner';
+import { isHeadlessMode, runHeadlessFromEnv } from './eval/headlessEntry';
 
 // Zod 4's English locale is loaded via a side-effect call `config(en())` in the
 // entry module. Vite tree-shakes this, causing all validation errors to fall back
@@ -41,6 +42,13 @@ export async function activate(
         context.subscriptions.push(prAnalysisCoordinator);
 
         console.log('Lupa extension activated successfully');
+
+        if (isHeadlessMode()) {
+            // Fire-and-forget: the entry writes results + a sentinel file
+            // and issues workbench.action.quit on completion. Awaiting here
+            // would block activate() for the entire analysis duration.
+            void runHeadlessFromEnv(prAnalysisCoordinator);
+        }
 
         return {
             runHeadless: async (opts) => {

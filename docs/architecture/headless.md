@@ -8,43 +8,54 @@ reuses the same `AnalysisEngine` pipeline the production UI paths use.
 
 ## Components
 
-| Layer                 | File                                           | Runs in                |
-| --------------------- | ---------------------------------------------- | ---------------------- |
-| CLI arg parser        | `scripts/eval/headlessArgs.js`                 | Node (launcher)        |
-| Shared paths          | `scripts/eval/headlessPaths.js`                | Node (launcher/setup)  |
-| Interactive setup     | `scripts/eval/setupHeadless.js`                | Node (launcher)        |
-| Launcher              | `scripts/eval/launchHeadless.js`               | Node (launcher)        |
-| Extension-host runner | `scripts/eval/extensionTestRunner.js`          | VS Code extension host |
-| Programmatic API      | `src/extension.ts` → `LupaExtensionApi`        | VS Code extension host |
-| Analysis entry        | `src/eval/headlessRunner.ts` → `runHeadless()` | VS Code extension host |
-| Diff resolver         | `src/eval/diffResolver.ts`                     | VS Code extension host |
+| Layer              | File                                           | Runs in                |
+| ------------------ | ---------------------------------------------- | ---------------------- |
+| CLI arg parser     | `scripts/eval/headlessArgs.js`                 | Node (launcher)        |
+| Shared paths       | `scripts/eval/headlessPaths.js`                | Node (launcher/setup)  |
+| Interactive setup  | `scripts/eval/setupHeadless.js`                | Node (launcher)        |
+| Launcher           | `scripts/eval/launchHeadless.js`               | Node (launcher)        |
+| In-host entry hook | `src/eval/headlessEntry.ts`                    | VS Code extension host |
+| Programmatic API   | `src/extension.ts` → `LupaExtensionApi`        | VS Code extension host |
+| Analysis entry     | `src/eval/headlessRunner.ts` → `runHeadless()` | VS Code extension host |
+| Diff resolver      | `src/eval/diffResolver.ts`                     | VS Code extension host |
 
-The launcher is plain Node. It parses CLI flags, resolves the workspace path,
-then hands off to `@vscode/test-electron`, which spawns a VS Code extension
-host, loads the built Lupa extension, and executes
-`scripts/eval/extensionTestRunner.js` inside that host. The runner activates
-Lupa, reads the JSON-serialized options from `LUPA_HEADLESS_ARGS`, and calls
-`api.runHeadless(...)`, which is the thin wrapper defined in
-`src/eval/headlessRunner.ts`.
+The launcher is plain Node. It parses CLI flags, ensures VS Code is cached
+locally (via `@vscode/test-electron`'s `downloadAndUnzipVSCode`), then spawns
+VS Code directly with both Lupa and `GitHub.copilot-chat` loaded as
+development extensions. It passes the analysis options as env vars and waits
+for the child to exit. Lupa's own `activate()` hook detects the headless
+env contract and invokes `runHeadlessFromEnv`, which calls `runHeadless(...)`
+(the thin wrapper defined in `src/eval/headlessRunner.ts`) and then issues
+`workbench.action.quit` to close the spawned window.
 
 ```
 CLI args ──► launchHeadless.js ──┐
-                                 │ (spawns VS Code via @vscode/test-electron)
+                                 │ (spawns VS Code; env: LUPA_HEADLESS_*)
                                  ▼
                     ┌────────────────────────────┐
                     │  VS Code extension host    │
                     │                            │
-                    │  extensionTestRunner.js    │
+                    │  extension.activate()      │
+                    │        │                   │
+                    │        ▼ (env detected)    │
+                    │  runHeadlessFromEnv()      │
                     │        │                   │
                     │        ▼                   │
-                    │  LupaExtensionApi          │
-                    │  .runHeadless(opts)        │
+                    │  runHeadless(opts)         │
                     │        │                   │
                     │        ▼                   │
                     │  AnalysisEngine.analyze()  │◄── same seam the
                     │                            │    webview and chat
                     └────────────────────────────┘    participants use
 ```
+
+Results flow back through two channels:
+
+- Optional `--out` path receives the full `HeadlessAnalysisResult` JSON.
+- A sentinel file at `.vscode-test/.lupa-headless-last.json` records the
+  final exit code (and any error message). The launcher reads it after
+  VS Code exits and propagates the exit code to the caller. A watchdog
+  kills the child if it fails to quit within `--timeout + 60s`.
 
 ## Why the extension host (and not pure Node)
 
@@ -61,10 +72,12 @@ language-model client is not available outside the extension host**.
   inside the extension host, full stop. The VS Code team's own eval tooling,
   the built-in chat tests, and community eval harnesses all do the same.
 
-`@vscode/test-electron` is VS Code's supported mechanism for doing exactly
-this: download VS Code into a cache, launch it with the extension-under-test
-loaded, and execute a Node module inside the host. We use it for production
-CI of Lupa's analysis path rather than strictly as a test runner.
+`@vscode/test-electron` is used only for its `downloadAndUnzipVSCode`
+helper, which caches a local copy of VS Code under `.vscode-test/vscode/`.
+We then spawn that cached executable directly with
+`--extensionDevelopmentPath` pointing at both Lupa and Copilot Chat; we do
+**not** use the library's `runTests(...)` helper or `--extensionTestsPath`
+(see "Why not `runTests`" below).
 
 ## Architectural reuse (no parallel code path)
 
@@ -113,18 +126,20 @@ unhandled exception inside the host), `2` on CLI argument errors.
 
 ## First-time setup
 
-`@vscode/test-electron` spawns VS Code with its own user-data and
-extensions directories, isolated from the user's regular install. The
-Copilot extension and the associated GitHub authentication therefore have
-to be provisioned inside that isolated profile once:
+The launcher spawns VS Code with its own user-data and extensions
+directories, isolated from the user's regular install. Copilot Chat and
+the associated GitHub authentication therefore have to be provisioned
+inside that isolated profile once:
 
 - `.vscode-test/lupa-headless-profile/` — persistent `--user-data-dir`
-  (holds the Copilot auth token once signed in).
+  (holds the GitHub OAuth session, Copilot entitlements, and Lupa's
+  per-extension LM-access consent once granted).
 - `.vscode-test/lupa-headless-extensions/` — persistent `--extensions-dir`
-  (holds the installed `GitHub.copilot` and `GitHub.copilot-chat` VSIXes).
+  (holds the installed `GitHub.copilot-chat` VSIX, from which the
+  launcher resolves the extension folder path).
 
 Both paths are gitignored under `.vscode-test/`, which also holds the
-shared VS Code download cache used by `runTests` and the setup script.
+shared VS Code download cache used by the launcher and the setup script.
 
 Run the one-time flow:
 
@@ -132,32 +147,56 @@ Run the one-time flow:
 npm run headless:setup
 ```
 
-This downloads VS Code into the cache, installs `GitHub.copilot` and
-`GitHub.copilot-chat` into the persistent extensions directory, and
-launches VS Code interactively so the user can complete the "GitHub
-Copilot: Sign In" flow. After the VS Code window is closed, the auth
-token persists in the profile and every subsequent `npm run headless`
-run reuses it — no further sign-in needed.
+This downloads VS Code into the cache, installs `GitHub.copilot-chat`
+into the persistent extensions directory, and launches VS Code
+interactively so the user can complete the "GitHub Copilot: Sign In"
+flow. After the VS Code window is closed, the auth token persists in
+the profile and every subsequent `npm run headless` run reuses it —
+no further sign-in needed.
+
+On the first real `npm run headless` after setup, VS Code will display
+a one-time "Allow Lupa to use Copilot?" prompt in the spawned window.
+Click Allow. The approval is stored in the dedicated profile and every
+subsequent run proceeds silently.
 
 Re-running `npm run headless:setup` is safe (idempotent) and is the
 correct recovery path if Copilot auth ever expires.
 
-## How Copilot is loaded into the test-mode host
+## Why not `runTests` / `--extensionTestsPath`
 
-`@vscode/test-electron` launches VS Code in test mode, which only
-activates system extensions and the extension passed via
-`extensionDevelopmentPath` — user-installed extensions in
-`--extensions-dir` are silently skipped. To work around that,
-`launchHeadless.js` passes `extensionDevelopmentPath` as an **array**
-containing both the Lupa repo root and the resolved `github.copilot-chat`
-install folder, so both load as development extensions and Lupa's
-`extensionDependencies` declaration resolves. The copilot-chat folder is
-discovered at launch time by reading `extensions.json` in the persistent
-extensions directory, so the version suffix in the folder name is not
-hard-coded and survives Copilot updates. Auth persists because the
-`--user-data-dir` is shared across runs; the GitHub OAuth token managed
-by the `vscode.github-authentication` system extension is found by
-copilot-chat on each launch.
+Earlier iterations used `@vscode/test-electron`'s `runTests(...)` helper
+with an `extensionTestsPath` module. That path puts the extension host
+into `ExtensionMode.Test`, and the Copilot extension's
+`LanguageModelAccess` explicitly refuses to register `vscode.lm`
+providers in test mode (unless the `IS_SCENARIO_AUTOMATION=1` flag is
+set — which is Copilot's own internal test harness and requires a
+static GitHub PAT, bypassing the user's Copilot Pro sign-in). The net
+effect was that `selectChatModels` always returned an empty array even
+though Copilot Chat itself worked inside the spawned window.
+
+The direct-spawn model here sidesteps that: VS Code is launched without
+`--extensionTestsPath`, so Lupa and Copilot Chat load as normal
+Development-mode extensions, Copilot registers its LM provider, and the
+user's signed-in Copilot subscription is used for every request. The
+one-time cost is a single "Allow Lupa to use Copilot?" consent prompt
+in the spawned window on the first real run; the approval is persisted
+in the dedicated `--user-data-dir` and every subsequent run is silent.
+
+## How Copilot is loaded into the host
+
+`launchHeadless.js` passes `--extensionDevelopmentPath` twice — once for
+the Lupa repo root and once for the resolved `github.copilot-chat`
+install folder — so both load side-by-side as development extensions
+and Lupa's `extensionDependencies` declaration resolves. The
+copilot-chat folder is discovered at launch time by reading
+`extensions.json` in the persistent extensions directory, so the
+version suffix in the folder name is not hard-coded and survives
+Copilot updates. `--disable-extensions` is set so no other user
+extensions in the shared `--extensions-dir` are loaded; only the two
+development extensions and VS Code's built-in system extensions run.
+Auth persists because `--user-data-dir` is shared across runs; the
+GitHub OAuth token managed by the `vscode.github-authentication`
+system extension is found by copilot-chat on each launch.
 
 ## Future: pure-Node path
 

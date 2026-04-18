@@ -2,43 +2,46 @@
 /**
  * Headless entry launcher for Lupa's analysis engine.
  *
- * Spawns a VS Code extension host via @vscode/test-electron, loads the
- * built Lupa extension, and invokes LupaExtensionApi.runHeadless with the
- * parsed CLI args. The actual analysis runs inside the extension host
- * because Copilot's language-model API is only available there.
+ * Spawns VS Code directly (not via @vscode/test-electron's runTests) with
+ * Lupa and GitHub.copilot-chat both loaded via --extensionDevelopmentPath.
+ * Lupa's activate() hook detects LUPA_HEADLESS_MODE=1 and runs the analysis
+ * in-process, then issues `workbench.action.quit` and writes a sentinel file
+ * with the final exit code.
+ *
+ * Test mode (`--extensionTestsPath`) is deliberately avoided: the Copilot
+ * extension's LanguageModelAccess refuses to register `vscode.lm` providers
+ * under ExtensionMode.Test, which would block the analysis from reaching
+ * any model even when Copilot Chat itself works in the spawned window.
  *
  * Usage:
  *   node scripts/eval/launchHeadless.js \
- *     --workspace <path> \
- *     --base <ref> \
- *     --head <ref> \
- *     --model <vendor/id> \
- *     [--seed <n>] \
- *     [--timeout <ms>] \
- *     [--out <jsonPath>] \
- *     [--silent]
+ *     --workspace <path> --base <ref> --head <ref> --model <vendor/id> \
+ *     [--seed <n>] [--timeout <ms>] [--out <jsonPath>] [--silent]
  *
- * First-time setup: the spawned VS Code instance uses an isolated
- * extensions/auth profile, so Copilot must be installed and signed in
- * once via `npm run headless:setup` before this launcher can reach any
- * language model.
+ * First-time setup: run `npm run headless:setup` to provision the profile
+ * and sign in to Copilot. On the first real run, an "Allow Lupa to use
+ * Copilot?" prompt will appear in the spawned window; approve once — the
+ * decision persists in the dedicated profile.
  *
- * Exits 0 on analysis completion regardless of finding count. Exits
- * non-zero on fatal errors (missing workspace, unknown args, launch
- * failure, unhandled exceptions inside the extension host).
+ * Exit codes: 0 on analysis completion (any finding count), 1 on fatal
+ * runtime error, 2 on CLI argument errors.
  */
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { runTests } = require('@vscode/test-electron');
+const { spawn } = require('node:child_process');
+const { downloadAndUnzipVSCode } = require('@vscode/test-electron');
 const { parseHeadlessArgs, HeadlessArgError } = require('./headlessArgs');
 const {
     USER_DATA_DIR,
     EXTENSIONS_DIR,
     VSCODE_CACHE_DIR,
     SETUP_MARKER,
+    SENTINEL_PATH,
     resolveInstalledExtensionPath,
 } = require('./headlessPaths');
+
+const WATCHDOG_OVERHEAD_MS = 60_000;
 
 async function main() {
     let args;
@@ -72,32 +75,86 @@ async function main() {
     }
 
     const repoRoot = path.resolve(__dirname, '..', '..');
-    const extensionTestsPath = path.resolve(
-        __dirname,
-        'extensionTestRunner.js'
-    );
+
+    const executablePath = await downloadAndUnzipVSCode({
+        version: 'stable',
+        cachePath: VSCODE_CACHE_DIR,
+    });
 
     try {
-        await runTests({
-            version: 'stable',
-            cachePath: VSCODE_CACHE_DIR,
-            extensionDevelopmentPath: [repoRoot, copilotChatPath],
-            extensionTestsPath,
-            launchArgs: [
-                '--user-data-dir=' + USER_DATA_DIR,
-                '--extensions-dir=' + EXTENSIONS_DIR,
-                args.workspace,
-            ],
-            extensionTestsEnv: {
-                LUPA_HEADLESS_ARGS: JSON.stringify(args),
-            },
-        });
-        process.exit(0);
+        fs.unlinkSync(SENTINEL_PATH);
     } catch (err) {
-        const msg = err && err.message ? err.message : String(err);
-        process.stderr.write(`Headless run failed: ${msg}\n`);
-        process.exit(1);
+        if (err && err.code !== 'ENOENT') {
+            throw err;
+        }
     }
+
+    const launchArgs = [
+        '--user-data-dir=' + USER_DATA_DIR,
+        '--extensions-dir=' + EXTENSIONS_DIR,
+        '--extensionDevelopmentPath=' + repoRoot,
+        '--extensionDevelopmentPath=' + copilotChatPath,
+        '--disable-extensions',
+        '--disable-workspace-trust',
+        '--skip-welcome',
+        '--skip-release-notes',
+        '--disable-updates',
+        '--disable-telemetry',
+        args.workspace,
+    ];
+
+    const childEnv = {
+        ...process.env,
+        LUPA_HEADLESS_MODE: '1',
+        LUPA_HEADLESS_ARGS: JSON.stringify(args),
+        LUPA_HEADLESS_SENTINEL: SENTINEL_PATH,
+    };
+
+    const child = spawn(executablePath, launchArgs, {
+        env: childEnv,
+        stdio: 'inherit',
+    });
+
+    const watchdogMs = args.timeoutMs + WATCHDOG_OVERHEAD_MS;
+    const watchdog = setTimeout(() => {
+        process.stderr.write(
+            `Watchdog: VS Code did not exit within ${watchdogMs}ms; killing process.\n`
+        );
+        child.kill('SIGKILL');
+    }, watchdogMs);
+
+    const childExitCode = await new Promise((resolve) => {
+        child.on('exit', (code) => resolve(code ?? 1));
+        child.on('error', (err) => {
+            process.stderr.write(`Failed to spawn VS Code: ${err.message}\n`);
+            resolve(1);
+        });
+    });
+    clearTimeout(watchdog);
+
+    process.exit(readSentinelExitCode(childExitCode));
+}
+
+function readSentinelExitCode(childExitCode) {
+    let raw;
+    try {
+        raw = fs.readFileSync(SENTINEL_PATH, 'utf8');
+    } catch {
+        process.stderr.write(
+            'Headless run exited without writing a sentinel file. ' +
+                'The extension likely failed to activate; check the VS Code ' +
+                'window output for details.\n'
+        );
+        return childExitCode !== 0 ? childExitCode : 1;
+    }
+    let parsed;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        process.stderr.write(`Headless sentinel is not valid JSON: ${raw}\n`);
+        return 1;
+    }
+    return typeof parsed.exitCode === 'number' ? parsed.exitCode : 1;
 }
 
 main().catch((err) => {
