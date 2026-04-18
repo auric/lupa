@@ -558,12 +558,43 @@ Done:
 **I want** a repeatable harness that runs Lupa against a sealed set of labelled fixture PRs on every supported model,
 **so that** every change produces comparable precision / recall / F1 numbers I can stand on.
 
+**Depends on Quest 8.3** (headless entry point) landing first — the harness has nothing to call otherwise.
+
+**Fixture strategy — 5 fixtures split across two kinds:**
+
+- **Kind A — synthetic mini-repos** (3 fixtures) under `eval/fixtures/synthetic/<name>/`. Each fixture is a self-contained git working tree with a `base` branch and a `head` branch (or equivalently two directory snapshots the harness diffs). Bugs are hand-authored with known severities. Fast, deterministic, no network, legally clean. At least one of the three must exercise the dense-2-file pathology Quest 5.1 addresses (low file count, high churn).
+- **Kind B — real public-PR references** (2 fixtures) under `eval/fixtures/real/<name>.json`: `{ repo, baseSha, headSha, labels }`. Harness shallow-clones the repo into `eval/.cache/<repoSlug>/` on first run and reuses on subsequent runs. Provides realism and catches the failure modes you don't think to author by hand.
+
+**Fixture labels schema** — one `expected.json` (Kind A) or inline `labels` array (Kind B):
+
+```ts
+{
+    intent: string; // 1-2 sentences the narrative must roughly match
+    expected_findings: Array<{
+        severity: 'P0' | 'P1' | 'P2' | 'P3';
+        category: string; // maps to Lupa's finding categories
+        path: string;
+        lineHint: number; // soft match: ±5 lines counts
+        mustMention: string[]; // substrings at least one must appear in the finding text
+    }>;
+    minFilesExamined: number; // floor for investigation coverage
+    maxFalsePositivesTolerated: number; // headroom before a fixture fails
+}
+```
+
+**Copilot nondeterminism** — the API exposes no seed and no temperature control, so single-run numbers are noisy. Every fixture × model combination runs `N = 3` times (configurable via `--seeds N`). Metrics are reported as mean ± stddev; every eval gate evaluates against the mean.
+
+**Matcher** — findings are paired to expected by (path exact) × (line within ±5) × (category match or severity match). Unmatched-expected = missed bug (recall hit), unmatched-produced = false positive (precision hit).
+
 Done:
 
-- `scripts/eval/run-eval.ts` runner.
-- 5 sealed PRs in `eval/fixtures/` with `expected.json` labels (intent, expected findings with severities, expected files-touched).
-- Output: markdown report with per-model precision, recall, F1, mean iterations, mean tokens, mean cost.
-- Run before merging any prompt-affecting PR.
+- `scripts/eval/run-eval.ts` iterates `fixtures × models × seeds`, calls the headless runner (Quest 8.3), collects `HeadlessAnalysisResult`s.
+- Loader for Kind A (direct filesystem diff) and Kind B (clone-on-miss into `eval/.cache/`, respect gitignore for the cache dir).
+- Three synthetic fixtures under `eval/fixtures/synthetic/`, two real-PR references under `eval/fixtures/real/`, one of the synthetics is the dense-2-file case.
+- Matcher implemented + unit-tested against a hand-authored expected-vs-produced pair.
+- Output: `eval/results/<utc-date>-<shortSha>.md` with per-model precision / recall / F1 / mean iterations / mean tokens / mean cost / mean wall-clock, plus a sibling `.json` with raw per-run data so regressions can be bisected.
+- CLI flags: `--models gpt-4.1,raptor-mini`, `--fixtures synthetic,real`, `--seeds 3`, `--bail-on-error`.
+- `npm run eval` wrapper; documented in `ARCHITECTURE.md` as the canonical way to validate prompt-affecting changes.
 
 ### Quest 8.2 — Resolution-rate metric
 
@@ -573,13 +604,74 @@ Done:
 
 Cursor BugBot climbed 52 % → 78 % on exactly this metric over V1–V11.
 
+**Mechanics** — for Kind B (real-PR) fixtures the labels file additionally records a `mergeSha` (the commit that actually got merged after review). For each finding Lupa produces against `baseSha..headSha`, the harness checks whether the cited lines were modified between `headSha..mergeSha`. Modified ⇒ "likely resolved", unmodified ⇒ "likely not resolved". This is a proxy, not ground truth — but it is the same proxy Cursor used.
+
+For Kind A synthetic fixtures there is no merge commit, so resolution rate is defined against the `expected_findings` labels directly: a produced finding that matches an expected finding counts as resolved.
+
 Done:
 
-- Each fixture finding labelled `expectedResolution: 'fixed' | 'wont-fix' | 'wrong-claim'`.
-- LLM judge reads each produced finding, classifies as `would-likely-be-fixed | would-be-disputed | likely-noise`.
-- Resolution-rate metric: `would-likely-be-fixed / total-findings`.
-- Report alongside precision/recall.
-- Regression bar: any change dropping resolution rate > 5 % needs explicit user approval.
+- Kind B fixture schema extended with `mergeSha` and optional `resolvedByDefault: boolean` override per label.
+- Resolution classifier: for each produced finding, walk `git diff headSha..mergeSha -- <path>` and check whether any of the finding's `sources` (Quest 11.3) lines fall inside a changed hunk.
+- Metric: `resolution_rate = (resolved findings) / (total findings)`. Reported per model, per fixture, per severity.
+- LLM-judge fallback for findings where the line-overlap check is ambiguous: a cheap model (auxiliary, per Quest 10.3) reads the finding + the `headSha..mergeSha` diff and answers `resolved | disputed | noise`. Used only when the line check is inconclusive.
+- Regression bar surfaced in `implementation-instructions_v2.md`: any change dropping resolution rate > 5 % on the mean needs explicit user approval.
+- Results rendered in the same markdown report next to precision/recall, grouped by severity.
+
+### Quest 8.3 — Headless entry point for the analysis engine _(NEW, prerequisite for 8.1/8.2)_
+
+**As** a script, CI job, or eval runner,
+**I want** to invoke a full Lupa analysis against an arbitrary `(workspaceRoot, baseRef, headRef, modelProfile)` without opening the webview,
+**so that** Quests 8.1 and 8.2 have something programmatic to call and we don't maintain a second parallel analysis code path.
+
+**Why this is its own Quest**: `AnalysisEngine.analyze()` is already well-factored — it takes `parsedDiff`, `llmClient`, `model`, `token`, and callbacks as explicit inputs, with no hidden workspace coupling. The missing piece is a CLI-callable launcher that builds those inputs from CLI args and executes in an environment where `vscode.lm` is actually available (which is the only real blocker — Copilot's model client only exists inside the extension host).
+
+Done:
+
+- New `src/eval/headlessRunner.ts` exposing `runHeadless(opts): Promise<HeadlessAnalysisResult>` where:
+
+    ```ts
+    interface HeadlessRunnerOptions {
+        workspaceRoot: string;
+        baseRef: string; // e.g. 'main', 'sha:abc123', or a directory path for Kind-A fixtures
+        headRef: string;
+        modelIdentifier: string; // e.g. 'copilot/gpt-4.1'
+        seed: number; // for N=3 aggregation, not passed to the model
+        timeoutMs: number;
+        cancellationToken: vscode.CancellationToken;
+    }
+
+    interface HeadlessAnalysisResult {
+        findings: Finding[];
+        narrative: string;
+        telemetry: {
+            iterations: number;
+            toolCalls: number;
+            promptTokens: number;
+            completionTokens: number;
+            durationMs: number;
+            compactionsUsed: number;
+        };
+        rawToolCallLog: ToolCallRecord[];
+        modelId: string;
+        seed: number;
+    }
+    ```
+
+- Internally: parse the diff (reuse `DiffUtils.parseDiff` + git plumbing for `baseRef..headRef`), acquire the model via `vscode.lm.selectChatModels`, construct a `CopilotModelManager` (or use it directly), build the `AnalysisEngineInput`, call `analysisEngine.analyze()`, capture results.
+- **Execution environment**: runs inside the VS Code extension host launched by `@vscode/test-electron` (the same mechanism Lupa's integration tests already use, or a new `scripts/eval/launch-electron.ts` if not). Document the split cleanly in `docs/architecture/headless.md`: "why pure Node is not possible today (Copilot is `vscode.lm`-only), and what happens when Copilot gets a public HTTP surface."
+- **Must share code paths with the two production entries** (`AnalysisOrchestrator.analyzePR()` and `ChatParticipantService.runAnalysis()`): no duplicated prompt assembly, no duplicated tool registration, no duplicated post-analysis pipeline. Enforced by a test that asserts a specific set of internal constructor signatures are reused.
+- CLI arg parser accepting `--workspace`, `--base`, `--head`, `--model`, `--seed`, `--timeout`, `--out <jsonPath>`, `--silent`.
+- Exits non-zero on fatal errors (missing workspace, unknown model, unresolvable refs, cancellation). Exits zero on analysis completion regardless of finding count.
+- One smoke test per supported model profile against the smallest Kind-A fixture. Run in CI on the main branch only (Copilot rate limits make per-PR runs unwise) — Quest 8.1's richer eval is the per-PR gate.
+
+Hints (verify before editing):
+
+- `src/services/analysisEngine.ts` — entry point; already takes `AnalysisEngineInput` cleanly.
+- `src/coordinators/analysisOrchestrator.ts` — webview path. Mirror its `analyze()` invocation shape.
+- `src/services/chatParticipantService.ts` — chat path. Mirror this one too.
+- `src/models/copilotModelManager.ts` — model selection via `vscode.lm.selectChatModels`.
+- `@vscode/test-electron` — likely already installed; check `.vscode-test.mjs` / `package.json` scripts.
+- `DiffUtils.parseDiff` for turning raw git diff output into `DiffHunk[]`.
 
 ---
 
