@@ -13,6 +13,7 @@ import { getErrorMessage } from '../utils/errorUtils';
 export class PRAnalysisCoordinator implements vscode.Disposable {
     private serviceManager: ServiceManager;
     private services: IServiceRegistry | null = null;
+    private readonly initializationPromise: Promise<void>;
 
     // Specialized coordinators
     private analysisOrchestrator: AnalysisOrchestrator | null = null;
@@ -25,7 +26,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
      */
     constructor(private readonly context: vscode.ExtensionContext) {
         this.serviceManager = new ServiceManager(context);
-        this.initializeAsync();
+        this.initializationPromise = this.initializeAsync();
     }
 
     /**
@@ -85,6 +86,21 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
      * Get the service registry for external access
      */
     public getServices(): IServiceRegistry | null {
+        return this.services;
+    }
+
+    /**
+     * Await initialization and return the service registry.
+     * Used by headless entry points that must wait for wiring to complete
+     * before invoking the analysis engine.
+     */
+    public async waitForInitialization(): Promise<IServiceRegistry> {
+        await this.initializationPromise;
+        if (!this.services) {
+            throw new Error(
+                'PRAnalysisCoordinator initialization failed; services unavailable'
+            );
+        }
         return this.services;
     }
 

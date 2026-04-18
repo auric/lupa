@@ -10,6 +10,7 @@ import {
 } from '../models/conversationRunner';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { DiffHunk } from '../types/contextTypes';
+import type { RecordedFinding } from '../types/findingTypes';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -77,6 +78,7 @@ export interface AnalysisEngineResult {
     selfReflectionScores: SelfReflectionScore[];
     filesAnalyzed: number;
     stepRecords: StepRecord[];
+    findings: RecordedFinding[];
 }
 
 /**
@@ -514,6 +516,7 @@ export class AnalysisEngine implements vscode.Disposable {
             selfReflectionScores,
             filesAnalyzed,
             stepRecords,
+            findings: findingStore.getAll(),
         };
     }
 
