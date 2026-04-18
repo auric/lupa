@@ -29,7 +29,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, execSync } = require('node:child_process');
 const { downloadAndUnzipVSCode } = require('@vscode/test-electron');
 const { parseHeadlessArgs, HeadlessArgError } = require('./headlessArgs');
 const {
@@ -39,9 +39,11 @@ const {
     SETUP_MARKER,
     SENTINEL_PATH,
     resolveInstalledExtensionPath,
+    ensureProfileSettings,
 } = require('./headlessPaths');
 
 const WATCHDOG_OVERHEAD_MS = 60_000;
+const WATCHDOG_SIGTERM_GRACE_MS = 5_000;
 
 async function main() {
     let args;
@@ -90,6 +92,10 @@ async function main() {
         cachePath: VSCODE_CACHE_DIR,
     });
 
+    // Merge the baseline non-interactive settings into the profile on every
+    // launch so existing profiles pick up new suppressions automatically.
+    ensureProfileSettings();
+
     try {
         fs.unlinkSync(SENTINEL_PATH);
     } catch (err) {
@@ -122,14 +128,15 @@ async function main() {
     const child = spawn(executablePath, launchArgs, {
         env: childEnv,
         stdio: 'inherit',
+        windowsHide: false,
     });
 
     const watchdogMs = args.timeoutMs + WATCHDOG_OVERHEAD_MS;
     const watchdog = setTimeout(() => {
         process.stderr.write(
-            `Watchdog: VS Code did not exit within ${watchdogMs}ms; killing process.\n`
+            `Watchdog: VS Code did not exit within ${watchdogMs}ms; killing process tree.\n`
         );
-        child.kill('SIGKILL');
+        killProcessTree(child);
     }, watchdogMs);
 
     const childExitCode = await new Promise((resolve) => {
@@ -142,6 +149,40 @@ async function main() {
     clearTimeout(watchdog);
 
     process.exit(readSentinelExitCode(childExitCode));
+}
+
+/**
+ * VS Code spawns a tree of helper processes (extension host, pty host, file
+ * watchers, crash reporter). On Windows, child.kill() only terminates the
+ * top-level PID, leaving helpers to hold locks on the profile directory.
+ * Use `taskkill /F /T` to kill the whole tree. On POSIX, SIGTERM first then
+ * SIGKILL after a short grace, relying on spawn-default process-group
+ * membership.
+ */
+function killProcessTree(child) {
+    if (!child.pid) {
+        return;
+    }
+    if (process.platform === 'win32') {
+        try {
+            execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: 'ignore' });
+        } catch {
+            child.kill('SIGKILL');
+        }
+        return;
+    }
+    try {
+        child.kill('SIGTERM');
+    } catch {
+        // fall through to SIGKILL
+    }
+    setTimeout(() => {
+        try {
+            child.kill('SIGKILL');
+        } catch {
+            // already gone
+        }
+    }, WATCHDOG_SIGTERM_GRACE_MS).unref();
 }
 
 function readSentinelExitCode(childExitCode) {

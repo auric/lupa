@@ -30,6 +30,7 @@ const {
     VSCODE_CACHE_DIR,
     SETUP_MARKER,
     REQUIRED_EXTENSIONS,
+    ensureProfileSettings,
 } = require('./headlessPaths');
 
 async function main() {
@@ -47,6 +48,7 @@ async function main() {
 
     fs.mkdirSync(USER_DATA_DIR, { recursive: true });
     fs.mkdirSync(EXTENSIONS_DIR, { recursive: true });
+    ensureProfileSettings();
 
     process.stdout.write('Downloading VS Code (cached after first run)...\n');
     const executablePath = await downloadAndUnzipVSCode({
