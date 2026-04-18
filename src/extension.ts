@@ -10,6 +10,11 @@ import { PRAnalysisCoordinator } from './services/prAnalysisCoordinator';
 import { StatusBarService } from './services/statusBarService';
 import { getErrorMessage } from './utils/errorUtils';
 import type { IServiceRegistry } from './services/serviceManager';
+import {
+    runHeadless,
+    type HeadlessRunnerOptions,
+    type HeadlessAnalysisResult,
+} from './eval/headlessRunner';
 
 // Zod 4's English locale is loaded via a side-effect call `config(en())` in the
 // entry module. Vite tree-shakes this, causing all validation errors to fall back
@@ -23,6 +28,7 @@ z.config(z.locales.en());
  */
 export interface LupaExtensionApi {
     waitForServices(): Promise<IServiceRegistry>;
+    runHeadless(opts: HeadlessRunnerOptions): Promise<HeadlessAnalysisResult>;
 }
 
 // Main extension activation function
@@ -41,6 +47,11 @@ export async function activate(
         return {
             waitForServices: () =>
                 prAnalysisCoordinator.waitForInitialization(),
+            runHeadless: async (opts) => {
+                const services =
+                    await prAnalysisCoordinator.waitForInitialization();
+                return runHeadless(opts, services);
+            },
         };
     } catch (error) {
         console.error('Failed to activate extension:', error);
