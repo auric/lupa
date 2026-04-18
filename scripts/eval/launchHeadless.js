@@ -76,6 +76,15 @@ async function main() {
 
     const repoRoot = path.resolve(__dirname, '..', '..');
 
+    // Resolve filesystem args relative to the launcher's CWD before handing
+    // them to VS Code, whose child CWD is its install folder rather than
+    // the user's shell. Leaving them relative would resolve against
+    // `.vscode-test/vscode/vscode-win32-*/` and fail with ENOENT.
+    args.workspace = path.resolve(args.workspace);
+    if (args.out) {
+        args.out = path.resolve(args.out);
+    }
+
     const executablePath = await downloadAndUnzipVSCode({
         version: 'stable',
         cachePath: VSCODE_CACHE_DIR,

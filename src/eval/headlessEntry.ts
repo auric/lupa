@@ -16,7 +16,15 @@ export const LUPA_HEADLESS_ARGS_ENV = 'LUPA_HEADLESS_ARGS';
 export const LUPA_HEADLESS_SENTINEL_ENV = 'LUPA_HEADLESS_SENTINEL';
 
 const COPILOT_WAIT_MS = 30_000;
-const QUIT_GRACE_MS = 5_000;
+
+/**
+ * Guards against VS Code respawning the extension host and re-triggering
+ * `runHeadlessFromEnv`. VS Code restarts the exthost automatically when it
+ * exits, which would re-activate Lupa and start another analysis — so we
+ * short-circuit and quit immediately if a run has already been attempted
+ * in the VS Code main process's lifetime (tracked via the sentinel file).
+ */
+let headlessRunStarted = false;
 
 interface HeadlessArgs {
     workspace: string;
@@ -106,6 +114,20 @@ function writeSentinel(exitCode: number, error: string | undefined): void {
 export async function runHeadlessFromEnv(
     coordinator: PRAnalysisCoordinator
 ): Promise<void> {
+    if (headlessRunStarted || sentinelExists()) {
+        // Likely an extension-host respawn after the previous run issued
+        // `workbench.action.quit`. Don't start a second analysis; just ask
+        // VS Code to quit again and let the launcher's watchdog clean up
+        // if the second quit also stalls.
+        try {
+            await vscode.commands.executeCommand('workbench.action.quit');
+        } catch {
+            // Best-effort; the watchdog is the backstop.
+        }
+        return;
+    }
+    headlessRunStarted = true;
+
     let exitCode = 0;
     let errorMsg: string | undefined;
 
@@ -174,9 +196,21 @@ export async function runHeadlessFromEnv(
         try {
             await vscode.commands.executeCommand('workbench.action.quit');
         } catch {
-            // Quit command unavailable in some contexts (e.g. web). Fall
-            // through to the forced-exit guard below.
+            // Quit command unavailable in some contexts (e.g. web). The
+            // launcher's watchdog will SIGKILL the VS Code process if
+            // shutdown does not complete within --timeout + 60s.
         }
-        setTimeout(() => process.exit(exitCode), QUIT_GRACE_MS).unref();
+    }
+}
+
+function sentinelExists(): boolean {
+    const sentinelPath = process.env[LUPA_HEADLESS_SENTINEL_ENV];
+    if (!sentinelPath) {
+        return false;
+    }
+    try {
+        return fs.statSync(sentinelPath).isFile();
+    } catch {
+        return false;
     }
 }
