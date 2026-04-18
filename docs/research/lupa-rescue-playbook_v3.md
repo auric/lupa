@@ -593,7 +593,7 @@ Done:
 - Three synthetic fixtures under `eval/fixtures/synthetic/`, two real-PR references under `eval/fixtures/real/`, one of the synthetics is the dense-2-file case.
 - Matcher implemented + unit-tested against a hand-authored expected-vs-produced pair.
 - Output: `eval/results/<utc-date>-<shortSha>.md` with per-model precision / recall / F1 / mean iterations / mean tokens / mean cost / mean wall-clock, plus a sibling `.json` with raw per-run data so regressions can be bisected.
-- CLI flags: `--models gpt-4.1,raptor-mini`, `--fixtures synthetic,real`, `--seeds 3`, `--bail-on-error`.
+- CLI flags: `--models gpt-4.1,gpt-5-mini`, `--fixtures synthetic,real`, `--seeds 3`, `--bail-on-error`.
 - `npm run eval` wrapper; documented in `ARCHITECTURE.md` as the canonical way to validate prompt-affecting changes.
 
 ### Quest 8.2 — Resolution-rate metric
