@@ -46,7 +46,7 @@ async function run() {
     const copilotChat = vscode.extensions.getExtension('GitHub.copilot-chat');
     if (!copilotChat) {
         throw new Error(
-            'GitHub.copilot-chat extension not installed in the headless VS Code profile. Run `npm run headless:setup`.'
+            'GitHub.copilot-chat is not available in the headless VS Code profile. Run `npm run headless:setup` and ensure it installs successfully.'
         );
     }
     await copilotChat.activate();

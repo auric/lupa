@@ -37,6 +37,7 @@ const {
     EXTENSIONS_DIR,
     VSCODE_CACHE_DIR,
     SETUP_MARKER,
+    resolveInstalledExtensionPath,
 } = require('./headlessPaths');
 
 async function main() {
@@ -59,6 +60,17 @@ async function main() {
         process.exit(1);
     }
 
+    const copilotChatPath = resolveInstalledExtensionPath(
+        'github.copilot-chat'
+    );
+    if (!copilotChatPath || !fs.existsSync(copilotChatPath)) {
+        process.stderr.write(
+            'GitHub.copilot-chat is not installed in the headless profile. ' +
+                'Run `npm run headless:setup` to install it.\n'
+        );
+        process.exit(1);
+    }
+
     const repoRoot = path.resolve(__dirname, '..', '..');
     const extensionTestsPath = path.resolve(
         __dirname,
@@ -69,7 +81,7 @@ async function main() {
         await runTests({
             version: 'stable',
             cachePath: VSCODE_CACHE_DIR,
-            extensionDevelopmentPath: repoRoot,
+            extensionDevelopmentPath: [repoRoot, copilotChatPath],
             extensionTestsPath,
             launchArgs: [
                 '--user-data-dir=' + USER_DATA_DIR,

@@ -142,6 +142,23 @@ run reuses it — no further sign-in needed.
 Re-running `npm run headless:setup` is safe (idempotent) and is the
 correct recovery path if Copilot auth ever expires.
 
+## How Copilot is loaded into the test-mode host
+
+`@vscode/test-electron` launches VS Code in test mode, which only
+activates system extensions and the extension passed via
+`extensionDevelopmentPath` — user-installed extensions in
+`--extensions-dir` are silently skipped. To work around that,
+`launchHeadless.js` passes `extensionDevelopmentPath` as an **array**
+containing both the Lupa repo root and the resolved `github.copilot-chat`
+install folder, so both load as development extensions and Lupa's
+`extensionDependencies` declaration resolves. The copilot-chat folder is
+discovered at launch time by reading `extensions.json` in the persistent
+extensions directory, so the version suffix in the folder name is not
+hard-coded and survives Copilot updates. Auth persists because the
+`--user-data-dir` is shared across runs; the GitHub OAuth token managed
+by the `vscode.github-authentication` system extension is found by
+copilot-chat on each launch.
+
 ## Future: pure-Node path
 
 If GitHub ever publishes a stable HTTP surface for Copilot chat completions
