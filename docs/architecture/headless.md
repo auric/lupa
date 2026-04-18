@@ -100,8 +100,8 @@ npm run headless -- \
 
 `--base` and `--head` accept three forms, resolved by `diffResolver.ts`:
 
-- A git ref (`main`, `feature/x`, short or full SHA) — resolved via `git
-rev-parse` inside the workspace.
+- A git ref (`main`, `feature/x`, short or full SHA) — resolved via
+  `git rev-parse` inside the workspace.
 - `sha:<sha>` — explicit SHA form, useful when a branch name is ambiguous.
 - `dir:<path>` — compare two directory snapshots instead of git refs. Used by
   Kind-A synthetic fixtures (Quest 8.1) that ship as plain directories, not

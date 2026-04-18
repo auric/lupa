@@ -22,13 +22,13 @@ const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 const {
     downloadAndUnzipVSCode,
-    resolveCliPathFromVSCodeExecutablePath,
     runVSCodeCommand,
 } = require('@vscode/test-electron');
 const {
     USER_DATA_DIR,
     EXTENSIONS_DIR,
     VSCODE_CACHE_DIR,
+    SETUP_MARKER,
     REQUIRED_EXTENSIONS,
 } = require('./headlessPaths');
 
@@ -36,6 +36,14 @@ async function main() {
     process.stdout.write(
         '=== Lupa headless setup — one-time interactive flow ===\n\n'
     );
+
+    try {
+        fs.unlinkSync(SETUP_MARKER);
+    } catch (err) {
+        if (err && err.code !== 'ENOENT') {
+            throw err;
+        }
+    }
 
     fs.mkdirSync(USER_DATA_DIR, { recursive: true });
     fs.mkdirSync(EXTENSIONS_DIR, { recursive: true });
@@ -62,8 +70,6 @@ async function main() {
     }
     process.stdout.write('\n');
 
-    const cliPath = resolveCliPathFromVSCodeExecutablePath(executablePath);
-
     process.stdout.write(
         'Launching VS Code interactively. Please:\n' +
             '  1. When VS Code opens, run "GitHub Copilot: Sign In" from the command palette.\n' +
@@ -75,17 +81,27 @@ async function main() {
 
     await new Promise((resolve, reject) => {
         const child = spawn(
-            cliPath,
+            executablePath,
             [
                 '--user-data-dir=' + USER_DATA_DIR,
                 '--extensions-dir=' + EXTENSIONS_DIR,
                 '--new-window',
             ],
-            { stdio: 'inherit', shell: process.platform === 'win32' }
+            { stdio: 'inherit' }
         );
-        child.on('exit', () => resolve());
         child.on('error', reject);
+        child.on('exit', (code, signal) => {
+            if (signal) {
+                reject(new Error(`VS Code terminated by signal ${signal}`));
+            } else if (code !== null && code !== 0) {
+                reject(new Error(`VS Code exited with code ${code}`));
+            } else {
+                resolve();
+            }
+        });
     });
+
+    fs.writeFileSync(SETUP_MARKER, new Date().toISOString() + '\n');
 
     process.stdout.write(
         '\nSetup complete. You can now run `npm run headless -- ' +

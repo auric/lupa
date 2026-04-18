@@ -36,6 +36,7 @@ const {
     USER_DATA_DIR,
     EXTENSIONS_DIR,
     VSCODE_CACHE_DIR,
+    SETUP_MARKER,
 } = require('./headlessPaths');
 
 async function main() {
@@ -50,9 +51,10 @@ async function main() {
         throw err;
     }
 
-    if (!fs.existsSync(USER_DATA_DIR) || !fs.existsSync(EXTENSIONS_DIR)) {
+    if (!fs.existsSync(SETUP_MARKER)) {
         process.stderr.write(
-            'Headless profile not initialized. Run `npm run headless:setup` first.\n'
+            'Headless profile not initialized or setup did not complete. ' +
+                'Run `npm run headless:setup` first.\n'
         );
         process.exit(1);
     }
