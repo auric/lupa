@@ -32,6 +32,8 @@ export interface HeadlessAnalysisResult {
     rawToolCallLog: ToolCallRecord[];
     modelId: string;
     seed: number;
+    completed: boolean;
+    wasCancelled: boolean;
 }
 
 /**
@@ -86,6 +88,11 @@ export async function runHeadless(
     if (result.error) {
         throw new Error(result.error);
     }
+    if (result.wasCancelled) {
+        throw new Error(
+            `Analysis cancelled for ${opts.baseRef}..${opts.headRef}`
+        );
+    }
 
     return {
         findings: result.findings,
@@ -104,5 +111,7 @@ export async function runHeadless(
         rawToolCallLog: result.toolCallRecords,
         modelId: model.id,
         seed: opts.seed,
+        completed: result.completed,
+        wasCancelled: result.wasCancelled,
     };
 }

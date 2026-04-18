@@ -185,6 +185,8 @@ describe('runHeadless', () => {
         expect(result.narrative).toBe('ok');
         expect(result.modelId).toBe('gpt-4.1');
         expect(result.seed).toBe(42);
+        expect(result.completed).toBe(true);
+        expect(result.wasCancelled).toBe(false);
         expect(result.rawToolCallLog).toHaveLength(1);
         expect(result.telemetry).toMatchObject({
             iterations: 4,
@@ -205,6 +207,20 @@ describe('runHeadless', () => {
             }),
         });
         await expect(runHeadless(baseOpts(), services)).rejects.toThrow(/boom/);
+    });
+
+    it('throws when the analysis is cancelled', async () => {
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        const services = makeServices({
+            analyzeResult: createMockAnalysisEngineResult({
+                wasCancelled: true,
+                completed: false,
+                error: undefined,
+            }),
+        });
+        await expect(runHeadless(baseOpts(), services)).rejects.toThrow(
+            /Analysis cancelled/
+        );
     });
 
     it('throws when no diff is produced', async () => {
