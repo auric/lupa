@@ -62,4 +62,8 @@ async function main() {
     }
 }
 
-main();
+main().catch((err) => {
+    const msg = err && err.message ? err.message : String(err);
+    process.stderr.write(`Headless launcher crashed: ${msg}\n`);
+    process.exit(1);
+});

@@ -22,6 +22,7 @@ vi.mock('../services/loggingService', () => ({
         debug: vi.fn(),
     },
 }));
+import { Log } from '../services/loggingService';
 
 const SAMPLE_DIFF = `diff --git a/src/a.ts b/src/a.ts
 index 1234567..abcdefg 100644
@@ -33,11 +34,20 @@ index 1234567..abcdefg 100644
  const z = 3;
 `;
 
-function makeServices(options: {
+interface MakeServicesOptions {
     diffText?: string;
     analyzeResult?: ReturnType<typeof createMockAnalysisEngineResult>;
     analyzeSpy?: ReturnType<typeof vi.fn>;
-}): IServiceRegistry {
+    selectedModel?: {
+        id: string;
+        name: string;
+        family: string;
+        vendor: string;
+        maxInputTokens: number;
+    };
+}
+
+function makeServices(options: MakeServicesOptions): IServiceRegistry {
     const analyze =
         options.analyzeSpy ??
         vi
@@ -50,13 +60,15 @@ function makeServices(options: {
             initialize: vi.fn().mockResolvedValue(true),
         },
         copilotModelManager: {
-            selectModel: vi.fn().mockResolvedValue({
-                id: 'gpt-4.1',
-                name: 'GPT-4.1',
-                family: 'gpt-4',
-                vendor: 'copilot',
-                maxInputTokens: 128000,
-            }),
+            selectModel: vi.fn().mockResolvedValue(
+                options.selectedModel ?? {
+                    id: 'gpt-4.1',
+                    name: 'GPT-4.1',
+                    family: 'gpt-4',
+                    vendor: 'copilot',
+                    maxInputTokens: 128000,
+                }
+            ),
         },
         analysisEngine: { analyze },
     } as unknown as IServiceRegistry;
@@ -235,6 +247,28 @@ describe('runHeadless', () => {
         expect(input.chatHandler).toBeUndefined();
         expect(input.userPromptSuffix).toBeUndefined();
         expect(typeof output.onProgress).toBe('function');
+    });
+
+    it('logs a warning and continues when the requested model is unavailable', async () => {
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        vi.mocked(Log.warn).mockClear();
+        const services = makeServices({
+            selectedModel: {
+                id: 'gpt-4o-mini',
+                name: 'GPT-4o mini',
+                family: 'gpt-4o',
+                vendor: 'copilot',
+                maxInputTokens: 64000,
+            },
+        });
+
+        const result = await runHeadless(baseOpts(), services);
+
+        expect(Log.warn).toHaveBeenCalledTimes(1);
+        const warnMsg = vi.mocked(Log.warn).mock.calls[0][0] as string;
+        expect(warnMsg).toContain('copilot/gpt-4.1');
+        expect(warnMsg).toContain('copilot/gpt-4o-mini');
+        expect(result.modelId).toBe('gpt-4o-mini');
     });
 });
 

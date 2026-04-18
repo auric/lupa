@@ -13,6 +13,7 @@
 const vscode = require('vscode');
 const fs = require('node:fs');
 
+// Must stay in sync with package.json `publisher` + `name`.
 const EXTENSION_ID = 'Auric.lupa';
 
 async function run() {
@@ -22,7 +23,14 @@ async function run() {
             'LUPA_HEADLESS_ARGS not set; this script must be launched via launchHeadless.js'
         );
     }
-    const args = JSON.parse(rawArgs);
+    let args;
+    try {
+        args = JSON.parse(rawArgs);
+    } catch (err) {
+        throw new Error(
+            `LUPA_HEADLESS_ARGS is not valid JSON: ${err && err.message ? err.message : String(err)}`
+        );
+    }
 
     const extension = vscode.extensions.getExtension(EXTENSION_ID);
     if (!extension) {
