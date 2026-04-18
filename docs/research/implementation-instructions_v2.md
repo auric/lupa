@@ -25,9 +25,9 @@ Waves are deployable milestones. Each wave has a clear user-facing win and a kil
 
 **Goal**: "We can measure." No prompt / tool changes yet.
 
-**Quests**: 8.1 → 8.2 → 0.1 (ADR written and committed).
+**Quests**: 8.3 → 8.1 → 8.2 → 0.1 (ADR written and committed). 8.3 (headless entry point) is a hard prerequisite for 8.1 — the eval runner has nothing to invoke without it.
 
-**Gate**: eval runs end-to-end on all supported profiles; baseline numbers recorded in `eval/results/baseline-<date>.md`.
+**Gate**: eval runs end-to-end on all supported profiles with `N = 3` seeds; baseline numbers (mean ± stddev) recorded in `eval/results/baseline-<date>.md`.
 
 **Why first**: every later wave must prove itself against this baseline.
 
@@ -222,8 +222,9 @@ Before opening the PR:
 | 7.1   | `src/tools/*`, `src/models/modelCalibration.ts`                                        |
 | 7.2   | `src/models/modelCalibration.ts`                                                       |
 | 7.3   | new `resources/checklists/*.md`, `src/tools/readFileTool.ts`                           |
-| 8.1   | new `scripts/eval/run-eval.ts`, `eval/fixtures/`                                       |
-| 8.2   | `scripts/eval/run-eval.ts`                                                             |
+| 8.1   | new `scripts/eval/run-eval.ts`, `eval/fixtures/synthetic/`, `eval/fixtures/real/`      |
+| 8.2   | `scripts/eval/run-eval.ts`, resolution classifier                                      |
+| 8.3   | new `src/eval/headlessRunner.ts`, `src/services/analysisEngine.ts`, `.vscode-test.mjs` |
 | 9.1   | `src/services/analysisEngine.ts`, new consensus module                                 |
 | 10.1  | `src/models/modelCalibration.ts`, `src/services/chatLLMClient.ts`                      |
 | 10.2  | webview components, event bus                                                          |
