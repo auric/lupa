@@ -132,6 +132,69 @@ describe('runHeadlessFromEnv', () => {
             'workbench.action.quit'
         );
     });
+
+    it('writes the sentinel atomically via tmp+rename and leaves no .tmp file behind', async () => {
+        const args = {
+            workspace: '/ws',
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/gpt-4.1',
+            seed: 42,
+            timeoutMs: 60_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        const { runHeadless } = await import('../eval/headlessRunner');
+
+        vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
+            {
+                id: 'gpt-4.1',
+                name: 'GPT-4.1',
+                family: 'gpt-4',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            } as unknown as import('vscode').LanguageModelChat,
+        ]);
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+        vi.mocked(runHeadless).mockResolvedValue({
+            findings: [],
+            narrative: '',
+            telemetry: {
+                iterations: 0,
+                toolCalls: 0,
+                promptTokens: 0,
+                completionTokens: 0,
+                durationMs: 0,
+                compactionsUsed: 0,
+            },
+            rawToolCallLog: [],
+            modelId: 'gpt-4.1',
+            seed: 42,
+            completed: false,
+            wasCancelled: false,
+        } as never);
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        const { runHeadlessFromEnv } = await import('../eval/headlessEntry');
+        await runHeadlessFromEnv(coordinator as never);
+
+        expect(fs.existsSync(`${sentinelPath}.tmp`)).toBe(false);
+        expect(fs.existsSync(sentinelPath)).toBe(true);
+        // Final sentinel is complete, parseable JSON — not a half-written
+        // partial that a concurrent reader could have observed.
+        const parsed = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(parsed).toHaveProperty('exitCode');
+    });
 });
 
 // Regression for round-3 review blocker: ServiceManager.initializeFoundationServices

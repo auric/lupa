@@ -95,14 +95,23 @@ function writeSentinel(exitCode: number, error: string | undefined): void {
     if (!sentinelPath) {
         return;
     }
+    const tmpPath = `${sentinelPath}.tmp`;
     try {
         fs.writeFileSync(
-            sentinelPath,
+            tmpPath,
             JSON.stringify({ exitCode, error: error ?? null }, null, 2)
         );
+        // rename is atomic on the same filesystem, so the launcher never
+        // observes a half-written sentinel mid-read.
+        fs.renameSync(tmpPath, sentinelPath);
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         process.stderr.write(`Failed to write headless sentinel: ${msg}\n`);
+        try {
+            fs.unlinkSync(tmpPath);
+        } catch {
+            // tmp may not exist if writeFileSync failed before creating it
+        }
     }
 }
 
