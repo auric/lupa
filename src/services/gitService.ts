@@ -9,6 +9,7 @@ import type {
 import { Log } from './loggingService';
 import { getErrorMessage } from '../utils/errorUtils';
 import type { WorkspaceSettingsService } from './workspaceSettingsService';
+import { isHeadlessMode } from '../eval/headlessConstants';
 
 /**
  * Options for comparing branches
@@ -222,7 +223,17 @@ export class GitService {
                 return true;
             }
 
-            // Multiple main repositories or only submodules - prompt user
+            // Multiple main repositories or only submodules - prompt user.
+            // In headless mode there is no user to prompt; surface a clear
+            // error so the launcher's sentinel carries actionable context
+            // instead of the extension host blocking on an invisible UI.
+            if (isHeadlessMode()) {
+                throw new Error(
+                    'Cannot resolve repository in headless mode: workspace ' +
+                        'contains multiple git repositories. Specify a ' +
+                        'single-repo workspace via --workspace.'
+                );
+            }
             const selectedRepo = await this.showRepositoryPicker();
             if (!selectedRepo) {
                 // User canceled repository selection
