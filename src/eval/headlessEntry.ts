@@ -179,7 +179,7 @@ export async function runHeadlessFromEnv(
                 // exit via the outer catch: partial findings are unvalidated
                 // (PostAnalysisPipeline only runs when completed is true).
                 throw new Error(
-                    'Analysis ended without completing (possible rate-limit, quota exhaustion, iteration-limit reached, or degradation); see --out for partial result'
+                    'Analysis ended without completing (possible rate-limit, quota exhaustion, or degraded exit); see --out for partial result'
                 );
             }
             if (!args.silent) {
