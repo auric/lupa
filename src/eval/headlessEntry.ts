@@ -50,6 +50,67 @@ interface HeadlessArgs {
 }
 
 /**
+ * Validate the JSON shape produced by scripts/eval/headlessArgs.js. A
+ * malformed env var otherwise surfaces as a cryptic downstream error;
+ * catching it here lets the outer try/catch write a diagnostic sentinel.
+ */
+function validateHeadlessArgs(raw: unknown): HeadlessArgs {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        throw new Error(`${LUPA_HEADLESS_ARGS_ENV} must be a JSON object`);
+    }
+    const o = raw as Record<string, unknown>;
+    const requireString = (k: string): string => {
+        const v = o[k];
+        if (typeof v !== 'string' || v.length === 0) {
+            throw new Error(
+                `${LUPA_HEADLESS_ARGS_ENV}.${k} must be a non-empty string`
+            );
+        }
+        return v;
+    };
+    const requirePositiveNumber = (k: string): number => {
+        const v = o[k];
+        if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
+            throw new Error(
+                `${LUPA_HEADLESS_ARGS_ENV}.${k} must be a finite positive number`
+            );
+        }
+        return v;
+    };
+    const seedRaw = o.seed;
+    if (
+        seedRaw !== undefined &&
+        (typeof seedRaw !== 'number' || !Number.isFinite(seedRaw))
+    ) {
+        throw new Error(
+            `${LUPA_HEADLESS_ARGS_ENV}.seed must be a number or undefined`
+        );
+    }
+    const outRaw = o.out;
+    if (outRaw !== undefined && outRaw !== null && typeof outRaw !== 'string') {
+        throw new Error(
+            `${LUPA_HEADLESS_ARGS_ENV}.out must be a string, null, or undefined`
+        );
+    }
+    const silentRaw = o.silent;
+    if (silentRaw !== undefined && typeof silentRaw !== 'boolean') {
+        throw new Error(
+            `${LUPA_HEADLESS_ARGS_ENV}.silent must be a boolean or undefined`
+        );
+    }
+    return {
+        workspace: requireString('workspace'),
+        base: requireString('base'),
+        head: requireString('head'),
+        model: requireString('model'),
+        seed: typeof seedRaw === 'number' ? seedRaw : 0,
+        timeoutMs: requirePositiveNumber('timeoutMs'),
+        out: typeof outRaw === 'string' ? outRaw : null,
+        silent: silentRaw === true,
+    };
+}
+
+/**
  * Waits for Copilot's language-model provider to register. Registration is
  * asynchronous (auth check, token refresh, service handshake), so the first
  * selectChatModels() call often sees an empty list. Combines event-driven
@@ -167,7 +228,7 @@ export async function runHeadlessFromEnv(
                 `${LUPA_HEADLESS_ARGS_ENV} not set; headless mode requires JSON-serialized args`
             );
         }
-        const args = JSON.parse(rawArgs) as HeadlessArgs;
+        const args = validateHeadlessArgs(JSON.parse(rawArgs));
 
         const services = await coordinator.waitForInitialization();
 

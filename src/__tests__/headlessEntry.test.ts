@@ -268,6 +268,50 @@ describe('runHeadlessFromEnv', () => {
         const parsed = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
         expect(parsed).toHaveProperty('exitCode');
     });
+
+    async function runWithRawArgs(rawArgs: string): Promise<{
+        exitCode: number;
+        error: string | null;
+    }> {
+        vi.resetModules();
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = rawArgs;
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+        const { runHeadlessFromEnv } = await import('../eval/headlessEntry');
+        await runHeadlessFromEnv(coordinator as never);
+        return JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+    }
+
+    it('writes sentinel exitCode:1 with a diagnostic error when LUPA_HEADLESS_ARGS has a field of the wrong type', async () => {
+        const bad = JSON.stringify({
+            workspace: 123,
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/gpt-4.1',
+            timeoutMs: 60_000,
+        });
+        const sentinel = await runWithRawArgs(bad);
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).not.toBeNull();
+        expect(sentinel.error).toContain('workspace');
+    });
+
+    it('writes sentinel exitCode:1 when LUPA_HEADLESS_ARGS is not valid JSON', async () => {
+        const sentinel = await runWithRawArgs('not json');
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).not.toBeNull();
+        expect(typeof sentinel.error).toBe('string');
+        expect((sentinel.error as string).length).toBeGreaterThan(0);
+    });
 });
 
 // Regression for round-3 review blocker: ServiceManager.initializeFoundationServices
