@@ -30,6 +30,20 @@ export interface GitDiffResult {
 }
 
 /**
+ * Options controlling GitService initialization side-effects
+ */
+export interface GitInitializeOptions {
+    /**
+     * When false, the chosen repository is held in memory on this service
+     * only and is NOT written to the workspace settings file. Defaults to
+     * true to preserve the existing behavior for interactive (webview /
+     * chat) callers. The headless entry point sets this to false so a CI
+     * run does not dirty the target repository's .vscode/lupa.json.
+     */
+    persist?: boolean;
+}
+
+/**
  * Repository option for selection UI
  */
 interface RepositoryQuickPickItem extends vscode.QuickPickItem {
@@ -141,11 +155,14 @@ export class GitService {
     /**
      * Initialize the Git service with smart repository selection
      * @param workspaceSettings Optional settings service for persistence
+     * @param options Optional init flags (see GitInitializeOptions)
      * @returns True if Git API is available and repository is found
      */
     public async initialize(
-        workspaceSettings?: WorkspaceSettingsService
+        workspaceSettings?: WorkspaceSettingsService,
+        options?: GitInitializeOptions
     ): Promise<boolean> {
+        const shouldPersist = options?.persist !== false;
         try {
             if (workspaceSettings) {
                 this.workspaceSettings = workspaceSettings;
@@ -199,7 +216,9 @@ export class GitService {
                     `Auto-selected main repository: ${autoSelected.rootUri.fsPath}`
                 );
                 this.repository = autoSelected;
-                this.saveRepositorySelection(autoSelected);
+                if (shouldPersist) {
+                    this.saveRepositorySelection(autoSelected);
+                }
                 return true;
             }
 
@@ -210,7 +229,9 @@ export class GitService {
                 return false;
             }
             this.repository = selectedRepo;
-            this.saveRepositorySelection(selectedRepo);
+            if (shouldPersist) {
+                this.saveRepositorySelection(selectedRepo);
+            }
 
             return true;
         } catch (error) {

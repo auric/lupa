@@ -42,7 +42,12 @@ export async function resolveDiff(
         );
     }
 
-    const gitAvailable = await services.gitOperations.initialize();
+    // persist: false — don't persist the auto-selected repository path into
+    // the target workspace's .vscode/lupa.json (treat the analyzed repo as
+    // read-only), mirroring the selectModel({ persist: false }) pattern.
+    const gitAvailable = await services.gitOperations.initialize({
+        persist: false,
+    });
     if (!gitAvailable) {
         throw new Error(
             `Git extension unavailable for workspace ${opts.workspaceRoot}`
