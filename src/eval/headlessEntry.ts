@@ -66,12 +66,21 @@ async function waitForCopilotModels(
             if (settled) {
                 return;
             }
-            const found = await vscode.lm.selectChatModels({
-                vendor: 'copilot',
-            });
-            if (!settled && found.length > 0) {
-                cleanup();
-                resolve(found);
+            try {
+                const found = await vscode.lm.selectChatModels({
+                    vendor: 'copilot',
+                });
+                if (!settled && found.length > 0) {
+                    cleanup();
+                    resolve(found);
+                }
+            } catch (err) {
+                // Fire-and-forget callers (event handler, interval) would
+                // otherwise surface rejections as unhandledRejection.
+                const msg = err instanceof Error ? err.message : String(err);
+                process.stderr.write(
+                    `waitForCopilotModels probe failed: ${msg}\n`
+                );
             }
         };
         const event = vscode.lm.onDidChangeChatModels(() => {
