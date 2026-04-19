@@ -6,18 +6,11 @@ vi.mock('vscode');
 
 const compareBranches = vi.fn();
 
-vi.mock('../../services/gitService', () => ({
-    GitService: {
-        getInstance: () => ({
-            compareBranches,
-        }),
-    },
-}));
-
 function makeServices(initialize: () => Promise<boolean>): IServiceRegistry {
     return {
         gitOperations: {
             initialize: vi.fn(initialize),
+            compareBranches,
         },
     } as unknown as IServiceRegistry;
 }
@@ -75,10 +68,7 @@ describe('resolveDiff', () => {
 
         expect(diff).toBe('x');
         expect(compareBranches).toHaveBeenCalledTimes(1);
-        expect(compareBranches).toHaveBeenCalledWith({
-            base: 'abc',
-            compare: 'def',
-        });
+        expect(compareBranches).toHaveBeenCalledWith('abc', 'def');
         expect(services.gitOperations.initialize).toHaveBeenCalledWith({
             persist: false,
         });

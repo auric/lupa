@@ -1,5 +1,4 @@
 import * as child_process from 'node:child_process';
-import { GitService } from '../services/gitService';
 import type { IServiceRegistry } from '../services/serviceManager';
 import { getErrorMessage } from '../utils/errorUtils';
 
@@ -55,10 +54,10 @@ export async function resolveDiff(
     }
     const base = stripShaPrefix(opts.baseRef);
     const compare = stripShaPrefix(opts.headRef);
-    const { diffText, error } = await GitService.getInstance().compareBranches({
+    const { diffText, error } = await services.gitOperations.compareBranches(
         base,
-        compare,
-    });
+        compare
+    );
     if (error) {
         throw new Error(`Failed to compare ${base}..${compare}: ${error}`);
     }
