@@ -156,10 +156,8 @@ describe('ServiceManager foundation init — headless persistence guard', () => 
 
     async function runFoundationPhase(): Promise<{
         initSpy: ReturnType<typeof vi.fn>;
-        setSelectedRepoSpy: ReturnType<typeof vi.fn>;
     }> {
         const initSpy = vi.fn().mockResolvedValue(true);
-        const setSelectedRepoSpy = vi.fn();
 
         // Vitest 4 requires 'function' syntax for constructor mocks used
         // with `new` — arrow callbacks are rejected with a warning and yield
@@ -177,7 +175,7 @@ describe('ServiceManager foundation init — headless persistence guard', () => 
             WorkspaceSettingsService: vi.fn(function (
                 this: Record<string, unknown>
             ) {
-                this.setSelectedRepositoryPath = setSelectedRepoSpy;
+                this.setSelectedRepositoryPath = vi.fn();
                 this.getSelectedRepositoryPath = () => undefined;
                 this.dispose = vi.fn();
             }),
@@ -212,14 +210,17 @@ describe('ServiceManager foundation init — headless persistence guard', () => 
         // Phases 2/3 aren't mocked; we only need Phase 1 behavior. Swallow
         // any downstream error so the assertion below still runs.
         await sm.initialize().catch(() => {});
-        return { initSpy, setSelectedRepoSpy };
+        return { initSpy };
     }
 
-    it('passes { persist: false } and does NOT write setSelectedRepositoryPath when LUPA_HEADLESS_MODE=1', async () => {
+    // Coverage split: this test pins the ServiceManager → GitOperationsManager
+    // seam (the option is threaded correctly). The downstream contract that
+    // { persist: false } actually skips the setSelectedRepositoryPath write
+    // is pinned in gitServiceGetDefaultBranch.test.ts.
+    it('passes { persist: false } when LUPA_HEADLESS_MODE=1', async () => {
         process.env.LUPA_HEADLESS_MODE = '1';
-        const { initSpy, setSelectedRepoSpy } = await runFoundationPhase();
+        const { initSpy } = await runFoundationPhase();
         expect(initSpy).toHaveBeenCalledWith({ persist: false });
-        expect(setSelectedRepoSpy).not.toHaveBeenCalled();
     });
 
     it('passes { persist: true } when LUPA_HEADLESS_MODE is not set', async () => {
