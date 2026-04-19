@@ -155,7 +155,8 @@
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
         "headless": "node scripts/eval/launchHeadless.js",
-        "headless:setup": "node scripts/eval/setupHeadless.js"
+        "headless:setup": "node scripts/eval/setupHeadless.js",
+        "vitest": "vitest"
     },
     "devDependencies": {
         "@radix-ui/react-accordion": "^1.2.12",
