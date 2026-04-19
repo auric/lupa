@@ -42,6 +42,7 @@ CLAUDE.md
 .claude/**
 .serena/**
 .husky/**
+.augment/**
 _bmad/**
 _bmad-output/**
 
