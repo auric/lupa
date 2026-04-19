@@ -91,7 +91,25 @@ function resolveInstalledExtensionPath(extensionId) {
     if (!fs.existsSync(candidate)) {
         return null;
     }
-    return candidate;
+    // Defense-in-depth: resolve symlinks and re-check containment. Without
+    // this, a symlinked extension directory pointing outside EXTENSIONS_DIR
+    // would pass the syntactic check above.
+    let realCandidate;
+    try {
+        realCandidate = fs.realpathSync(candidate);
+    } catch {
+        return null;
+    }
+    let realRoot;
+    try {
+        realRoot = fs.realpathSync(path.resolve(EXTENSIONS_DIR)) + path.sep;
+    } catch {
+        return null;
+    }
+    if (!realCandidate.startsWith(realRoot)) {
+        return null;
+    }
+    return realCandidate;
 }
 
 /**
