@@ -13,6 +13,7 @@ import { getErrorMessage } from '../utils/errorUtils';
 export class PRAnalysisCoordinator implements vscode.Disposable {
     private serviceManager: ServiceManager;
     private services: IServiceRegistry | null = null;
+    private initializationError: Error | null = null;
     private readonly initializationPromise: Promise<void>;
 
     // Specialized coordinators
@@ -57,6 +58,8 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
 
             this.commandRegistry.registerAllCommands();
         } catch (error) {
+            this.initializationError =
+                error instanceof Error ? error : new Error(String(error));
             const errorMessage = getErrorMessage(error);
             vscode.window.showErrorMessage(
                 `Failed to initialize PR Analyzer: ${errorMessage}`
@@ -94,9 +97,17 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
      * Used by headless entry points that must wait for wiring to complete
      * before invoking the analysis engine.
      */
+    // TEST GAP: waitForInitialization error-detail preservation not covered
+    // (no prAnalysisCoordinator test module exists).
     public async waitForInitialization(): Promise<IServiceRegistry> {
         await this.initializationPromise;
         if (!this.services) {
+            if (this.initializationError) {
+                throw new Error(
+                    `PRAnalysisCoordinator initialization failed: ${this.initializationError.message}`,
+                    { cause: this.initializationError }
+                );
+            }
             throw new Error(
                 'PRAnalysisCoordinator initialization failed; services unavailable'
             );
