@@ -97,13 +97,23 @@ function resolveInstalledExtensionPath(extensionId) {
     let realCandidate;
     try {
         realCandidate = fs.realpathSync(candidate);
-    } catch {
+    } catch (err) {
+        if (err && (err.code === 'EPERM' || err.code === 'EACCES')) {
+            process.stderr.write(
+                `resolveInstalledExtensionPath: permission denied resolving ${candidate}: ${err.message}\n`
+            );
+        }
         return null;
     }
     let realRoot;
     try {
         realRoot = fs.realpathSync(path.resolve(EXTENSIONS_DIR)) + path.sep;
-    } catch {
+    } catch (err) {
+        if (err && (err.code === 'EPERM' || err.code === 'EACCES')) {
+            process.stderr.write(
+                `resolveInstalledExtensionPath: permission denied resolving ${EXTENSIONS_DIR}: ${err.message}\n`
+            );
+        }
         return null;
     }
     if (!realCandidate.startsWith(realRoot)) {
