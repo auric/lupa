@@ -2,6 +2,10 @@ import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import type { PRAnalysisCoordinator } from '../services/prAnalysisCoordinator';
 import { runHeadless } from './headlessRunner';
+import {
+    LUPA_HEADLESS_ARGS_ENV,
+    LUPA_HEADLESS_SENTINEL_ENV,
+} from './headlessConstants';
 
 /**
  * Environment-variable contract shared with scripts/eval/launchHeadless.js.
@@ -10,10 +14,18 @@ import { runHeadless } from './headlessRunner';
  * status are communicated to the parent launcher via:
  *   - the optional --out JSON file (args.out),
  *   - a sentinel file at LUPA_HEADLESS_SENTINEL (exit code + error message).
+ *
+ * The env-var names and isHeadlessMode() live in headlessConstants.ts so
+ * activation-time callers (ServiceManager) can branch on headless mode
+ * without transitively loading the full headless runtime. They are re-
+ * exported here to preserve the existing import path for other consumers.
  */
-export const LUPA_HEADLESS_MODE_ENV = 'LUPA_HEADLESS_MODE';
-export const LUPA_HEADLESS_ARGS_ENV = 'LUPA_HEADLESS_ARGS';
-export const LUPA_HEADLESS_SENTINEL_ENV = 'LUPA_HEADLESS_SENTINEL';
+export {
+    LUPA_HEADLESS_MODE_ENV,
+    LUPA_HEADLESS_ARGS_ENV,
+    LUPA_HEADLESS_SENTINEL_ENV,
+    isHeadlessMode,
+} from './headlessConstants';
 
 const COPILOT_WAIT_MS = 30_000;
 
@@ -35,10 +47,6 @@ interface HeadlessArgs {
     timeoutMs: number;
     out: string | null;
     silent: boolean;
-}
-
-export function isHeadlessMode(): boolean {
-    return process.env[LUPA_HEADLESS_MODE_ENV] === '1';
 }
 
 /**

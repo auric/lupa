@@ -47,7 +47,7 @@ import { RetractFindingTool } from '../tools/retractFindingTool';
 import { ValidateClaimTool } from '../tools/validateClaimTool';
 
 import { Log } from './loggingService';
-import { isHeadlessMode } from '../eval/headlessEntry';
+import { isHeadlessMode } from '../eval/headlessConstants';
 
 /**
  * Service registry interface for type-safe service access
