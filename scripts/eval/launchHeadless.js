@@ -136,6 +136,16 @@ async function main() {
         detached: process.platform !== 'win32',
     });
 
+    // `detached: true` on POSIX puts the child in its own process group, so
+    // terminal Ctrl-C no longer reaches it via the TTY foreground pgid — the
+    // launcher must forward operator signals explicitly. Harmless on Windows.
+    for (const sig of ['SIGINT', 'SIGTERM']) {
+        process.on(sig, () => {
+            killProcessTree(child);
+            process.exit(sig === 'SIGINT' ? 130 : 143);
+        });
+    }
+
     const watchdogMs = args.timeoutMs + WATCHDOG_OVERHEAD_MS;
     const watchdog = setTimeout(() => {
         process.stderr.write(
