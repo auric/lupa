@@ -133,7 +133,7 @@ describe('runHeadlessFromEnv', () => {
         );
     });
 
-    it('writes the sentinel atomically via tmp+rename and leaves no .tmp file behind', async () => {
+    it('writes a complete sentinel and removes its .tmp after runHeadlessFromEnv', async () => {
         const args = {
             workspace: '/ws',
             base: 'main',
