@@ -129,6 +129,11 @@ async function main() {
         env: childEnv,
         stdio: 'inherit',
         windowsHide: false,
+        // On POSIX, become a process-group leader so killProcessTree can
+        // signal the entire VS Code helper tree via a negative PID. Windows
+        // uses taskkill /F /T instead; `detached` has different semantics
+        // there (spawns a new console) so leave it off.
+        detached: process.platform !== 'win32',
     });
 
     const watchdogMs = args.timeoutMs + WATCHDOG_OVERHEAD_MS;
@@ -154,10 +159,11 @@ async function main() {
 /**
  * VS Code spawns a tree of helper processes (extension host, pty host, file
  * watchers, crash reporter). On Windows, child.kill() only terminates the
- * top-level PID, leaving helpers to hold locks on the profile directory.
- * Use `taskkill /F /T` to kill the whole tree. On POSIX, SIGTERM first then
- * SIGKILL after a short grace, relying on spawn-default process-group
- * membership.
+ * top-level PID, leaving helpers to hold locks on the profile directory —
+ * use `taskkill /F /T` to kill the whole tree. On POSIX, spawn with
+ * `detached: true` makes the child a process-group leader so a negative-PID
+ * signal reaches every helper it spawned; SIGTERM first, then SIGKILL after
+ * a short grace.
  */
 function killProcessTree(child) {
     if (!child.pid) {
@@ -171,17 +177,28 @@ function killProcessTree(child) {
         }
         return;
     }
-    try {
-        child.kill('SIGTERM');
-    } catch {
-        // fall through to SIGKILL
-    }
-    setTimeout(() => {
+    const groupSignal = (signal) => {
         try {
-            child.kill('SIGKILL');
-        } catch {
-            // already gone
+            process.kill(-child.pid, signal);
+            return true;
+        } catch (err) {
+            if (err && err.code === 'ESRCH') {
+                // Group already gone; nothing to do.
+                return true;
+            }
+            // Fall back to a direct child signal (e.g. EPERM, or the child
+            // never became a group leader for some reason).
+            try {
+                child.kill(signal);
+            } catch {
+                // already gone
+            }
+            return false;
         }
+    };
+    groupSignal('SIGTERM');
+    setTimeout(() => {
+        groupSignal('SIGKILL');
     }, WATCHDOG_SIGTERM_GRACE_MS).unref();
 }
 
