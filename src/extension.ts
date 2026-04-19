@@ -9,12 +9,11 @@ import * as z from 'zod';
 import { PRAnalysisCoordinator } from './services/prAnalysisCoordinator';
 import { StatusBarService } from './services/statusBarService';
 import { getErrorMessage } from './utils/errorUtils';
-import {
-    runHeadless,
-    type HeadlessRunnerOptions,
-    type HeadlessAnalysisResult,
+import type {
+    HeadlessRunnerOptions,
+    HeadlessAnalysisResult,
 } from './eval/headlessRunner';
-import { isHeadlessMode, runHeadlessFromEnv } from './eval/headlessEntry';
+import { isHeadlessMode } from './eval/headlessConstants';
 
 // Zod 4's English locale is loaded via a side-effect call `config(en())` in the
 // entry module. Vite tree-shakes this, causing all validation errors to fall back
@@ -47,11 +46,15 @@ export async function activate(
             // Fire-and-forget: the entry writes results + a sentinel file
             // and issues workbench.action.quit on completion. Awaiting here
             // would block activate() for the entire analysis duration.
+            // Dynamic import keeps the headless runtime (diffResolver,
+            // AnalysisEngine wiring) out of the interactive-mode bundle.
+            const { runHeadlessFromEnv } = await import('./eval/headlessEntry');
             void runHeadlessFromEnv(prAnalysisCoordinator);
         }
 
         return {
             runHeadless: async (opts) => {
+                const { runHeadless } = await import('./eval/headlessRunner');
                 const services =
                     await prAnalysisCoordinator.waitForInitialization();
                 return runHeadless(opts, services);
