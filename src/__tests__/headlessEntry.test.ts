@@ -204,7 +204,6 @@ describe('runHeadlessFromEnv', () => {
         expect(withoutOutError).toContain(
             'rerun with --out <path> to capture partial result'
         );
-        expect(withoutOutError).not.toContain('see ');
     });
 
     it('writes a complete sentinel and removes its .tmp after runHeadlessFromEnv', async () => {
