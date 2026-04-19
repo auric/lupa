@@ -223,6 +223,28 @@ describe('runHeadless', () => {
         );
     });
 
+    it('returns the result as-is when the engine reports incomplete without error or cancellation', async () => {
+        // runHeadless MUST stay pure on the incomplete-but-not-errored path
+        // so that runHeadlessFromEnv can still write --out with the partial
+        // result before surfacing the non-zero exit. See headlessEntry.ts.
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        const services = makeServices({
+            analyzeResult: createMockAnalysisEngineResult({
+                completed: false,
+                wasCancelled: false,
+                error: undefined,
+                analysisText: 'partial',
+                findings: [],
+            }),
+        });
+
+        const result = await runHeadless(baseOpts(), services);
+
+        expect(result.completed).toBe(false);
+        expect(result.wasCancelled).toBe(false);
+        expect(result.narrative).toBe('partial');
+    });
+
     it('throws when no diff is produced', async () => {
         vi.mocked(resolveDiff).mockResolvedValue('   \n');
         const services = makeServices({});

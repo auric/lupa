@@ -173,6 +173,15 @@ export async function runHeadlessFromEnv(
             if (args.out) {
                 fs.writeFileSync(args.out, JSON.stringify(result, null, 2));
             }
+            if (!result.completed) {
+                // --out (if any) is already written above so the operator
+                // can inspect the partial result. Surface as a non-zero
+                // exit via the outer catch: partial findings are unvalidated
+                // (PostAnalysisPipeline only runs when completed is true).
+                throw new Error(
+                    'Analysis ended without completing (possible rate-limit, quota exhaustion, iteration-limit reached, or degradation); see --out for partial result'
+                );
+            }
             if (!args.silent) {
                 process.stdout.write(
                     `Analysis complete: ${result.findings.length} findings, ` +
