@@ -103,6 +103,13 @@ async function main() {
             throw err;
         }
     }
+    try {
+        fs.unlinkSync(SENTINEL_PATH + '.tmp');
+    } catch (err) {
+        if (err && err.code !== 'ENOENT') {
+            throw err;
+        }
+    }
 
     const launchArgs = [
         '--user-data-dir=' + USER_DATA_DIR,
