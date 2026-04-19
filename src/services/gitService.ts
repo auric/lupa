@@ -121,6 +121,21 @@ export function filterBinaryDiffs(diffText: string): {
 }
 
 /**
+ * Marker error used by the headless-mode multi-repo guard inside
+ * GitService.initialize. The initialize() body has a broad try/catch that
+ * maps unexpected failures (git extension missing, API throwing, etc.) to
+ * Log.error + return false — swallowing the actionable diagnostic the
+ * guard is trying to surface. Throwing this distinct class lets the catch
+ * re-throw it unchanged so the launcher sentinel carries the real message.
+ */
+class HeadlessInitializationError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'HeadlessInitializationError';
+    }
+}
+
+/**
  * GitService handles Git operations for the PR Analyzer
  */
 export class GitService {
@@ -228,7 +243,7 @@ export class GitService {
             // error so the launcher's sentinel carries actionable context
             // instead of the extension host blocking on an invisible UI.
             if (isHeadlessMode()) {
-                throw new Error(
+                throw new HeadlessInitializationError(
                     'Cannot resolve repository in headless mode: workspace ' +
                         'contains multiple git repositories. Specify a ' +
                         'single-repo workspace via --workspace.'
@@ -246,6 +261,11 @@ export class GitService {
 
             return true;
         } catch (error) {
+            // Let the headless multi-repo diagnostic escape unchanged so the
+            // launcher sentinel carries the actionable message to the operator.
+            if (error instanceof HeadlessInitializationError) {
+                throw error;
+            }
             Log.error('Failed to initialize Git service:', error);
             return false;
         }

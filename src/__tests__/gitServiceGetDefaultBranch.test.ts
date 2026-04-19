@@ -526,3 +526,45 @@ describe('GitService.initialize persistence', () => {
         expect(setSelectedRepositoryPath).not.toHaveBeenCalled();
     });
 });
+
+describe('GitService.initialize headless multi-repo guard', () => {
+    let gitService: GitService;
+    const previousHeadlessEnv = process.env.LUPA_HEADLESS_MODE;
+
+    beforeEach(() => {
+        (GitService as any).instance = null;
+        gitService = GitService.getInstance();
+        process.env.LUPA_HEADLESS_MODE = '1';
+
+        const repoA = {
+            rootUri: { fsPath: '/test/repo-a' } as any,
+            state: { submodules: [] },
+        } as any;
+        const repoB = {
+            rootUri: { fsPath: '/test/repo-b' } as any,
+            state: { submodules: [] },
+        } as any;
+        const gitApi = { repositories: [repoA, repoB] };
+        vi.mocked(vscode.extensions.getExtension).mockReturnValue({
+            exports: {
+                enabled: true,
+                getAPI: () => gitApi,
+            },
+        } as any);
+    });
+
+    afterEach(() => {
+        if (previousHeadlessEnv === undefined) {
+            delete process.env.LUPA_HEADLESS_MODE;
+        } else {
+            process.env.LUPA_HEADLESS_MODE = previousHeadlessEnv;
+        }
+        vi.clearAllMocks();
+    });
+
+    it('rejects with an actionable message instead of being swallowed by the catch', async () => {
+        await expect(gitService.initialize()).rejects.toThrow(
+            /Cannot resolve repository in headless mode/
+        );
+    });
+});
