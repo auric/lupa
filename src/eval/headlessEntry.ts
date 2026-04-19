@@ -101,8 +101,11 @@ function writeSentinel(exitCode: number, error: string | undefined): void {
             tmpPath,
             JSON.stringify({ exitCode, error: error ?? null }, null, 2)
         );
-        // rename is atomic on the same filesystem, so the launcher never
-        // observes a half-written sentinel mid-read.
+        // Rename is atomic on the same filesystem. If sentinelPath is on a
+        // different filesystem than the tmp file (rare — the launcher
+        // controls LUPA_HEADLESS_SENTINEL and colocates it with the tmp),
+        // renameSync throws EXDEV and the outer catch reports it via
+        // stderr; the launcher then falls back to childExitCode.
         fs.renameSync(tmpPath, sentinelPath);
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
