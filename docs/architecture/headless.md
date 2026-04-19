@@ -51,7 +51,10 @@ CLI args ──► launchHeadless.js ──┐
 
 Results flow back through two channels:
 
-- Optional `--out` path receives the full `HeadlessAnalysisResult` JSON.
+- Optional `--out` path receives the `HeadlessAnalysisResult` JSON. When
+  analysis ends incomplete (rate-limit, quota exhaustion, or degraded
+  exit) the file still lands and contains the partial result; the
+  sentinel records the non-zero exit status.
 - A sentinel file at `.vscode-test/.lupa-headless-last.json` records the
   final exit code (and any error message). The launcher reads it after
   VS Code exits and propagates the exit code to the caller. A watchdog
