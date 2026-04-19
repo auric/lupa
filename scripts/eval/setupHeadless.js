@@ -30,6 +30,7 @@ const {
     VSCODE_CACHE_DIR,
     SETUP_MARKER,
     REQUIRED_EXTENSIONS,
+    resolveInstalledExtensionPath,
     ensureProfileSettings,
 } = require('./headlessPaths');
 
@@ -103,7 +104,36 @@ async function main() {
         });
     });
 
-    fs.writeFileSync(SETUP_MARKER, new Date().toISOString() + '\n');
+    // Verify required extensions are actually installed on disk before
+    // declaring setup complete. A silent install failure (or a user closing
+    // the window before sign-in triggers the extension's post-install hooks)
+    // would otherwise leave a "ready" marker pointing at a broken profile.
+    const verifiedExtensions = [];
+    for (const ext of REQUIRED_EXTENSIONS) {
+        const extPath = resolveInstalledExtensionPath(ext);
+        if (!extPath || !fs.existsSync(extPath)) {
+            process.stderr.write(
+                `Required extension "${ext}" is not installed in the headless ` +
+                    'profile. Copilot extensions not installed — did you ' +
+                    'complete sign-in in the setup window? ' +
+                    'Re-run: npm run headless:setup\n'
+            );
+            process.exit(1);
+        }
+        verifiedExtensions.push({ id: ext, path: extPath });
+    }
+
+    fs.writeFileSync(
+        SETUP_MARKER,
+        JSON.stringify(
+            {
+                timestamp: new Date().toISOString(),
+                extensions: verifiedExtensions,
+            },
+            null,
+            2
+        ) + '\n'
+    );
 
     process.stdout.write(
         '\nSetup complete. You can now run `npm run headless -- ' +
