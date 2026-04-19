@@ -100,7 +100,7 @@ function resolveInstalledExtensionPath(extensionId) {
     } catch (err) {
         if (err && (err.code === 'EPERM' || err.code === 'EACCES')) {
             process.stderr.write(
-                `resolveInstalledExtensionPath: permission denied resolving ${candidate}: ${err.message}\n`
+                `resolveInstalledExtensionPath: permission denied: ${err.message}\n`
             );
         }
         return null;
@@ -111,7 +111,7 @@ function resolveInstalledExtensionPath(extensionId) {
     } catch (err) {
         if (err && (err.code === 'EPERM' || err.code === 'EACCES')) {
             process.stderr.write(
-                `resolveInstalledExtensionPath: permission denied resolving ${EXTENSIONS_DIR}: ${err.message}\n`
+                `resolveInstalledExtensionPath: permission denied: ${err.message}\n`
             );
         }
         return null;
