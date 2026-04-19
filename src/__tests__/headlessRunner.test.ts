@@ -186,7 +186,6 @@ describe('runHeadless', () => {
         expect(result.modelId).toBe('gpt-4.1');
         expect(result.seed).toBe(42);
         expect(result.completed).toBe(true);
-        expect(result.wasCancelled).toBe(false);
         expect(result.rawToolCallLog).toHaveLength(1);
         expect(result.telemetry).toMatchObject({
             iterations: 4,
@@ -241,7 +240,6 @@ describe('runHeadless', () => {
         const result = await runHeadless(baseOpts(), services);
 
         expect(result.completed).toBe(false);
-        expect(result.wasCancelled).toBe(false);
         expect(result.narrative).toBe('partial');
     });
 

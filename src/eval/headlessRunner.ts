@@ -33,7 +33,6 @@ export interface HeadlessAnalysisResult {
     modelId: string;
     seed: number;
     completed: boolean;
-    wasCancelled: boolean;
 }
 
 /**
@@ -115,6 +114,5 @@ export async function runHeadless(
         modelId: model.id,
         seed: opts.seed,
         completed: result.completed,
-        wasCancelled: result.wasCancelled,
     };
 }

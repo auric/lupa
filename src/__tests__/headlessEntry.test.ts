@@ -101,7 +101,6 @@ describe('runHeadlessFromEnv', () => {
             modelId: 'gpt-4.1',
             seed: 42,
             completed: false,
-            wasCancelled: false,
         };
         vi.mocked(runHeadless).mockResolvedValue(partialResult as never);
 
@@ -158,7 +157,6 @@ describe('runHeadlessFromEnv', () => {
             modelId: 'gpt-4.1',
             seed: 42,
             completed: false,
-            wasCancelled: false,
         };
 
         async function runWithArgs(
@@ -251,7 +249,6 @@ describe('runHeadlessFromEnv', () => {
             modelId: 'gpt-4.1',
             seed: 42,
             completed: false,
-            wasCancelled: false,
         } as never);
 
         const coordinator = {
