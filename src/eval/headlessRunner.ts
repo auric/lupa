@@ -56,8 +56,11 @@ export async function runHeadless(
     }
     const parsedDiff = DiffUtils.parseDiff(diffText);
 
+    // persist: false — don't persist the model choice into the target
+    // workspace's .vscode/lupa.json (treat the analyzed repo as read-only).
     const model = await services.copilotModelManager.selectModel({
         identifier: opts.modelIdentifier,
+        persist: false,
     });
     const actualIdentifier = `${model.vendor}/${model.id}`;
     if (actualIdentifier !== opts.modelIdentifier) {
