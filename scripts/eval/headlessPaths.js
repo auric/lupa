@@ -79,7 +79,19 @@ function resolveInstalledExtensionPath(extensionId) {
     if (!match || typeof match.relativeLocation !== 'string') {
         return null;
     }
-    return path.join(EXTENSIONS_DIR, match.relativeLocation);
+    // Guard against a malformed or tampered extensions.json whose
+    // relativeLocation escapes EXTENSIONS_DIR via `..` segments or an
+    // absolute path. No dedicated test module exists for this helper; the
+    // containment logic is load-bearing so the check stays explicit here.
+    const candidate = path.resolve(EXTENSIONS_DIR, match.relativeLocation);
+    const root = path.resolve(EXTENSIONS_DIR) + path.sep;
+    if (!candidate.startsWith(root)) {
+        return null;
+    }
+    if (!fs.existsSync(candidate)) {
+        return null;
+    }
+    return candidate;
 }
 
 /**
