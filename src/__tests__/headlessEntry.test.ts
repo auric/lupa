@@ -133,3 +133,98 @@ describe('runHeadlessFromEnv', () => {
         );
     });
 });
+
+// Regression for round-3 review blocker: ServiceManager.initializeFoundationServices
+// invokes gitOperations.initialize() on extension activation, BEFORE the headless
+// runner gets a chance to pass { persist: false } in diffResolver. Without a guard
+// at this seam the auto-selected repository path is written to the analyzed repo's
+// .vscode/lupa.json.
+describe('ServiceManager foundation init — headless persistence guard', () => {
+    const originalHeadless = process.env.LUPA_HEADLESS_MODE;
+
+    beforeEach(() => {
+        vi.resetModules();
+    });
+
+    afterEach(() => {
+        if (originalHeadless === undefined) {
+            delete process.env.LUPA_HEADLESS_MODE;
+        } else {
+            process.env.LUPA_HEADLESS_MODE = originalHeadless;
+        }
+    });
+
+    async function runFoundationPhase(): Promise<{
+        initSpy: ReturnType<typeof vi.fn>;
+        setSelectedRepoSpy: ReturnType<typeof vi.fn>;
+    }> {
+        const initSpy = vi.fn().mockResolvedValue(true);
+        const setSelectedRepoSpy = vi.fn();
+
+        // Vitest 4 requires 'function' syntax for constructor mocks used
+        // with `new` — arrow callbacks are rejected with a warning and yield
+        // an undefined instance.
+        vi.doMock('../services/gitOperationsManager', () => ({
+            GitOperationsManager: vi.fn(function (
+                this: Record<string, unknown>
+            ) {
+                this.initialize = initSpy;
+                this.getRepository = () => undefined;
+                this.dispose = vi.fn();
+            }),
+        }));
+        vi.doMock('../services/workspaceSettingsService', () => ({
+            WorkspaceSettingsService: vi.fn(function (
+                this: Record<string, unknown>
+            ) {
+                this.setSelectedRepositoryPath = setSelectedRepoSpy;
+                this.getSelectedRepositoryPath = () => undefined;
+                this.dispose = vi.fn();
+            }),
+        }));
+        vi.doMock('../services/uiManager', () => ({
+            UIManager: vi.fn(function (this: Record<string, unknown>) {
+                this.dispose = vi.fn();
+            }),
+        }));
+        vi.doMock('../services/loggingService', () => ({
+            LoggingService: {
+                getInstance: () => ({
+                    initialize: vi.fn(),
+                    dispose: vi.fn(),
+                }),
+            },
+            Log: {
+                info: vi.fn(),
+                warn: vi.fn(),
+                error: vi.fn(),
+                debug: vi.fn(),
+            },
+        }));
+        vi.doMock('../services/statusBarService', () => ({
+            StatusBarService: {
+                getInstance: () => ({ dispose: vi.fn() }),
+            },
+        }));
+
+        const { ServiceManager } = await import('../services/serviceManager');
+        const sm = new ServiceManager({ subscriptions: [] } as never);
+        // Phases 2/3 aren't mocked; we only need Phase 1 behavior. Swallow
+        // any downstream error so the assertion below still runs.
+        await sm.initialize().catch(() => {});
+        return { initSpy, setSelectedRepoSpy };
+    }
+
+    it('passes { persist: false } and does NOT write setSelectedRepositoryPath when LUPA_HEADLESS_MODE=1', async () => {
+        process.env.LUPA_HEADLESS_MODE = '1';
+        const { initSpy, setSelectedRepoSpy } = await runFoundationPhase();
+        expect(initSpy).toHaveBeenCalledWith({ persist: false });
+        expect(setSelectedRepoSpy).not.toHaveBeenCalled();
+    });
+
+    it('passes { persist: true } when LUPA_HEADLESS_MODE is not set', async () => {
+        delete process.env.LUPA_HEADLESS_MODE;
+        const { initSpy } = await runFoundationPhase();
+        expect(initSpy).toHaveBeenCalledWith({ persist: true });
+    });
+});

@@ -79,6 +79,9 @@ describe('resolveDiff', () => {
             base: 'abc',
             compare: 'def',
         });
+        expect(services.gitOperations.initialize).toHaveBeenCalledWith({
+            persist: false,
+        });
     });
 
     it('surfaces compareBranches errors', async () => {

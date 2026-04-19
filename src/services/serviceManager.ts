@@ -47,6 +47,7 @@ import { RetractFindingTool } from '../tools/retractFindingTool';
 import { ValidateClaimTool } from '../tools/validateClaimTool';
 
 import { Log } from './loggingService';
+import { isHeadlessMode } from '../eval/headlessEntry';
 
 /**
  * Service registry interface for type-safe service access
@@ -155,7 +156,11 @@ export class ServiceManager implements vscode.Disposable {
         this.services.gitOperations = new GitOperationsManager(
             this.services.workspaceSettings
         );
-        await this.services.gitOperations.initialize();
+        // persist: false in headless mode — the analyzed repo is read-only,
+        // so don't dirty its .vscode/lupa.json with an auto-selected path.
+        await this.services.gitOperations.initialize({
+            persist: !isHeadlessMode(),
+        });
 
         // Get Git repository root path for UIManager dependency injection
         const repository = this.services.gitOperations.getRepository();
