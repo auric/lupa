@@ -199,8 +199,11 @@ export async function runHeadlessFromEnv(
                 // can inspect the partial result. Surface as a non-zero
                 // exit via the outer catch: partial findings are unvalidated
                 // (PostAnalysisPipeline only runs when completed is true).
+                const suffix = args.out
+                    ? `see ${args.out} for partial result`
+                    : 'rerun with --out <path> to capture partial result';
                 throw new Error(
-                    'Analysis ended without completing (possible rate-limit, quota exhaustion, or degraded exit); see --out for partial result'
+                    `Analysis ended without completing (possible rate-limit, quota exhaustion, or degraded exit); ${suffix}`
                 );
             }
             if (!args.silent) {
