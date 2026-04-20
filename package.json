@@ -156,6 +156,7 @@
         "test:coverage": "vitest run --coverage",
         "headless": "node scripts/eval/launchHeadless.js",
         "headless:setup": "node scripts/eval/setupHeadless.js",
+        "eval": "npx vite-node scripts/eval/run-eval.ts --",
         "vitest": "vitest"
     },
     "devDependencies": {

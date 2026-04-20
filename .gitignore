@@ -4,3 +4,5 @@
 /tsconfig.tsbuildinfo
 /.cache/*
 /.vscode-test/
+/eval/.cache/
+/eval/results/
