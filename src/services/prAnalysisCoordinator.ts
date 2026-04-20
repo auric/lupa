@@ -4,6 +4,7 @@ import { AnalysisOrchestrator } from '../coordinators/analysisOrchestrator';
 import { CopilotModelCoordinator } from '../coordinators/copilotModelCoordinator';
 import { CommandRegistry } from '../coordinators/commandRegistry';
 import { getErrorMessage } from '../utils/errorUtils';
+import { HeadlessInitializationError } from './gitService';
 
 /**
  * PRAnalysisCoordinator is the main entry point for the extension.
@@ -103,6 +104,14 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
         await this.initializationPromise;
         if (!this.services) {
             if (this.initializationError) {
+                // HeadlessInitializationError carries an operator-actionable
+                // message; preserve class and text unchanged.
+                if (
+                    this.initializationError instanceof
+                    HeadlessInitializationError
+                ) {
+                    throw this.initializationError;
+                }
                 throw new Error(
                     `PRAnalysisCoordinator initialization failed: ${this.initializationError.message}`,
                     { cause: this.initializationError }

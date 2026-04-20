@@ -8,6 +8,7 @@ import { ChatParticipantService } from './chatParticipantService';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { UIManager } from './uiManager';
 import { GitOperationsManager } from './gitOperationsManager';
+import { HeadlessInitializationError } from './gitService';
 import { ToolTestingWebviewService } from './toolTestingWebview';
 
 import { LanguageModelToolProvider } from './languageModelToolProvider';
@@ -121,6 +122,11 @@ export class ServiceManager implements vscode.Disposable {
             this.initialized = true;
             return this.services as IServiceRegistry;
         } catch (error) {
+            // HeadlessInitializationError carries an operator-actionable
+            // message; preserve class and text unchanged.
+            if (error instanceof HeadlessInitializationError) {
+                throw error;
+            }
             throw new Error(
                 `Service initialization failed: ${getErrorMessage(error)}`
             );

@@ -128,7 +128,7 @@ export function filterBinaryDiffs(diffText: string): {
  * guard is trying to surface. Throwing this distinct class lets the catch
  * re-throw it unchanged so the launcher sentinel carries the real message.
  */
-class HeadlessInitializationError extends Error {
+export class HeadlessInitializationError extends Error {
     constructor(message: string) {
         super(message);
         this.name = 'HeadlessInitializationError';
