@@ -41,6 +41,12 @@ export async function invokeHeadless(
         );
     }
 
+    // Kind-B (sha:) fixtures are cloned --no-checkout for speed, but Lupa's
+    // tools need a working tree to read files. Check out the head SHA before
+    // spawning VS Code so get_file_diff and friends have real content. Safe
+    // to do sequentially — the eval harness runs fixtures one at a time.
+    await ensureHeadCheckout(opts.workspaceRoot, opts.headRef);
+
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lupa-eval-'));
     const outPath = path.join(tmpDir, 'result.json');
     const startedAt = Date.now();
@@ -132,6 +138,36 @@ export async function invokeHeadless(
             );
         });
     }
+}
+
+async function ensureHeadCheckout(
+    workspaceRoot: string,
+    headRef: string
+): Promise<void> {
+    if (!headRef.startsWith('sha:')) {
+        return;
+    }
+    const sha = headRef.slice('sha:'.length);
+    await new Promise<void>((resolve, reject) => {
+        const proc = spawn('git', ['checkout', '--force', sha], {
+            cwd: workspaceRoot,
+            stdio: 'pipe',
+        });
+        let stderr = '';
+        proc.stderr?.on('data', (d) => (stderr += d.toString()));
+        proc.on('error', reject);
+        proc.on('close', (code) => {
+            if (code === 0) {
+                resolve();
+                return;
+            }
+            reject(
+                new Error(
+                    `git checkout ${sha} in ${workspaceRoot} failed (exit ${code}): ${stderr.trim()}`
+                )
+            );
+        });
+    });
 }
 
 function validateRef(ref: string, fieldName: string): void {
