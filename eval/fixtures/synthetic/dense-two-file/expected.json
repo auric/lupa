@@ -1,0 +1,21 @@
+{
+    "intent": "Refactor the AST parser module for clarity (rename node kinds, simplify the identifier regex) and tidy up the matching test suite.",
+    "expected_findings": [
+        {
+            "severity": "HIGH",
+            "category": "security_vulnerability",
+            "path": "src/parser.ts",
+            "lineHint": 9,
+            "mustMention": ["anchor", "regex"]
+        },
+        {
+            "severity": "MEDIUM",
+            "category": "regression_risk",
+            "path": "src/parser.test.ts",
+            "lineHint": 27,
+            "mustMention": ["weaker assertion", "regression"]
+        }
+    ],
+    "minFilesExamined": 2,
+    "maxFalsePositivesTolerated": 1
+}
