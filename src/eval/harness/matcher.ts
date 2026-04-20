@@ -12,12 +12,19 @@ interface Candidate {
 }
 
 /**
- * Greedy one-to-one matcher between expected findings and produced findings.
- * For each expected entry (in order) the best unmatched produced finding is
- * selected by (1) stronger match reason (both > category > severity),
- * (2) smaller line-hint distance, (3) lowest remaining index; `mustMention`
- * acts as a hard substring filter when non-empty. Precision/recall/F1 are
- * derived from the final matching.
+ * Greedy one-to-one pairing of produced findings with expected findings (per Quest 8.1).
+ *
+ * A candidate produced finding matches an expected one when:
+ *   - `produced.file === expected.path` (exact)
+ *   - line distance between `produced.lineRange` and `expected.lineHint` ≤ LINE_HINT_TOLERANCE (±5)
+ *   - `produced.category === expected.category` OR `produced.severity === expected.severity`
+ *   - if `expected.mustMention` is non-empty: at least one substring (case-insensitive) appears
+ *     somewhere in `produced.title + ' ' + produced.description`
+ *
+ * Expected findings are iterated in input order; each is paired with its best remaining candidate,
+ * ranked by (1) 'both'-axis match over single-axis, (2) smaller line distance, (3) lower array index.
+ * Returns matched pairs, unmatched expected (missed bugs), unmatched produced (false positives),
+ * and precision/recall/F1 where empty-both yields 1/1/1 and empty-produced-with-expected yields 0/0/0.
  */
 export function matchFindings(
     produced: readonly RecordedFinding[],
@@ -96,6 +103,10 @@ export function matchFindings(
     return { matched, missedExpected, falsePositives, precision, recall, f1 };
 }
 
+/**
+ * Distance from a line hint to a line range.
+ * Returns 0 when `lineHint` falls inside `[start, end]`; otherwise the distance to the nearest edge.
+ */
 function lineDistance(
     range: readonly [number, number],
     lineHint: number

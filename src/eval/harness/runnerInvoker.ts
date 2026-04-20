@@ -33,6 +33,8 @@ export type InvokeHeadlessResult =
 export async function invokeHeadless(
     opts: InvokeHeadlessOptions
 ): Promise<InvokeHeadlessResult> {
+    validateRef(opts.baseRef, 'baseRef');
+    validateRef(opts.headRef, 'headRef');
     if (opts.timeoutMs < MIN_TIMEOUT_MS) {
         throw new Error(
             `invokeHeadless: timeoutMs must be >= ${MIN_TIMEOUT_MS} (got ${opts.timeoutMs})`
@@ -43,6 +45,7 @@ export async function invokeHeadless(
     const outPath = path.join(tmpDir, 'result.json');
     const startedAt = Date.now();
 
+    let watchdog: NodeJS.Timeout | undefined;
     try {
         const args = [
             LAUNCHER_SCRIPT,
@@ -72,7 +75,7 @@ export async function invokeHeadless(
         const watchdogMs =
             opts.timeoutMs + LAUNCHER_HEADROOM_MS + HARNESS_HEADROOM_MS;
         let watchdogFired = false;
-        const watchdog = setTimeout(() => {
+        watchdog = setTimeout(() => {
             watchdogFired = true;
             process.stderr.write(
                 `[harness] watchdog: killing launcher after ${watchdogMs}ms\n`
@@ -87,7 +90,6 @@ export async function invokeHeadless(
                 resolve(1);
             });
         });
-        clearTimeout(watchdog);
 
         const durationMs = Date.now() - startedAt;
         const parsed = await tryReadResult(outPath);
@@ -121,9 +123,38 @@ export async function invokeHeadless(
         }
         return outcome;
     } finally {
-        await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {
-            // swallow cleanup errors — temp dir may already be gone
+        if (watchdog !== undefined) {
+            clearTimeout(watchdog);
+        }
+        await fs.rm(tmpDir, { recursive: true, force: true }).catch((err) => {
+            process.stderr.write(
+                `[harness] warn: failed to remove temp dir ${tmpDir}: ${err instanceof Error ? err.message : String(err)}\n`
+            );
         });
+    }
+}
+
+function validateRef(ref: string, fieldName: string): void {
+    if (typeof ref !== 'string' || ref.length === 0) {
+        throw new Error(`${fieldName}: must be a non-empty string`);
+    }
+    const hasScheme = ref.startsWith('dir:') || ref.startsWith('sha:');
+    if (hasScheme) {
+        const body = ref.slice(ref.indexOf(':') + 1);
+        if (body.length === 0) {
+            throw new Error(
+                `${fieldName}: empty body after scheme — got '${ref}'`
+            );
+        }
+        return;
+    }
+    for (let i = 0; i < ref.length; i++) {
+        const code = ref.charCodeAt(i);
+        if (code <= 0x1f || code === 0x20) {
+            throw new Error(
+                `${fieldName}: contains whitespace or control characters — got '${ref}'`
+            );
+        }
     }
 }
 
