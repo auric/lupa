@@ -22,7 +22,6 @@ vi.mock('../services/loggingService', () => ({
         debug: vi.fn(),
     },
 }));
-import { Log } from '../services/loggingService';
 
 const SAMPLE_DIFF = `diff --git a/src/a.ts b/src/a.ts
 index 1234567..abcdefg 100644
@@ -251,6 +250,42 @@ describe('runHeadless', () => {
         );
     });
 
+    it('throws when the selected model identifier does not match the request', async () => {
+        // Guards against CopilotModelManager's silent fallback to the first
+        // available chat model — which on a Pro install can be a premium
+        // model (Claude Sonnet, gpt-5) and consume paid quota.
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        const services = makeServices({
+            selectedModel: {
+                id: 'claude-sonnet-4',
+                name: 'Claude Sonnet 4',
+                family: 'claude-sonnet-4',
+                vendor: 'copilot',
+                maxInputTokens: 200000,
+            },
+        });
+        await expect(runHeadless(baseOpts(), services)).rejects.toThrow(
+            /not available.*fell back to 'copilot\/claude-sonnet-4'/
+        );
+    });
+
+    it('does not invoke analysisEngine.analyze when the model mismatches', async () => {
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        const analyzeSpy = vi.fn();
+        const services = makeServices({
+            analyzeSpy,
+            selectedModel: {
+                id: 'gpt-5',
+                name: 'GPT-5',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 200000,
+            },
+        });
+        await expect(runHeadless(baseOpts(), services)).rejects.toThrow();
+        expect(analyzeSpy).not.toHaveBeenCalled();
+    });
+
     it('invokes analysisEngine.analyze with the shared input shape', async () => {
         vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
         const analyzeSpy = vi
@@ -285,9 +320,10 @@ describe('runHeadless', () => {
         expect(typeof output.onProgress).toBe('function');
     });
 
-    it('logs a warning and continues when the requested model is unavailable', async () => {
+    it('throws when the requested model is unavailable and a fallback is selected', async () => {
+        // See the model-mismatch tests above: the headless path must refuse
+        // to run on any model other than the requested one.
         vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
-        vi.mocked(Log.warn).mockClear();
         const services = makeServices({
             selectedModel: {
                 id: 'gpt-4o-mini',
@@ -298,13 +334,9 @@ describe('runHeadless', () => {
             },
         });
 
-        const result = await runHeadless(baseOpts(), services);
-
-        expect(Log.warn).toHaveBeenCalledTimes(1);
-        const warnMsg = vi.mocked(Log.warn).mock.calls[0][0] as string;
-        expect(warnMsg).toContain('copilot/gpt-4.1');
-        expect(warnMsg).toContain('copilot/gpt-4o-mini');
-        expect(result.modelId).toBe('gpt-4o-mini');
+        await expect(runHeadless(baseOpts(), services)).rejects.toThrow(
+            /copilot\/gpt-4\.1.*copilot\/gpt-4o-mini/
+        );
     });
 });
 
