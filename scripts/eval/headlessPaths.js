@@ -133,7 +133,11 @@ function ensureProfileSettings() {
     try {
         const raw = fs.readFileSync(PROFILE_SETTINGS_PATH, 'utf8');
         existing = JSON.parse(raw);
-        if (!existing || typeof existing !== 'object') {
+        if (
+            !existing ||
+            typeof existing !== 'object' ||
+            Array.isArray(existing)
+        ) {
             existing = {};
         }
     } catch (err) {
