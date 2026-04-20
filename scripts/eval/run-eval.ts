@@ -8,6 +8,7 @@
 
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import readline from 'node:readline';
 import { spawn } from 'node:child_process';
 import { loadFixtures } from '../../src/eval/harness/fixtureLoader';
 import { invokeHeadless } from '../../src/eval/harness/runnerInvoker';
@@ -39,10 +40,17 @@ Options:
                        (default: ${DEFAULT_TIMEOUT_MS})
   --bail-on-error      Abort on the first runner failure
   --dry-run            Load fixtures + print the plan; skip runner invocation
+  --yes                Skip the interactive confirmation prompt (required for
+                       non-interactive / CI use)
   --out-dir <path>     Override where the JSON/Markdown reports are written
                        (default: ${RESULTS_ROOT})
   --silent             Suppress per-run progress lines on stderr
   -h, --help           Print this help and exit 0
+
+By default the harness prints its plan and asks "Proceed? [y/N]" on the
+terminal before spawning any VS Code instances. In non-interactive contexts
+(no TTY on stdin) it refuses to run unless --yes is passed. Each run
+consumes Copilot quota — treat --yes with care.
 `;
 
 class CliError extends Error {
@@ -60,6 +68,7 @@ interface ParsedArgs {
     timeoutMs: number;
     bailOnError: boolean;
     dryRun: boolean;
+    yes: boolean;
     outDir: string;
     silent: boolean;
     help: boolean;
@@ -74,6 +83,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
         timeoutMs: DEFAULT_TIMEOUT_MS,
         bailOnError: false,
         dryRun: false,
+        yes: false,
         outDir: RESULTS_ROOT,
         silent: false,
         help: false,
@@ -93,6 +103,10 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
         }
         if (a === '--dry-run') {
             out.dryRun = true;
+            continue;
+        }
+        if (a === '--yes') {
+            out.yes = true;
             continue;
         }
         if (a === '--silent') {
@@ -247,6 +261,45 @@ async function relocateReports(
     return { jsonPath: newJson, markdownPath: newMd };
 }
 
+async function promptYesNo(question: string): Promise<boolean> {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stderr,
+    });
+    try {
+        const answer = await new Promise<string>((resolve) => {
+            rl.question(question, resolve);
+        });
+        const normalized = answer.trim().toLowerCase();
+        return normalized === 'y' || normalized === 'yes';
+    } finally {
+        rl.close();
+    }
+}
+
+async function confirmOrRefuse(
+    args: ParsedArgs,
+    fixtures: readonly LoadedFixture[]
+): Promise<boolean> {
+    printPlan(args, fixtures);
+    const totalRuns = fixtures.length * args.models.length * args.seeds;
+    if (args.yes) {
+        return true;
+    }
+    if (!process.stdin.isTTY) {
+        throw new CliError(
+            `Refusing to spawn ${totalRuns} analysis runs in a non-interactive ` +
+                `context without --yes. Re-run with --yes (to proceed) or --dry-run ` +
+                `(to just print the plan).`
+        );
+    }
+    process.stderr.write(
+        `\nAbout to invoke ${totalRuns} full Lupa analysis runs. ` +
+            `Each run spawns a sandboxed VS Code and consumes Copilot quota.\n`
+    );
+    return await promptYesNo('Proceed? [y/N] ');
+}
+
 async function main(): Promise<number> {
     const args = parseArgs(process.argv.slice(2));
     if (args.help) {
@@ -266,6 +319,11 @@ async function main(): Promise<number> {
 
     if (args.dryRun) {
         printPlan(args, fixtures);
+        return 0;
+    }
+
+    if (!(await confirmOrRefuse(args, fixtures))) {
+        process.stderr.write('Aborted.\n');
         return 0;
     }
 
