@@ -37,6 +37,14 @@ export interface ModelDetail {
 export interface ModelSelectionOptions {
     /** Model identifier in 'vendor/id' format */
     identifier?: string;
+    /**
+     * When false, the chosen model is held in memory on this manager only
+     * and is NOT written to the workspace settings file. Defaults to true
+     * to preserve the existing behavior for interactive (webview / chat)
+     * callers. The headless entry point sets this to false so a CI run
+     * does not dirty the target repository's .vscode/lupa.json.
+     */
+    persist?: boolean;
 }
 
 /**
@@ -146,6 +154,8 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
                 }
             }
 
+            const shouldPersist = options?.persist !== false;
+
             let selector: vscode.LanguageModelChatSelector = {};
 
             if (options?.identifier) {
@@ -158,7 +168,9 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
                         `Invalid model identifier format: ${options.identifier}, using default`
                     );
                     // Clear invalid identifier so we don't repeatedly fall back
-                    this.settings.setPreferredModelIdentifier('');
+                    if (shouldPersist) {
+                        this.settings.setPreferredModelIdentifier('');
+                    }
                     selector = { vendor: 'copilot', id: this.DEFAULT_MODEL_ID };
                 }
             } else {
@@ -179,7 +191,7 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
             this.currentModel = model;
 
             // Save preference in canonical vendor/id form
-            if (options?.identifier) {
+            if (options?.identifier && shouldPersist) {
                 const parsed = this.parseModelIdentifier(options.identifier);
                 if (parsed) {
                     const canonical = `${parsed.vendor}/${parsed.id}`;

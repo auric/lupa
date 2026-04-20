@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { GitService } from './gitService';
+import type { GitDiffResult, GitInitializeOptions } from './gitService';
 import type { WorkspaceSettingsService } from './workspaceSettingsService';
 import type { AnalysisTargetType } from '../types/analysisTypes';
 
@@ -29,10 +30,14 @@ export class GitOperationsManager implements vscode.Disposable {
 
     /**
      * Initialize Git service
+     * @param options Optional init flags (see GitInitializeOptions)
      * @returns true if Git is available, false otherwise
      */
-    public async initialize(): Promise<boolean> {
-        return await this.gitService.initialize(this.workspaceSettings);
+    public async initialize(options?: GitInitializeOptions): Promise<boolean> {
+        return await this.gitService.initialize(
+            this.workspaceSettings,
+            options
+        );
     }
 
     /**
@@ -88,6 +93,22 @@ export class GitOperationsManager implements vscode.Disposable {
                 return await this.gitService.getUncommittedChanges();
             }
         }
+    }
+
+    /**
+     * Compare two refs and return the unified diff. Thin delegate over
+     * GitService.compareBranches so callers (e.g. the headless diff
+     * resolver) go through the manager and inherit any future changes to
+     * init/repository-selection flow.
+     */
+    public async compareBranches(
+        baseRef: string,
+        headRef: string
+    ): Promise<GitDiffResult> {
+        return this.gitService.compareBranches({
+            base: baseRef,
+            compare: headRef,
+        });
     }
 
     /**

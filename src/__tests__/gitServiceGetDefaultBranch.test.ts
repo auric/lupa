@@ -52,6 +52,7 @@ vi.mock('child_process', () => ({
 
 import { GitService } from '../services/gitService';
 import { Log } from '../services/loggingService';
+import * as vscode from 'vscode';
 import * as child_process from 'child_process';
 import { EventEmitter } from 'events';
 
@@ -471,5 +472,99 @@ describe('GitService.getDefaultBranch', () => {
                 expect.any(Error)
             );
         });
+    });
+});
+
+describe('GitService.initialize persistence', () => {
+    let gitService: GitService;
+    let setSelectedRepositoryPath: ReturnType<typeof vi.fn>;
+    let workspaceSettings: {
+        getSelectedRepositoryPath: ReturnType<typeof vi.fn>;
+        setSelectedRepositoryPath: ReturnType<typeof vi.fn>;
+    };
+
+    beforeEach(() => {
+        (GitService as any).instance = null;
+        gitService = GitService.getInstance();
+
+        const repo = {
+            rootUri: { fsPath: '/test/repo' } as any,
+            state: { submodules: [] },
+        } as any;
+        const gitApi = { repositories: [repo] };
+        vi.mocked(vscode.extensions.getExtension).mockReturnValue({
+            exports: {
+                enabled: true,
+                getAPI: () => gitApi,
+            },
+        } as any);
+
+        setSelectedRepositoryPath = vi.fn();
+        workspaceSettings = {
+            getSelectedRepositoryPath: vi.fn().mockReturnValue(undefined),
+            setSelectedRepositoryPath,
+        };
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('persists the auto-selected repository by default', async () => {
+        const ok = await gitService.initialize(workspaceSettings as any);
+
+        expect(ok).toBe(true);
+        expect(setSelectedRepositoryPath).toHaveBeenCalledWith('/test/repo');
+    });
+
+    it('does not persist the auto-selected repository when persist: false', async () => {
+        const ok = await gitService.initialize(workspaceSettings as any, {
+            persist: false,
+        });
+
+        expect(ok).toBe(true);
+        expect(setSelectedRepositoryPath).not.toHaveBeenCalled();
+    });
+});
+
+describe('GitService.initialize headless multi-repo guard', () => {
+    let gitService: GitService;
+    const previousHeadlessEnv = process.env.LUPA_HEADLESS_MODE;
+
+    beforeEach(() => {
+        (GitService as any).instance = null;
+        gitService = GitService.getInstance();
+        process.env.LUPA_HEADLESS_MODE = '1';
+
+        const repoA = {
+            rootUri: { fsPath: '/test/repo-a' } as any,
+            state: { submodules: [] },
+        } as any;
+        const repoB = {
+            rootUri: { fsPath: '/test/repo-b' } as any,
+            state: { submodules: [] },
+        } as any;
+        const gitApi = { repositories: [repoA, repoB] };
+        vi.mocked(vscode.extensions.getExtension).mockReturnValue({
+            exports: {
+                enabled: true,
+                getAPI: () => gitApi,
+            },
+        } as any);
+    });
+
+    afterEach(() => {
+        if (previousHeadlessEnv === undefined) {
+            delete process.env.LUPA_HEADLESS_MODE;
+        } else {
+            process.env.LUPA_HEADLESS_MODE = previousHeadlessEnv;
+        }
+        vi.clearAllMocks();
+    });
+
+    it('rejects with an actionable message instead of being swallowed by the catch', async () => {
+        await expect(gitService.initialize()).rejects.toThrow(
+            /Cannot resolve repository in headless mode/
+        );
     });
 });

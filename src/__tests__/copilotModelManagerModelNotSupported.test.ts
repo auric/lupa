@@ -61,3 +61,57 @@ describe('CopilotModelManager model not supported handling', () => {
         ).rejects.toThrow('model_not_supported');
     });
 });
+
+describe('CopilotModelManager selectModel persistence', () => {
+    let mockSettings: WorkspaceSettingsService;
+    let modelManager: CopilotModelManager;
+
+    beforeEach(() => {
+        mockSettings = createMockSettings(5);
+        vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
+            {
+                id: 'gpt-4.1',
+                name: 'GPT-4.1',
+                family: 'gpt-4',
+                vendor: 'copilot',
+                version: '1.0',
+                maxInputTokens: 128000,
+                sendRequest: vi.fn(),
+                countTokens: vi.fn().mockResolvedValue(10),
+            } as any,
+        ]);
+        modelManager = new CopilotModelManager(mockSettings);
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('persists the chosen identifier to settings by default', async () => {
+        await modelManager.selectModel({ identifier: 'copilot/gpt-4.1' });
+
+        expect(mockSettings.setPreferredModelIdentifier).toHaveBeenCalledWith(
+            'copilot/gpt-4.1'
+        );
+    });
+
+    it('does not write settings when persist is false', async () => {
+        await modelManager.selectModel({
+            identifier: 'copilot/gpt-4.1',
+            persist: false,
+        });
+
+        expect(mockSettings.setPreferredModelIdentifier).not.toHaveBeenCalled();
+    });
+
+    it('does not clear settings on an invalid identifier when persist is false', async () => {
+        // Malformed identifier hits the fallback path that would otherwise
+        // call setPreferredModelIdentifier('') to purge a bad saved value.
+        await modelManager.selectModel({
+            identifier: '/bad',
+            persist: false,
+        });
+
+        expect(mockSettings.setPreferredModelIdentifier).not.toHaveBeenCalled();
+    });
+});

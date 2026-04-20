@@ -9,6 +9,7 @@ import type {
 import { Log } from './loggingService';
 import { getErrorMessage } from '../utils/errorUtils';
 import type { WorkspaceSettingsService } from './workspaceSettingsService';
+import { isHeadlessMode } from '../eval/headlessConstants';
 
 /**
  * Options for comparing branches
@@ -27,6 +28,20 @@ export interface GitDiffResult {
     error?: string;
     /** Binary files that were excluded from the diff */
     binaryFiles?: string[];
+}
+
+/**
+ * Options controlling GitService initialization side-effects
+ */
+export interface GitInitializeOptions {
+    /**
+     * When false, the chosen repository is held in memory on this service
+     * only and is NOT written to the workspace settings file. Defaults to
+     * true to preserve the existing behavior for interactive (webview /
+     * chat) callers. The headless entry point sets this to false so a CI
+     * run does not dirty the target repository's .vscode/lupa.json.
+     */
+    persist?: boolean;
 }
 
 /**
@@ -106,6 +121,21 @@ export function filterBinaryDiffs(diffText: string): {
 }
 
 /**
+ * Marker error used by the headless-mode multi-repo guard inside
+ * GitService.initialize. The initialize() body has a broad try/catch that
+ * maps unexpected failures (git extension missing, API throwing, etc.) to
+ * Log.error + return false — swallowing the actionable diagnostic the
+ * guard is trying to surface. Throwing this distinct class lets the catch
+ * re-throw it unchanged so the launcher sentinel carries the real message.
+ */
+export class HeadlessInitializationError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'HeadlessInitializationError';
+    }
+}
+
+/**
  * GitService handles Git operations for the PR Analyzer
  */
 export class GitService {
@@ -141,11 +171,14 @@ export class GitService {
     /**
      * Initialize the Git service with smart repository selection
      * @param workspaceSettings Optional settings service for persistence
+     * @param options Optional init flags (see GitInitializeOptions)
      * @returns True if Git API is available and repository is found
      */
     public async initialize(
-        workspaceSettings?: WorkspaceSettingsService
+        workspaceSettings?: WorkspaceSettingsService,
+        options?: GitInitializeOptions
     ): Promise<boolean> {
+        const shouldPersist = options?.persist !== false;
         try {
             if (workspaceSettings) {
                 this.workspaceSettings = workspaceSettings;
@@ -199,21 +232,40 @@ export class GitService {
                     `Auto-selected main repository: ${autoSelected.rootUri.fsPath}`
                 );
                 this.repository = autoSelected;
-                this.saveRepositorySelection(autoSelected);
+                if (shouldPersist) {
+                    this.saveRepositorySelection(autoSelected);
+                }
                 return true;
             }
 
-            // Multiple main repositories or only submodules - prompt user
+            // Multiple main repositories or only submodules - prompt user.
+            // In headless mode there is no user to prompt; surface a clear
+            // error so the launcher's sentinel carries actionable context
+            // instead of the extension host blocking on an invisible UI.
+            if (isHeadlessMode()) {
+                throw new HeadlessInitializationError(
+                    'Cannot resolve repository in headless mode: workspace ' +
+                        'contains multiple git repositories. Specify a ' +
+                        'single-repo workspace via --workspace.'
+                );
+            }
             const selectedRepo = await this.showRepositoryPicker();
             if (!selectedRepo) {
                 // User canceled repository selection
                 return false;
             }
             this.repository = selectedRepo;
-            this.saveRepositorySelection(selectedRepo);
+            if (shouldPersist) {
+                this.saveRepositorySelection(selectedRepo);
+            }
 
             return true;
         } catch (error) {
+            // Let the headless multi-repo diagnostic escape unchanged so the
+            // launcher sentinel carries the actionable message to the operator.
+            if (error instanceof HeadlessInitializationError) {
+                throw error;
+            }
             Log.error('Failed to initialize Git service:', error);
             return false;
         }

@@ -4,6 +4,7 @@ import { AnalysisOrchestrator } from '../coordinators/analysisOrchestrator';
 import { CopilotModelCoordinator } from '../coordinators/copilotModelCoordinator';
 import { CommandRegistry } from '../coordinators/commandRegistry';
 import { getErrorMessage } from '../utils/errorUtils';
+import { HeadlessInitializationError } from './gitService';
 
 /**
  * PRAnalysisCoordinator is the main entry point for the extension.
@@ -13,6 +14,8 @@ import { getErrorMessage } from '../utils/errorUtils';
 export class PRAnalysisCoordinator implements vscode.Disposable {
     private serviceManager: ServiceManager;
     private services: IServiceRegistry | null = null;
+    private initializationError: Error | null = null;
+    private readonly initializationPromise: Promise<void>;
 
     // Specialized coordinators
     private analysisOrchestrator: AnalysisOrchestrator | null = null;
@@ -25,7 +28,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
      */
     constructor(private readonly context: vscode.ExtensionContext) {
         this.serviceManager = new ServiceManager(context);
-        this.initializeAsync();
+        this.initializationPromise = this.initializeAsync();
     }
 
     /**
@@ -56,6 +59,8 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
 
             this.commandRegistry.registerAllCommands();
         } catch (error) {
+            this.initializationError =
+                error instanceof Error ? error : new Error(String(error));
             const errorMessage = getErrorMessage(error);
             vscode.window.showErrorMessage(
                 `Failed to initialize PR Analyzer: ${errorMessage}`
@@ -85,6 +90,37 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
      * Get the service registry for external access
      */
     public getServices(): IServiceRegistry | null {
+        return this.services;
+    }
+
+    /**
+     * Await initialization and return the service registry.
+     * Used by headless entry points that must wait for wiring to complete
+     * before invoking the analysis engine.
+     */
+    // TEST GAP: waitForInitialization error-detail preservation not covered
+    // (no prAnalysisCoordinator test module exists).
+    public async waitForInitialization(): Promise<IServiceRegistry> {
+        await this.initializationPromise;
+        if (!this.services) {
+            if (this.initializationError) {
+                // HeadlessInitializationError carries an operator-actionable
+                // message; preserve class and text unchanged.
+                if (
+                    this.initializationError instanceof
+                    HeadlessInitializationError
+                ) {
+                    throw this.initializationError;
+                }
+                throw new Error(
+                    `PRAnalysisCoordinator initialization failed: ${this.initializationError.message}`,
+                    { cause: this.initializationError }
+                );
+            }
+            throw new Error(
+                'PRAnalysisCoordinator initialization failed; services unavailable'
+            );
+        }
         return this.services;
     }
 
