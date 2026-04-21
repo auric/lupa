@@ -4,7 +4,6 @@ import { DiffUtils } from '../utils/diffUtils';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { RecordedFinding } from '../types/findingTypes';
 import { resolveDiff } from './diffResolver';
-import { Log } from '../services/loggingService';
 
 export interface HeadlessRunnerOptions {
     workspaceRoot: string;
@@ -61,10 +60,19 @@ export async function runHeadless(
         identifier: opts.modelIdentifier,
         persist: false,
     });
+    // No silent fallback in the headless path: if the requested model is
+    // unavailable, CopilotModelManager.selectModel returns the first
+    // available chat model, which on a Pro install can be a premium-tier
+    // model (Claude Sonnet, gpt-5, ...) and burn paid quota without the
+    // caller knowing. Eval runs and CI jobs must fail loudly instead.
     const actualIdentifier = `${model.vendor}/${model.id}`;
     if (actualIdentifier !== opts.modelIdentifier) {
-        Log.warn(
-            `Requested model ${opts.modelIdentifier} unavailable; fell back to ${actualIdentifier}`
+        throw new Error(
+            `Requested model '${opts.modelIdentifier}' is not available; ` +
+                `CopilotModelManager fell back to '${actualIdentifier}'. ` +
+                `Refusing to run on an unintended model (risks premium quota). ` +
+                `Ensure the requested model is registered in vscode.lm ` +
+                `(e.g. sign in to Copilot and enable the model in the Copilot Chat model picker).`
         );
     }
 

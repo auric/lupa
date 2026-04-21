@@ -1,0 +1,14 @@
+{
+    "intent": "Refactor processFile() to drop the try/finally and use a straight-line control flow, with a fast path for empty files.",
+    "expected_findings": [
+        {
+            "severity": "MEDIUM",
+            "category": "resource_leak",
+            "path": "src/fileProcessor.ts",
+            "lineHint": 19,
+            "mustMention": ["close", "leak"]
+        }
+    ],
+    "minFilesExamined": 1,
+    "maxFalsePositivesTolerated": 1
+}

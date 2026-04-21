@@ -238,6 +238,14 @@ function readSentinelExitCode(childExitCode) {
         process.stderr.write(`Headless sentinel is not valid JSON: ${raw}\n`);
         return 1;
     }
+    // Surface the error payload on stderr so the eval harness's stderr-tail
+    // capture can report the real cause instead of only the pre-spawn
+    // @vscode/test-electron banner. Electron on Windows doesn't route
+    // extension-host output to the launcher's inherited stdio, so without
+    // this step any runtime failure inside runHeadlessFromEnv is opaque.
+    if (typeof parsed.error === 'string' && parsed.error.length > 0) {
+        process.stderr.write(`[headless error] ${parsed.error}\n`);
+    }
     return typeof parsed.exitCode === 'number' ? parsed.exitCode : 1;
 }
 

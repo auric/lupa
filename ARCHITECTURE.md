@@ -207,3 +207,38 @@ Three timeout strategies based on operation type:
     - `createMockGitRepository()` — Git repository
     - `createMockPosition()` / `createMockRange()` — VS Code Position/Range with proper methods
 - **Vitest 4**: Constructor mocks require `function` syntax, not arrow functions
+
+## Eval Harness
+
+**Canonical way to validate prompt-affecting or pipeline-affecting changes.** Before merging any PR that touches prompts, tool schemas, the orchestration loop, or `AnalysisEngine`, run the harness and attach the report to the PR description.
+
+### Running
+
+```bash
+npx vite-node scripts/eval/run-eval.ts --dry-run            # load fixtures, print the plan
+npx vite-node scripts/eval/run-eval.ts                      # full run, 5 fixtures × 2 models × 3 seeds = 30 runs
+npx vite-node scripts/eval/run-eval.ts --fixtures synthetic # synthetic only
+```
+
+`npm run eval` is a convenience alias, but prefer direct `npx vite-node` invocation — npm intercepts flags like `--dry-run` and `--silent` before they reach the script.
+
+Requires `npm run headless:setup` to have run once (installs Copilot Chat into the sandboxed VS Code profile).
+
+### Flags
+
+`--models <csv>` · `--fixtures synthetic,real` · `--only <name,…>` · `--seeds 3` · `--timeout 600000` · `--bail-on-error` · `--dry-run` · `--out-dir <path>` · `--silent`
+
+### Fixtures
+
+- `eval/fixtures/synthetic/<name>/{base,head,expected.json}` — hand-authored mini-repos, diffed via `git diff --no-index`. Three exist: `off-by-one`, `dense-two-file` (Quest 5.1 pathology), `resource-leak`.
+- `eval/fixtures/real/<name>.json` — `{ repo, baseSha, headSha, intent, expected_findings, … }`. The harness shallow-clones the repo into `eval/.cache/<repoSlug>/` on first run.
+
+Schema details live in `src/eval/harness/types.ts` (`FixtureLabels`, `ExpectedFinding`). Matcher semantics (path-exact × line within ±5 × category-or-severity × optional `mustMention` substring) live in `src/eval/harness/matcher.ts`.
+
+### Output
+
+`eval/results/<utc-stamp>-<shortSha>.md` + sibling `.json`. Markdown has per-model summary (precision / recall / F1 / iterations / tokens / cost / wall-clock as mean ± stddev), per-fixture breakdown, and a failure list. JSON carries raw per-run data for bisecting regressions. Both directories are gitignored.
+
+### Nondeterminism
+
+Copilot exposes no seed or temperature. Each (fixture, model) cell runs 3 times; metrics are means. A change dropping mean F1 by > 5 % without explicit approval is a regression.

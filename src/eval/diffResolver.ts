@@ -1,4 +1,5 @@
 import * as child_process from 'node:child_process';
+import * as path from 'node:path';
 import type { IServiceRegistry } from '../services/serviceManager';
 import { getErrorMessage } from '../utils/errorUtils';
 
@@ -20,10 +21,20 @@ export interface DiffResolveOptions {
  *  - plain ref — any git ref (branch, tag, SHA)
  *
  * Both refs must be the same style (both `dir:` or both git refs).
+ *
+ * Uses the `git` CLI directly in both modes rather than going through
+ * `services.gitOperations`. The headless VS Code profile disables
+ * `git.autoRepositoryDetection`, so vscode.git never registers the cache
+ * directory as a repository and `gitOperations.initialize()` returns false
+ * even when a perfectly valid .git exists on disk. The CLI path works
+ * uniformly regardless of whether vscode.git knows about the repo.
+ *
+ * The `services` argument is retained for signature stability; it is
+ * currently unused but kept to avoid churn in the caller.
  */
 export async function resolveDiff(
     opts: DiffResolveOptions,
-    services: IServiceRegistry
+    _services: IServiceRegistry
 ): Promise<string> {
     const baseIsDir = opts.baseRef.startsWith(DIR_REF_PREFIX);
     const headIsDir = opts.headRef.startsWith(DIR_REF_PREFIX);
@@ -41,27 +52,11 @@ export async function resolveDiff(
         );
     }
 
-    // persist: false — don't persist the auto-selected repository path into
-    // the target workspace's .vscode/lupa.json (treat the analyzed repo as
-    // read-only), mirroring the selectModel({ persist: false }) pattern.
-    const gitAvailable = await services.gitOperations.initialize({
-        persist: false,
-    });
-    if (!gitAvailable) {
-        throw new Error(
-            `Git extension unavailable for workspace ${opts.workspaceRoot}`
-        );
-    }
-    const base = stripShaPrefix(opts.baseRef);
-    const compare = stripShaPrefix(opts.headRef);
-    const { diffText, error } = await services.gitOperations.compareBranches(
-        base,
-        compare
+    return runGitDiffRefs(
+        opts.workspaceRoot,
+        stripShaPrefix(opts.baseRef),
+        stripShaPrefix(opts.headRef)
     );
-    if (error) {
-        throw new Error(`Failed to compare ${base}..${compare}: ${error}`);
-    }
-    return diffText;
 }
 
 function stripShaPrefix(ref: string): string {
@@ -70,34 +65,89 @@ function stripShaPrefix(ref: string): string {
         : ref;
 }
 
-function runGitDiffNoIndex(
-    cwd: string,
-    basePath: string,
-    headPath: string
-): Promise<string> {
+function spawnGit(cwd: string, args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
-        const proc = child_process.spawn(
-            'git',
-            ['diff', '--no-index', '--', basePath, headPath],
-            { cwd }
-        );
+        const proc = child_process.spawn('git', args, { cwd });
         let stdout = '';
         let stderr = '';
         proc.stdout.on('data', (d) => (stdout += d.toString()));
         proc.stderr.on('data', (d) => (stderr += d.toString()));
         proc.on('error', reject);
-        // `git diff --no-index` exits 1 when differences are found; treat
-        // 0 and 1 as success, anything else as a real failure.
+        // `git diff` exits 0 when the trees are identical, 1 when there are
+        // differences, and anything else on real error. Treat 0 and 1 as
+        // success so an empty-diff run doesn't fail the pipeline.
         proc.on('close', (code) => {
             if (code === 0 || code === 1) {
                 resolve(stdout);
             } else {
                 reject(
                     new Error(
-                        `git diff --no-index failed (${code}): ${stderr || getErrorMessage(stdout)}`
+                        `git ${args.join(' ')} failed (${code}): ${stderr || getErrorMessage(stdout)}`
                     )
                 );
             }
         });
     });
+}
+
+/**
+ * Compare two filesystem directories under `cwd`. The directories are
+ * expected to live inside `cwd` (the Kind-A fixture layout is
+ * `<fixture>/{base,head}`). Paths are converted to cwd-relative form
+ * before being passed to git so header lines come back as
+ * `diff --git a/base/... b/head/...` rather than the Windows-quoted
+ * absolute-path form `diff --git "a/D:\..." "b/D:\..."` which `DiffUtils.
+ * parseDiff`'s regex cannot match. The `base/`/`head/` fixture prefixes
+ * are then stripped from header lines so produced findings carry
+ * repository-relative paths matching the fixture's `expected.json`.
+ */
+async function runGitDiffNoIndex(
+    cwd: string,
+    basePath: string,
+    headPath: string
+): Promise<string> {
+    const baseRel = toPosixRelative(cwd, basePath);
+    const headRel = toPosixRelative(cwd, headPath);
+    const stdout = await spawnGit(cwd, [
+        'diff',
+        '--no-index',
+        '--',
+        baseRel,
+        headRel,
+    ]);
+    return stripFixturePrefixes(stdout, baseRel, headRel);
+}
+
+async function runGitDiffRefs(
+    cwd: string,
+    base: string,
+    compare: string
+): Promise<string> {
+    return spawnGit(cwd, ['diff', base, compare]);
+}
+
+function toPosixRelative(cwd: string, target: string): string {
+    const abs = path.isAbsolute(target) ? target : path.resolve(cwd, target);
+    const rel = path.relative(cwd, abs);
+    return rel.split(path.sep).join('/');
+}
+
+function escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripFixturePrefixes(
+    diff: string,
+    baseRel: string,
+    headRel: string
+): string {
+    const b = escapeRegex(baseRel);
+    const h = escapeRegex(headRel);
+    return diff
+        .replace(
+            new RegExp(`^diff --git a/${b}/(\\S+) b/${h}/(\\S+)$`, 'gm'),
+            'diff --git a/$1 b/$2'
+        )
+        .replace(new RegExp(`^--- a/${b}/`, 'gm'), '--- a/')
+        .replace(new RegExp(`^\\+\\+\\+ b/${h}/`, 'gm'), '+++ b/');
 }

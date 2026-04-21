@@ -1,0 +1,14 @@
+{
+    "intent": "Performance optimization for paginate(): drop the Math.min bound-clamp on the loop end to shave an operation from the hot loop.",
+    "expected_findings": [
+        {
+            "severity": "HIGH",
+            "category": "logic_error",
+            "path": "src/pagination.ts",
+            "lineHint": 19,
+            "mustMention": ["off-by-one", "out of bounds"]
+        }
+    ],
+    "minFilesExamined": 1,
+    "maxFalsePositivesTolerated": 1
+}

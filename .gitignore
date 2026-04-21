@@ -4,3 +4,6 @@
 /tsconfig.tsbuildinfo
 /.cache/*
 /.vscode-test/
+/eval/.cache/
+/eval/results/
+/eval/fixtures/synthetic/*/.vscode/
