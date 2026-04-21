@@ -13,23 +13,28 @@ class HeadlessArgError extends Error {
 const DEFAULT_SEED = 0;
 const DEFAULT_TIMEOUT_MS = 600_000;
 const USAGE =
-    'Usage: --workspace <path> --base <ref> --head <ref> --model <vendor/id> ' +
-    '[--seed <n>] [--timeout <ms>] [--out <jsonPath>] [--silent]';
+    'Usage: --workspace <path> --model <vendor/id> ' +
+    '[--mode analysis --base <ref> --head <ref> --seed <n>] ' +
+    '[--mode resolution-judge --payload <jsonPath>] ' +
+    '[--timeout <ms>] [--out <jsonPath>] [--silent]';
 
 /**
  * Parse argv tokens into a typed options object.
  *
  * @param {string[]} argv Raw argument tokens (excluding node/script).
- * @returns {{workspace:string, base:string, head:string, model:string,
- *   seed:number, timeoutMs:number, out:string|null, silent:boolean}}
+ * @returns {{mode:'analysis'|'resolution-judge', workspace:string, model:string,
+ *   base?:string, head?:string, seed?:number, payload?:string,
+ *   timeoutMs:number, out:string|null, silent:boolean}}
  */
 function parseHeadlessArgs(argv) {
     const opts = {
+        mode: 'analysis',
         workspace: null,
         base: null,
         head: null,
         model: null,
         seed: DEFAULT_SEED,
+        payload: null,
         timeoutMs: DEFAULT_TIMEOUT_MS,
         out: null,
         silent: false,
@@ -38,6 +43,9 @@ function parseHeadlessArgs(argv) {
     for (let i = 0; i < argv.length; i++) {
         const token = argv[i];
         switch (token) {
+            case '--mode':
+                opts.mode = requireValue(argv, ++i, token);
+                break;
             case '--workspace':
                 opts.workspace = requireValue(argv, ++i, token);
                 break;
@@ -52,6 +60,9 @@ function parseHeadlessArgs(argv) {
                 break;
             case '--seed':
                 opts.seed = parseIntFlag(requireValue(argv, ++i, token), token);
+                break;
+            case '--payload':
+                opts.payload = requireValue(argv, ++i, token);
                 break;
             case '--timeout':
                 opts.timeoutMs = parseIntFlag(
@@ -72,12 +83,30 @@ function parseHeadlessArgs(argv) {
         }
     }
 
-    for (const required of ['workspace', 'base', 'head', 'model']) {
+    if (opts.mode !== 'analysis' && opts.mode !== 'resolution-judge') {
+        throw new HeadlessArgError(
+            `--mode must be 'analysis' or 'resolution-judge' (got ${opts.mode})\n${USAGE}`
+        );
+    }
+
+    for (const required of ['workspace', 'model']) {
         if (!opts[required]) {
             throw new HeadlessArgError(
                 `Missing required --${required}\n${USAGE}`
             );
         }
+    }
+
+    if (opts.mode === 'analysis') {
+        for (const required of ['base', 'head']) {
+            if (!opts[required]) {
+                throw new HeadlessArgError(
+                    `Missing required --${required}\n${USAGE}`
+                );
+            }
+        }
+    } else if (!opts.payload) {
+        throw new HeadlessArgError(`Missing required --payload\n${USAGE}`);
     }
 
     if (opts.timeoutMs <= 0) {

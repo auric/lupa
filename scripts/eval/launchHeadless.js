@@ -15,8 +15,10 @@
  *
  * Usage:
  *   node scripts/eval/launchHeadless.js \
- *     --workspace <path> --base <ref> --head <ref> --model <vendor/id> \
- *     [--seed <n>] [--timeout <ms>] [--out <jsonPath>] [--silent]
+ *     --workspace <path> --model <vendor/id> \
+ *     [--mode analysis --base <ref> --head <ref> --seed <n>] \
+ *     [--mode resolution-judge --payload <jsonPath>] \
+ *     [--timeout <ms>] [--out <jsonPath>] [--silent]
  *
  * First-time setup: run `npm run headless:setup` to provision the profile
  * and sign in to Copilot. On the first real run, an "Allow Lupa to use
@@ -85,6 +87,9 @@ async function main() {
     args.workspace = path.resolve(args.workspace);
     if (args.out) {
         args.out = path.resolve(args.out);
+    }
+    if (args.payload) {
+        args.payload = path.resolve(args.payload);
     }
 
     const executablePath = await downloadAndUnzipVSCode({

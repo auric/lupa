@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import { spawn, type ChildProcess, execSync } from 'node:child_process';
 import type { HeadlessAnalysisResult } from '../headlessRunner';
+import type { ResolutionJudgePayload, ResolutionJudgeResult } from './types';
 import { LAUNCHER_SCRIPT } from './constants';
 
 const MIN_TIMEOUT_MS = 10_000;
@@ -29,6 +30,18 @@ export type InvokeHeadlessResult =
           durationMs: number;
           result: HeadlessAnalysisResult | null;
       };
+
+export interface InvokeResolutionJudgeOptions {
+    workspaceRoot: string;
+    model: string;
+    payload: ResolutionJudgePayload;
+    timeoutMs: number;
+}
+
+export interface InvokeResolutionJudgeResult {
+    result: ResolutionJudgeResult;
+    durationMs: number;
+}
 
 export async function invokeHeadless(
     opts: InvokeHeadlessOptions
@@ -194,11 +207,19 @@ function validateRef(ref: string, fieldName: string): void {
     }
 }
 
-type ParsedResult =
-    | { ok: true; result: HeadlessAnalysisResult }
+type ParsedResult = ParsedJsonResult<HeadlessAnalysisResult>;
+
+type ParsedJsonResult<T> =
+    | { ok: true; result: T }
     | { ok: false; reason: string };
 
 async function tryReadResult(outPath: string): Promise<ParsedResult> {
+    return tryReadJsonResult<HeadlessAnalysisResult>(outPath);
+}
+
+async function tryReadJsonResult<T>(
+    outPath: string
+): Promise<ParsedJsonResult<T>> {
     let raw: string;
     try {
         raw = await fs.readFile(outPath, 'utf8');
@@ -206,11 +227,106 @@ async function tryReadResult(outPath: string): Promise<ParsedResult> {
         return { ok: false, reason: 'missing' };
     }
     try {
-        const parsed = JSON.parse(raw) as HeadlessAnalysisResult;
+        const parsed = JSON.parse(raw) as T;
         return { ok: true, result: parsed };
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return { ok: false, reason: msg };
+    }
+}
+
+export async function invokeResolutionJudge(
+    opts: InvokeResolutionJudgeOptions
+): Promise<InvokeResolutionJudgeResult> {
+    if (opts.timeoutMs < MIN_TIMEOUT_MS) {
+        throw new Error(
+            `invokeResolutionJudge: timeoutMs must be >= ${MIN_TIMEOUT_MS} (got ${opts.timeoutMs})`
+        );
+    }
+
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lupa-eval-judge-'));
+    const outPath = path.join(tmpDir, 'result.json');
+    const payloadPath = path.join(tmpDir, 'payload.json');
+    const startedAt = Date.now();
+
+    let watchdog: NodeJS.Timeout | undefined;
+    try {
+        await fs.writeFile(payloadPath, JSON.stringify(opts.payload), 'utf8');
+        const args = [
+            LAUNCHER_SCRIPT,
+            '--mode',
+            'resolution-judge',
+            '--workspace',
+            opts.workspaceRoot,
+            '--model',
+            opts.model,
+            '--payload',
+            payloadPath,
+            '--timeout',
+            String(opts.timeoutMs),
+            '--out',
+            outPath,
+            '--silent',
+        ];
+
+        const child = spawn(process.execPath, args, { stdio: 'pipe' });
+        let stderr = '';
+        let stdout = '';
+        child.stdout?.on('data', (d) => (stdout += d.toString()));
+        child.stderr?.on('data', (d) => (stderr += d.toString()));
+
+        const watchdogMs =
+            opts.timeoutMs + LAUNCHER_HEADROOM_MS + HARNESS_HEADROOM_MS;
+        let watchdogFired = false;
+        watchdog = setTimeout(() => {
+            watchdogFired = true;
+            process.stderr.write(
+                `[harness] watchdog: killing resolution judge launcher after ${watchdogMs}ms\n`
+            );
+            killTree(child);
+        }, watchdogMs);
+
+        const exitCode = await new Promise<number>((resolve) => {
+            child.on('exit', (code) => resolve(code ?? 1));
+            child.on('error', (err) => {
+                stderr += `\n[spawn error] ${err.message}`;
+                resolve(1);
+            });
+        });
+
+        const durationMs = Date.now() - startedAt;
+        const parsed = await tryReadJsonResult<ResolutionJudgeResult>(outPath);
+        if (exitCode === 0 && parsed.ok) {
+            return { result: parsed.result, durationMs };
+        }
+
+        if (watchdogFired) {
+            throw new Error(
+                `Resolution judge launcher killed by harness watchdog after ${watchdogMs}ms`
+            );
+        }
+        if (!parsed.ok && parsed.reason === 'missing') {
+            throw new Error(
+                `Resolution judge launcher exited ${exitCode} without writing result JSON; stderr tail: ${tailStderr(stderr, stdout)}`
+            );
+        }
+        if (!parsed.ok) {
+            throw new Error(
+                `Resolution judge JSON was unparseable: ${parsed.reason}; stderr tail: ${tailStderr(stderr, stdout)}`
+            );
+        }
+        throw new Error(
+            `Resolution judge launcher exited ${exitCode}; stderr tail: ${tailStderr(stderr, stdout)}`
+        );
+    } finally {
+        if (watchdog !== undefined) {
+            clearTimeout(watchdog);
+        }
+        await fs.rm(tmpDir, { recursive: true, force: true }).catch((err) => {
+            process.stderr.write(
+                `[harness] warn: failed to remove temp dir ${tmpDir}: ${err instanceof Error ? err.message : String(err)}\n`
+            );
+        });
     }
 }
 

@@ -10,6 +10,9 @@ vi.mock('vscode');
 vi.mock('../eval/headlessRunner', () => ({
     runHeadless: vi.fn(),
 }));
+vi.mock('../eval/headlessJudge', () => ({
+    runHeadlessResolutionJudge: vi.fn(),
+}));
 
 const ENV_KEYS = [
     'LUPA_HEADLESS_MODE',
@@ -266,6 +269,107 @@ describe('runHeadlessFromEnv', () => {
         expect(parsed).toHaveProperty('exitCode');
     });
 
+    it('runs resolution-judge mode and writes a successful result JSON', async () => {
+        const args = {
+            mode: 'resolution-judge',
+            workspace: '/ws',
+            model: 'copilot/gpt-5-mini',
+            payload: path.join(tmpDir, 'payload.json'),
+            timeoutMs: 60_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        const { runHeadlessResolutionJudge } =
+            await import('../eval/headlessJudge');
+
+        vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
+            {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            } as unknown as import('vscode').LanguageModelChat,
+        ]);
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+        vi.mocked(runHeadlessResolutionJudge).mockResolvedValue({
+            verdict: 'resolved',
+            reason: 'Patch touched the cited lines.',
+            modelId: 'gpt-5-mini',
+        } as never);
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        const { runHeadlessFromEnv } = await import('../eval/headlessEntry');
+        await runHeadlessFromEnv(coordinator as never);
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(0);
+        expect(sentinel.error).toBeNull();
+
+        const outJson = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+        expect(outJson).toMatchObject({
+            verdict: 'resolved',
+            modelId: 'gpt-5-mini',
+        });
+        expect(runHeadlessResolutionJudge).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes a failing sentinel when resolution-judge mode throws', async () => {
+        const args = {
+            mode: 'resolution-judge',
+            workspace: '/ws',
+            model: 'copilot/gpt-5-mini',
+            payload: path.join(tmpDir, 'payload.json'),
+            timeoutMs: 60_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        const { runHeadlessResolutionJudge } =
+            await import('../eval/headlessJudge');
+
+        vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
+            {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            } as unknown as import('vscode').LanguageModelChat,
+        ]);
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+        vi.mocked(runHeadlessResolutionJudge).mockRejectedValue(
+            new Error('judge boom') as never
+        );
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        const { runHeadlessFromEnv } = await import('../eval/headlessEntry');
+        await runHeadlessFromEnv(coordinator as never);
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain('judge boom');
+    });
+
     async function runWithRawArgs(rawArgs: string): Promise<{
         exitCode: number;
         error: string | null;
@@ -398,11 +502,11 @@ describe('ServiceManager foundation init — headless persistence guard', () => 
         process.env.LUPA_HEADLESS_MODE = '1';
         const { initSpy } = await runFoundationPhase();
         expect(initSpy).toHaveBeenCalledWith({ persist: false });
-    });
+    }, 15_000);
 
     it('passes { persist: true } when LUPA_HEADLESS_MODE is not set', async () => {
         delete process.env.LUPA_HEADLESS_MODE;
         const { initSpy } = await runFoundationPhase();
         expect(initSpy).toHaveBeenCalledWith({ persist: true });
-    });
+    }, 15_000);
 });

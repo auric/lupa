@@ -9,12 +9,18 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import readline from 'node:readline';
-import { spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { loadFixtures } from '../../src/eval/harness/fixtureLoader';
-import { invokeHeadless } from '../../src/eval/harness/runnerInvoker';
+import {
+    invokeHeadless,
+    invokeResolutionJudge,
+} from '../../src/eval/harness/runnerInvoker';
 import { matchFindings } from '../../src/eval/harness/matcher';
 import { writeReport } from '../../src/eval/harness/reporter';
+import { classifyResolutionForRun } from '../../src/eval/harness/resolutionClassifier';
 import {
+    DEFAULT_AUXILIARY_MODEL,
     DEFAULT_MODELS,
     DEFAULT_SEEDS,
     DEFAULT_TIMEOUT_MS,
@@ -32,6 +38,8 @@ const USAGE = `Usage: npm run eval -- [options]
 Options:
   --models <csv>       Comma-separated vendor/id identifiers
                        (default: ${DEFAULT_MODELS.join(',')})
+    --aux-model <id>     Auxiliary vendor/id for ambiguous resolution judging
+                                             (default: ${DEFAULT_AUXILIARY_MODEL})
   --fixtures <csv>     Fixture kinds: synthetic, real, or both
                        (default: synthetic,real)
   --only <csv>         Subset of fixture names to run
@@ -62,6 +70,7 @@ class CliError extends Error {
 
 interface ParsedArgs {
     models: string[];
+    auxModel: string;
     fixtures: FixtureKind[];
     only: string[] | undefined;
     seeds: number;
@@ -74,9 +83,13 @@ interface ParsedArgs {
     help: boolean;
 }
 
+const execFileAsync = promisify(execFile);
+const MIN_EVAL_TIMEOUT_MS = 10_000;
+
 function parseArgs(argv: readonly string[]): ParsedArgs {
     const out: ParsedArgs = {
         models: [...DEFAULT_MODELS],
+        auxModel: DEFAULT_AUXILIARY_MODEL,
         fixtures: ['synthetic', 'real'],
         only: undefined,
         seeds: DEFAULT_SEEDS,
@@ -115,6 +128,10 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
         }
         if (a === '--models') {
             out.models = parseCsv(argv[++i], a);
+            continue;
+        }
+        if (a === '--aux-model') {
+            out.auxModel = parseStringValue(argv[++i], a);
             continue;
         }
         if (a === '--fixtures') {
@@ -169,6 +186,9 @@ function parseFixtureKinds(
     flag: string
 ): FixtureKind[] {
     const parts = parseCsv(raw, flag);
+    if (parts.length === 1 && parts[0] === 'both') {
+        return ['synthetic', 'real'];
+    }
     const out: FixtureKind[] = [];
     for (const p of parts) {
         if (p !== 'synthetic' && p !== 'real') {
@@ -189,6 +209,11 @@ function parsePositiveInt(raw: string | undefined, flag: string): number {
     if (!Number.isInteger(n) || n <= 0) {
         throw new CliError(`${flag} must be a positive integer (got '${v}')`);
     }
+    if (flag === '--timeout' && n < MIN_EVAL_TIMEOUT_MS) {
+        throw new CliError(
+            `${flag} must be at least ${MIN_EVAL_TIMEOUT_MS}ms (got '${v}')`
+        );
+    }
     return n;
 }
 
@@ -196,23 +221,11 @@ async function execCapture(
     cmd: string,
     args: readonly string[]
 ): Promise<{ stdout: string }> {
-    return await new Promise((resolve, reject) => {
-        const child = spawn(cmd, [...args], {
-            stdio: ['ignore', 'pipe', 'pipe'],
-        });
-        let stdout = '';
-        child.stdout?.on('data', (d) => {
-            stdout += d.toString();
-        });
-        child.on('error', reject);
-        child.on('exit', (code) => {
-            if (code === 0) {
-                resolve({ stdout });
-            } else {
-                reject(new Error(`${cmd} exited ${code ?? 'null'}`));
-            }
-        });
+    const { stdout } = await execFileAsync(cmd, [...args], {
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
     });
+    return { stdout };
 }
 
 async function resolveGitSha(): Promise<string> {
@@ -241,6 +254,7 @@ function printPlan(args: ParsedArgs, fixtures: readonly LoadedFixture[]): void {
         );
     }
     process.stdout.write(`Models: ${args.models.join(', ')}\n`);
+    process.stdout.write(`Aux model: ${args.auxModel}\n`);
     process.stdout.write(`Seeds: ${args.seeds}\n`);
     process.stdout.write(`Timeout: ${args.timeoutMs}ms\n`);
     process.stdout.write(`Out dir: ${args.outDir}\n`);
@@ -256,9 +270,25 @@ async function relocateReports(
     await fs.mkdir(outDir, { recursive: true });
     const newJson = path.join(outDir, path.basename(paths.jsonPath));
     const newMd = path.join(outDir, path.basename(paths.markdownPath));
-    await fs.rename(paths.jsonPath, newJson);
-    await fs.rename(paths.markdownPath, newMd);
+    await moveFile(paths.jsonPath, newJson);
+    await moveFile(paths.markdownPath, newMd);
     return { jsonPath: newJson, markdownPath: newMd };
+}
+
+async function moveFile(fromPath: string, toPath: string): Promise<void> {
+    try {
+        await fs.rename(fromPath, toPath);
+    } catch (error) {
+        const code =
+            typeof error === 'object' && error !== null && 'code' in error
+                ? String((error as { code?: unknown }).code)
+                : undefined;
+        if (code !== 'EXDEV') {
+            throw error;
+        }
+        await fs.copyFile(fromPath, toPath);
+        await fs.unlink(fromPath);
+    }
 }
 
 async function promptYesNo(question: string): Promise<boolean> {
@@ -347,20 +377,24 @@ async function main(): Promise<number> {
                     bailOnError: args.bailOnError,
                 });
                 const single: SingleRun = r.ok
-                    ? {
-                          fixture: fixture.name,
-                          kind: fixture.kind,
-                          model,
-                          seed,
-                          durationMs: r.durationMs,
-                          ok: true,
-                          errorMessage: null,
-                          result: r.result,
-                          match: matchFindings(
+                    ? (() => {
+                          const match = matchFindings(
                               r.result.findings,
                               fixture.labels.expected_findings
-                          ),
-                      }
+                          );
+                          return {
+                              fixture: fixture.name,
+                              kind: fixture.kind,
+                              model,
+                              seed,
+                              durationMs: r.durationMs,
+                              ok: true,
+                              errorMessage: null,
+                              result: r.result,
+                              match,
+                              resolution: null,
+                          };
+                      })()
                     : {
                           fixture: fixture.name,
                           kind: fixture.kind,
@@ -371,14 +405,52 @@ async function main(): Promise<number> {
                           errorMessage: r.error,
                           result: r.result,
                           match: null,
+                          resolution: null,
                       };
+                if (single.ok && single.result && single.match) {
+                    try {
+                        single.resolution = await classifyResolutionForRun({
+                            fixture,
+                            produced: single.result.findings,
+                            match: single.match,
+                            judgeClient: {
+                                judge: async (payload) => {
+                                    const judged = await invokeResolutionJudge({
+                                        workspaceRoot: fixture.workspaceRoot,
+                                        model: args.auxModel,
+                                        payload,
+                                        timeoutMs: Math.min(
+                                            args.timeoutMs,
+                                            120_000
+                                        ),
+                                    });
+                                    return judged.result;
+                                },
+                            },
+                        });
+                    } catch (error) {
+                        const message =
+                            error instanceof Error
+                                ? error.message
+                                : String(error);
+                        single.resolution = null;
+                        single.errorMessage = `Resolution proxy unavailable: ${message}`;
+                        if (!args.silent) {
+                            process.stderr.write(
+                                `[eval] warn  ${progress} — resolution classification failed: ${message}\n`
+                            );
+                        }
+                    }
+                }
                 runs.push(single);
                 if (!args.silent) {
                     if (single.ok && single.match) {
                         const m = single.match;
+                        const rr = single.resolution?.resolutionRate;
                         process.stderr.write(
                             `[eval] done  ${progress} — P=${m.precision.toFixed(2)} ` +
                                 `R=${m.recall.toFixed(2)} F1=${m.f1.toFixed(2)} ` +
+                                `RProxy=${Number.isFinite(rr) ? rr!.toFixed(2) : '—'} ` +
                                 `in ${(single.durationMs / 1000).toFixed(1)}s\n`
                         );
                     } else {

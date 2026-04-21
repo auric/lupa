@@ -1,5 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+const { mockedSpawn } = vi.hoisted(() => ({ mockedSpawn: vi.fn() }));
+
+vi.mock('node:child_process', () => ({
+    spawn: mockedSpawn,
+}));
+
 import { matchFindings } from '../../eval/harness/matcher';
+import { classifyResolutionForRun } from '../../eval/harness/resolutionClassifier';
 import type { ExpectedFinding, MatchResult } from '../../eval/harness/types';
 import type { RecordedFinding } from '../../types/findingTypes';
 
@@ -269,3 +277,218 @@ describe('matchFindings', () => {
         });
     });
 });
+
+describe('classifyResolutionForRun', () => {
+    beforeEach(() => {
+        mockedSpawn.mockReset();
+    });
+
+    it('treats matched synthetic findings as resolved by default and respects overrides', async () => {
+        const resolvedFinding = makeProduced({ id: 'resolved' });
+        const overriddenFinding = makeProduced({
+            id: 'overridden',
+            file: 'src/b.ts',
+            lineRange: [20, 20],
+        });
+        const produced = [resolvedFinding, overriddenFinding];
+        const expected = [
+            makeExpected({ path: 'src/a.ts', lineHint: 10 }),
+            makeExpected({
+                path: 'src/b.ts',
+                lineHint: 20,
+                resolvedByDefault: false,
+            }),
+        ];
+        const match = matchFindings(produced, expected);
+
+        const summary = await classifyResolutionForRun({
+            fixture: {
+                name: 'synthetic-case',
+                kind: 'synthetic',
+                labels: {
+                    intent: 'test synthetic resolution',
+                    expected_findings: expected,
+                    minFilesExamined: 1,
+                    maxFalsePositivesTolerated: 0,
+                },
+                workspaceRoot: '/tmp/workspace',
+                baseRef: 'dir:base',
+                headRef: 'dir:head',
+                mergeRef: undefined,
+            },
+            produced,
+            match,
+        });
+
+        expect(summary.total).toBe(2);
+        expect(summary.resolved).toBe(1);
+        expect(summary.unresolved).toBe(1);
+        expect(summary.resolutionRate).toBeCloseTo(0.5, 3);
+        expect(summary.findings).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    findingId: 'resolved',
+                    verdict: 'resolved',
+                    method: 'synthetic-match',
+                }),
+                expect.objectContaining({
+                    findingId: 'overridden',
+                    verdict: 'unresolved',
+                    method: 'label-override',
+                }),
+            ])
+        );
+    });
+
+    it('checks all cited source paths for real fixtures before marking unresolved', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                const gitPath = args[3];
+                if (gitPath === 'src/a.ts') {
+                    return createMockGitDiffProcess('');
+                }
+                return createMockGitDiffProcess(`diff --git a/src/b.ts b/src/b.ts
+index 1234567..89abcde 100644
+--- a/src/b.ts
++++ b/src/b.ts
+@@ -20,1 +20,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        const produced = [
+            makeProduced({
+                id: 'multi-source',
+                file: 'src/a.ts',
+                sources: [
+                    { path: 'src/a.ts', lineStart: 10, lineEnd: 10 },
+                    { path: 'src/b.ts', lineStart: 20, lineEnd: 20 },
+                ],
+            }),
+        ];
+
+        const summary = await classifyResolutionForRun({
+            fixture: makeRealFixture(),
+            produced,
+            match: emptyMatch(),
+        });
+
+        expect(summary.resolved).toBe(1);
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'multi-source',
+            verdict: 'resolved',
+            path: 'src/b.ts',
+            method: 'source-overlap',
+        });
+    });
+
+    it('treats insertion-only follow-up patches as ambiguous and escalates to the judge', async () => {
+        mockedSpawn.mockImplementation(() =>
+            createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+index 1234567..89abcde 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -9,0 +10,3 @@
++if (!value) {
++    return;
++}
+`)
+        );
+        const judge = vi.fn().mockResolvedValue({
+            verdict: 'resolved',
+            reason: 'Added guard likely resolves the finding.',
+            modelId: 'gpt-5-mini',
+        });
+
+        const summary = await classifyResolutionForRun({
+            fixture: makeRealFixture(),
+            produced: [makeProduced({ id: 'insertion-fix' })],
+            match: emptyMatch(),
+            judgeClient: { judge },
+        });
+
+        expect(judge).toHaveBeenCalledTimes(1);
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'insertion-fix',
+            verdict: 'resolved',
+            method: 'judge',
+        });
+    });
+
+    it('marks an ambiguous real-fixture finding as disputed when the judge fails', async () => {
+        mockedSpawn.mockImplementation(() =>
+            createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+index 1234567..89abcde 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -9,0 +10,2 @@
++if (!value) {
++}
+`)
+        );
+
+        const summary = await classifyResolutionForRun({
+            fixture: makeRealFixture(),
+            produced: [makeProduced({ id: 'judge-failure' })],
+            match: emptyMatch(),
+            judgeClient: {
+                judge: vi
+                    .fn()
+                    .mockRejectedValue(new Error('judge unavailable')),
+            },
+        });
+
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'judge-failure',
+            verdict: 'disputed',
+            method: 'judge-unavailable',
+        });
+    });
+});
+
+function emptyMatch(): MatchResult {
+    return {
+        matched: [],
+        missedExpected: [],
+        falsePositives: [],
+        precision: 0,
+        recall: 0,
+        f1: 0,
+    };
+}
+
+function makeRealFixture() {
+    return {
+        name: 'real-case',
+        kind: 'real' as const,
+        labels: {
+            intent: 'test real resolution',
+            expected_findings: [],
+            minFilesExamined: 1,
+            maxFalsePositivesTolerated: 0,
+        },
+        workspaceRoot: '/tmp/workspace',
+        baseRef: 'sha:base',
+        headRef: 'sha:head',
+        mergeRef: 'sha:merge',
+    };
+}
+
+function createMockGitDiffProcess(stdoutText: string) {
+    const proc = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+    };
+    proc.stdout = new EventEmitter();
+    proc.stderr = new EventEmitter();
+    queueMicrotask(() => {
+        if (stdoutText.length > 0) {
+            proc.stdout.emit('data', Buffer.from(stdoutText));
+        }
+        proc.emit('close', 0);
+    });
+    return proc;
+}

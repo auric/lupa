@@ -10,7 +10,10 @@ export interface DiffResolveOptions {
     workspaceRoot: string;
     baseRef: string;
     headRef: string;
+    timeoutMs?: number;
 }
+
+const DEFAULT_DIFF_TIMEOUT_MS = 30_000;
 
 /**
  * Resolve a raw unified diff between baseRef and headRef.
@@ -48,14 +51,16 @@ export async function resolveDiff(
         return runGitDiffNoIndex(
             opts.workspaceRoot,
             opts.baseRef.slice(DIR_REF_PREFIX.length),
-            opts.headRef.slice(DIR_REF_PREFIX.length)
+            opts.headRef.slice(DIR_REF_PREFIX.length),
+            opts.timeoutMs ?? DEFAULT_DIFF_TIMEOUT_MS
         );
     }
 
     return runGitDiffRefs(
         opts.workspaceRoot,
         stripShaPrefix(opts.baseRef),
-        stripShaPrefix(opts.headRef)
+        stripShaPrefix(opts.headRef),
+        opts.timeoutMs ?? DEFAULT_DIFF_TIMEOUT_MS
     );
 }
 
@@ -65,18 +70,47 @@ function stripShaPrefix(ref: string): string {
         : ref;
 }
 
-function spawnGit(cwd: string, args: string[]): Promise<string> {
+function spawnGit(
+    cwd: string,
+    args: string[],
+    timeoutMs: number
+): Promise<string> {
     return new Promise((resolve, reject) => {
         const proc = child_process.spawn('git', args, { cwd });
         let stdout = '';
         let stderr = '';
+        let settled = false;
+        const timeoutHandle = setTimeout(() => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            proc.kill('SIGKILL');
+            reject(
+                new Error(
+                    `git ${args.join(' ')} timed out after ${timeoutMs}ms`
+                )
+            );
+        }, timeoutMs);
         proc.stdout.on('data', (d) => (stdout += d.toString()));
         proc.stderr.on('data', (d) => (stderr += d.toString()));
-        proc.on('error', reject);
+        proc.on('error', (error) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timeoutHandle);
+            reject(error);
+        });
         // `git diff` exits 0 when the trees are identical, 1 when there are
         // differences, and anything else on real error. Treat 0 and 1 as
         // success so an empty-diff run doesn't fail the pipeline.
         proc.on('close', (code) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timeoutHandle);
             if (code === 0 || code === 1) {
                 resolve(stdout);
             } else {
@@ -104,26 +138,26 @@ function spawnGit(cwd: string, args: string[]): Promise<string> {
 async function runGitDiffNoIndex(
     cwd: string,
     basePath: string,
-    headPath: string
+    headPath: string,
+    timeoutMs: number
 ): Promise<string> {
     const baseRel = toPosixRelative(cwd, basePath);
     const headRel = toPosixRelative(cwd, headPath);
-    const stdout = await spawnGit(cwd, [
-        'diff',
-        '--no-index',
-        '--',
-        baseRel,
-        headRel,
-    ]);
+    const stdout = await spawnGit(
+        cwd,
+        ['diff', '--no-index', '--', baseRel, headRel],
+        timeoutMs
+    );
     return stripFixturePrefixes(stdout, baseRel, headRel);
 }
 
 async function runGitDiffRefs(
     cwd: string,
     base: string,
-    compare: string
+    compare: string,
+    timeoutMs: number
 ): Promise<string> {
-    return spawnGit(cwd, ['diff', base, compare]);
+    return spawnGit(cwd, ['diff', base, compare], timeoutMs);
 }
 
 function toPosixRelative(cwd: string, target: string): string {

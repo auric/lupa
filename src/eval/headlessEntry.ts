@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import type { PRAnalysisCoordinator } from '../services/prAnalysisCoordinator';
+import { runHeadlessResolutionJudge } from './headlessJudge';
 import { runHeadless } from './headlessRunner';
 import {
     LUPA_HEADLESS_ARGS_ENV,
@@ -27,8 +28,6 @@ export {
     isHeadlessMode,
 } from './headlessConstants';
 
-const COPILOT_WAIT_MS = 30_000;
-
 /**
  * Guards against VS Code respawning the extension host and re-triggering
  * `runHeadlessFromEnv`. VS Code restarts the exthost automatically when it
@@ -38,15 +37,25 @@ const COPILOT_WAIT_MS = 30_000;
  */
 let headlessRunStarted = false;
 
+function normalizeModelIdentifier(identifier: string): string {
+    const trimmed = identifier.trim().toLowerCase();
+    if (trimmed.includes('/')) {
+        return trimmed;
+    }
+    return `copilot/${trimmed}`;
+}
+
 interface HeadlessArgs {
+    mode: 'analysis' | 'resolution-judge';
     workspace: string;
-    base: string;
-    head: string;
     model: string;
-    seed: number;
     timeoutMs: number;
     out: string | null;
     silent: boolean;
+    base?: string;
+    head?: string;
+    seed?: number;
+    payload?: string;
 }
 
 /**
@@ -59,6 +68,13 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
         throw new Error(`${LUPA_HEADLESS_ARGS_ENV} must be a JSON object`);
     }
     const o = raw as Record<string, unknown>;
+    const modeRaw = o.mode;
+    const mode = modeRaw === undefined ? 'analysis' : modeRaw;
+    if (mode !== 'analysis' && mode !== 'resolution-judge') {
+        throw new Error(
+            `${LUPA_HEADLESS_ARGS_ENV}.mode must be 'analysis' or 'resolution-judge'`
+        );
+    }
     const requireString = (k: string): string => {
         const v = o[k];
         if (typeof v !== 'string' || v.length === 0) {
@@ -98,7 +114,26 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
             `${LUPA_HEADLESS_ARGS_ENV}.silent must be a boolean or undefined`
         );
     }
+    if (mode === 'resolution-judge') {
+        const payload = o.payload;
+        if (typeof payload !== 'string' || payload.length === 0) {
+            throw new Error(
+                `${LUPA_HEADLESS_ARGS_ENV}.payload must be a non-empty string`
+            );
+        }
+        return {
+            mode,
+            workspace: requireString('workspace'),
+            model: requireString('model'),
+            payload,
+            timeoutMs: requirePositiveNumber('timeoutMs'),
+            out: typeof outRaw === 'string' ? outRaw : null,
+            silent: silentRaw === true,
+        };
+    }
+
     return {
+        mode,
         workspace: requireString('workspace'),
         base: requireString('base'),
         head: requireString('head'),
@@ -117,9 +152,19 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
  * wake-up with a 1 s polling fallback, bounded by timeoutMs.
  */
 async function waitForCopilotModels(
-    timeoutMs: number
+    timeoutMs: number,
+    requestedIdentifier: string
 ): Promise<vscode.LanguageModelChat[]> {
-    const initial = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+    const normalizedRequestedIdentifier =
+        normalizeModelIdentifier(requestedIdentifier);
+    const requestedVendor = normalizedRequestedIdentifier.split('/')[0] ?? '';
+    const matchesRequestedModel = (model: vscode.LanguageModelChat): boolean =>
+        normalizeModelIdentifier(`${model.vendor}/${model.id}`) ===
+        normalizedRequestedIdentifier;
+
+    const initial = (
+        await vscode.lm.selectChatModels({ vendor: requestedVendor })
+    ).filter(matchesRequestedModel);
     if (initial.length > 0) {
         return initial;
     }
@@ -136,9 +181,11 @@ async function waitForCopilotModels(
                 return;
             }
             try {
-                const found = await vscode.lm.selectChatModels({
-                    vendor: 'copilot',
-                });
+                const found = (
+                    await vscode.lm.selectChatModels({
+                        vendor: requestedVendor,
+                    })
+                ).filter(matchesRequestedModel);
                 if (!settled && found.length > 0) {
                     cleanup();
                     resolve(found);
@@ -165,6 +212,33 @@ async function waitForCopilotModels(
             cleanup();
             resolve([]);
         }, timeoutMs);
+    });
+}
+
+async function awaitWithCancellation<T>(
+    promise: Promise<T>,
+    token: vscode.CancellationToken,
+    timeoutMessage: string
+): Promise<T> {
+    if (token.isCancellationRequested) {
+        throw new Error(timeoutMessage);
+    }
+
+    return await new Promise<T>((resolve, reject) => {
+        const subscription = token.onCancellationRequested(() => {
+            subscription.dispose();
+            reject(new Error(timeoutMessage));
+        });
+        promise.then(
+            (value) => {
+                subscription.dispose();
+                resolve(value);
+            },
+            (error) => {
+                subscription.dispose();
+                reject(error);
+            }
+        );
     });
 }
 
@@ -220,7 +294,6 @@ export async function runHeadlessFromEnv(
 
     let exitCode = 0;
     let errorMsg: string | undefined;
-
     try {
         const rawArgs = process.env[LUPA_HEADLESS_ARGS_ENV];
         if (!rawArgs) {
@@ -229,17 +302,7 @@ export async function runHeadlessFromEnv(
             );
         }
         const args = validateHeadlessArgs(JSON.parse(rawArgs));
-
-        const services = await coordinator.waitForInitialization();
-
-        const models = await waitForCopilotModels(COPILOT_WAIT_MS);
-        if (models.length === 0) {
-            throw new Error(
-                'No Copilot chat models available after 30s. If this is the first run, ' +
-                    'approve the "Allow Lupa to use Copilot?" prompt in the spawned window. ' +
-                    'Otherwise re-run `npm run headless:setup` and complete the Copilot sign-in.'
-            );
-        }
+        const requestedIdentifier = normalizeModelIdentifier(args.model);
 
         const cts = new vscode.CancellationTokenSource();
         const timeoutHandle =
@@ -248,40 +311,80 @@ export async function runHeadlessFromEnv(
                 : undefined;
 
         try {
-            const result = await runHeadless(
-                {
-                    workspaceRoot: args.workspace,
-                    baseRef: args.base,
-                    headRef: args.head,
-                    modelIdentifier: args.model,
-                    seed: args.seed,
-                    timeoutMs: args.timeoutMs,
-                    cancellationToken: cts.token,
-                },
-                services
+            const services = await awaitWithCancellation(
+                coordinator.waitForInitialization(),
+                cts.token,
+                `Headless run exceeded timeout (${args.timeoutMs}ms) before initialization completed.`
             );
-            if (args.out) {
-                fs.writeFileSync(args.out, JSON.stringify(result, null, 2));
-            }
-            if (!result.completed) {
-                // --out (if any) is already written above so the operator
-                // can inspect the partial result. Surface as a non-zero
-                // exit via the outer catch: partial findings are unvalidated
-                // (PostAnalysisPipeline only runs when completed is true).
-                const suffix = args.out
-                    ? `see ${args.out} for partial result`
-                    : 'rerun with --out <path> to capture partial result';
+
+            const models = await awaitWithCancellation(
+                waitForCopilotModels(args.timeoutMs, requestedIdentifier),
+                cts.token,
+                `Headless run exceeded timeout (${args.timeoutMs}ms) while waiting for ${requestedIdentifier}.`
+            );
+            if (models.length === 0) {
                 throw new Error(
-                    `Analysis ended without completing (possible rate-limit, quota exhaustion, or degraded exit); ${suffix}`
+                    `Requested model ${requestedIdentifier} was not available before timeout. If this is the first run, ` +
+                        'approve the "Allow Lupa to use Copilot?" prompt in the spawned window. ' +
+                        'Otherwise re-run `npm run headless:setup` and complete the model sign-in/setup.'
                 );
             }
-            if (!args.silent) {
-                process.stdout.write(
-                    `Analysis complete: ${result.findings.length} findings, ` +
-                        `${result.telemetry.iterations} iterations, ` +
-                        `${result.telemetry.toolCalls} tool calls, ` +
-                        `${result.telemetry.durationMs}ms\n`
+
+            if (args.mode === 'analysis') {
+                const result = await runHeadless(
+                    {
+                        workspaceRoot: args.workspace,
+                        baseRef: args.base!,
+                        headRef: args.head!,
+                        modelIdentifier: args.model,
+                        seed: args.seed ?? 0,
+                        timeoutMs: args.timeoutMs,
+                        cancellationToken: cts.token,
+                    },
+                    services
                 );
+                if (args.out) {
+                    fs.writeFileSync(args.out, JSON.stringify(result, null, 2));
+                }
+                if (!result.completed) {
+                    // --out (if any) is already written above so the operator
+                    // can inspect the partial result. Surface as a non-zero
+                    // exit via the outer catch: partial findings are unvalidated
+                    // (PostAnalysisPipeline only runs when completed is true).
+                    const suffix = args.out
+                        ? `see ${args.out} for partial result`
+                        : 'rerun with --out <path> to capture partial result';
+                    throw new Error(
+                        `Analysis ended without completing (possible rate-limit, quota exhaustion, or degraded exit); ${suffix}`
+                    );
+                }
+                if (!args.silent) {
+                    process.stdout.write(
+                        `Analysis complete: ${result.findings.length} findings, ` +
+                            `${result.telemetry.iterations} iterations, ` +
+                            `${result.telemetry.toolCalls} tool calls, ` +
+                            `${result.telemetry.durationMs}ms\n`
+                    );
+                }
+            } else {
+                const result = await runHeadlessResolutionJudge(
+                    {
+                        workspaceRoot: args.workspace,
+                        modelIdentifier: args.model,
+                        timeoutMs: args.timeoutMs,
+                        payloadPath: args.payload!,
+                        cancellationToken: cts.token,
+                    },
+                    services
+                );
+                if (args.out) {
+                    fs.writeFileSync(args.out, JSON.stringify(result, null, 2));
+                }
+                if (!args.silent) {
+                    process.stdout.write(
+                        `Resolution judge complete: ${result.verdict} (${result.modelId})\n`
+                    );
+                }
             }
         } finally {
             if (timeoutHandle) {

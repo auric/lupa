@@ -1,3 +1,7 @@
+import {
+    FINDING_SEVERITIES,
+    type FindingSeverity,
+} from '../../types/findingTypes';
 import type {
     AggregateStats,
     PerFixtureAggregate,
@@ -49,6 +53,15 @@ function aggregateModel(
         ok.map((r) => r.match?.recall ?? 0).filter(isFinite)
     );
     const f1 = meanStddev(ok.map((r) => r.match?.f1 ?? 0).filter(isFinite));
+    const resolutionRate = meanStddev(
+        ok
+            .map((r) =>
+                r.resolution && r.resolution.total > 0
+                    ? r.resolution.resolutionRate
+                    : Number.NaN
+            )
+            .filter(isFinite)
+    );
     const iterations = meanStddev(
         ok.map((r) => r.result?.telemetry.iterations ?? 0)
     );
@@ -67,6 +80,8 @@ function aggregateModel(
         precision,
         recall,
         f1,
+        resolutionRate,
+        resolutionRateBySeverity: aggregateResolutionRateBySeverity(ok),
         iterations,
         promptTokens,
         completionTokens,
@@ -96,6 +111,34 @@ export function meanStddev(values: readonly number[]): AggregateStats {
         sqSum += d * d;
     }
     return { count: n, mean, stddev: Math.sqrt(sqSum / n) };
+}
+
+function aggregateResolutionRateBySeverity(
+    runs: readonly SingleRun[]
+): Partial<Record<FindingSeverity, AggregateStats>> {
+    const values: Partial<Record<FindingSeverity, number[]>> = {};
+    for (const severity of FINDING_SEVERITIES) {
+        values[severity] = [];
+    }
+
+    for (const run of runs) {
+        for (const severity of FINDING_SEVERITIES) {
+            const bucket = run.resolution?.bySeverity[severity];
+            if (!bucket || bucket.total === 0) {
+                continue;
+            }
+            const rate = bucket.resolutionRate;
+            if (Number.isFinite(rate)) {
+                values[severity]!.push(rate);
+            }
+        }
+    }
+
+    const result: Partial<Record<FindingSeverity, AggregateStats>> = {};
+    for (const severity of FINDING_SEVERITIES) {
+        result[severity] = meanStddev(values[severity] ?? []);
+    }
+    return result;
 }
 
 function groupBy<T, K>(

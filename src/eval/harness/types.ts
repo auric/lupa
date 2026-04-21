@@ -13,6 +13,7 @@ export interface ExpectedFinding {
     path: string;
     lineHint: number;
     mustMention: string[];
+    resolvedByDefault?: boolean;
 }
 
 export interface FixtureLabels {
@@ -26,6 +27,7 @@ export interface RealFixtureFile extends FixtureLabels {
     repo: string;
     baseSha: string;
     headSha: string;
+    mergeSha: string;
 }
 
 export interface LoadedFixture {
@@ -36,6 +38,59 @@ export interface LoadedFixture {
     workspaceRoot: string;
     baseRef: string;
     headRef: string;
+    mergeRef: string | undefined;
+}
+
+export type ResolutionVerdict =
+    | 'resolved'
+    | 'unresolved'
+    | 'disputed'
+    | 'noise';
+
+export type ResolutionMethod =
+    | 'synthetic-match'
+    | 'label-override'
+    | 'source-overlap'
+    | 'line-range-fallback'
+    | 'judge'
+    | 'judge-unavailable';
+
+export interface FindingResolution {
+    findingId: string;
+    severity: FindingSeverity;
+    verdict: ResolutionVerdict;
+    method: ResolutionMethod;
+    path: string;
+    reason: string;
+    matchedLabelPath?: string;
+    judgeModelId?: string;
+}
+
+export interface ResolutionBucket {
+    total: number;
+    resolved: number;
+    unresolved: number;
+    disputed: number;
+    noise: number;
+    resolutionRate: number;
+}
+
+export interface ResolutionSummary extends ResolutionBucket {
+    bySeverity: Partial<Record<FindingSeverity, ResolutionBucket>>;
+    findings: FindingResolution[];
+}
+
+export interface ResolutionJudgePayload {
+    finding: RecordedFinding;
+    diffText: string;
+}
+
+export type ResolutionJudgeVerdict = 'resolved' | 'disputed' | 'noise';
+
+export interface ResolutionJudgeResult {
+    verdict: ResolutionJudgeVerdict;
+    reason: string;
+    modelId: string;
 }
 
 export interface MatchedPair {
@@ -63,6 +118,7 @@ export interface SingleRun {
     errorMessage: string | null;
     result: HeadlessAnalysisResult | null;
     match: MatchResult | null;
+    resolution: ResolutionSummary | null;
 }
 
 export interface AggregateStats {
@@ -76,6 +132,8 @@ export interface PerModelAggregate {
     precision: AggregateStats;
     recall: AggregateStats;
     f1: AggregateStats;
+    resolutionRate: AggregateStats;
+    resolutionRateBySeverity: Partial<Record<FindingSeverity, AggregateStats>>;
     iterations: AggregateStats;
     promptTokens: AggregateStats;
     completionTokens: AggregateStats;

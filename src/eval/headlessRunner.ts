@@ -34,6 +34,14 @@ export interface HeadlessAnalysisResult {
     completed: boolean;
 }
 
+function normalizeModelIdentifier(identifier: string): string {
+    const trimmed = identifier.trim().toLowerCase();
+    if (trimmed.includes('/')) {
+        return trimmed;
+    }
+    return `copilot/${trimmed}`;
+}
+
 /**
  * Run a full Lupa analysis from a (workspaceRoot, baseRef, headRef, model)
  * tuple without invoking any UI. Intended for CI jobs, eval harnesses, and
@@ -46,7 +54,15 @@ export async function runHeadless(
 ): Promise<HeadlessAnalysisResult> {
     const startedAt = Date.now();
 
-    const diffText = await resolveDiff(opts, services);
+    const diffText = await resolveDiff(
+        {
+            workspaceRoot: opts.workspaceRoot,
+            baseRef: opts.baseRef,
+            headRef: opts.headRef,
+            timeoutMs: opts.timeoutMs,
+        },
+        services
+    );
     if (!diffText.trim()) {
         throw new Error(
             `No diff produced for ${opts.baseRef}..${opts.headRef}`
@@ -65,10 +81,13 @@ export async function runHeadless(
     // available chat model, which on a Pro install can be a premium-tier
     // model (Claude Sonnet, gpt-5, ...) and burn paid quota without the
     // caller knowing. Eval runs and CI jobs must fail loudly instead.
-    const actualIdentifier = `${model.vendor}/${model.id}`;
-    if (actualIdentifier !== opts.modelIdentifier) {
+    const actualIdentifier = normalizeModelIdentifier(
+        `${model.vendor}/${model.id}`
+    );
+    const requestedIdentifier = normalizeModelIdentifier(opts.modelIdentifier);
+    if (actualIdentifier !== requestedIdentifier) {
         throw new Error(
-            `Requested model '${opts.modelIdentifier}' is not available; ` +
+            `Requested model '${requestedIdentifier}' is not available; ` +
                 `CopilotModelManager fell back to '${actualIdentifier}'. ` +
                 `Refusing to run on an unintended model (risks premium quota). ` +
                 `Ensure the requested model is registered in vscode.lm ` +

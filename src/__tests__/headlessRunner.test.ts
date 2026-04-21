@@ -86,6 +86,7 @@ describe('parseHeadlessArgs', () => {
             'copilot/gpt-4.1',
         ]);
         expect(args).toMatchObject({
+            mode: 'analysis',
             workspace: '/w',
             base: 'main',
             head: 'dev',
@@ -95,6 +96,39 @@ describe('parseHeadlessArgs', () => {
             out: null,
         });
         expect(args.timeoutMs).toBeGreaterThan(0);
+    });
+
+    it('parses resolution-judge mode without analysis refs', () => {
+        const args = headlessArgs.parseHeadlessArgs([
+            '--mode',
+            'resolution-judge',
+            '--workspace',
+            '/w',
+            '--model',
+            'copilot/gpt-5-mini',
+            '--payload',
+            '/tmp/payload.json',
+        ]);
+        expect(args).toMatchObject({
+            mode: 'resolution-judge',
+            workspace: '/w',
+            model: 'copilot/gpt-5-mini',
+            payload: '/tmp/payload.json',
+        });
+        expect(args).not.toHaveProperty('base', '/w');
+    });
+
+    it('requires --payload in resolution-judge mode', () => {
+        expect(() =>
+            headlessArgs.parseHeadlessArgs([
+                '--mode',
+                'resolution-judge',
+                '--workspace',
+                '/w',
+                '--model',
+                'copilot/gpt-5-mini',
+            ])
+        ).toThrow(/Missing required --payload/);
     });
 
     it('throws on missing required flag', () => {
