@@ -202,7 +202,8 @@ Done:
 - Unified `extractFilesTouched(toolCalls)` walks every investigation tool's result. Use `normalizeRelativePath` from `utils/investigationAudit.ts`.
 - Coverage-gap callback uses the broader set.
 - `investigatedFiles` set in `ExecutionContext` populated from this broader extractor.
-- Tests for Windows separators, `./` prefix, `..`.
+- **Subagent merge**: after each `run_subagent_batch` returns, every `filesTouched[]` entry from Quest 4.2's `SubagentBatchResult.perAgent[]` is passed through `normalizeRelativePath` and merged into the main analysis's `investigatedFiles`. Without this step Quest 11.3's `PreJudgeGate` rejects every finding whose `sources` reference a file read only by a subagent — which is the whole point of having subagents.
+- Tests for Windows separators, `./` prefix, `..`, **and subagent-filesTouched merge into the main set**.
 
 ### Quest 1.3 — Structured stub returns from every read-only tool _(NEW in v3)_
 
@@ -222,18 +223,20 @@ Done:
 ### Quest 1.4 — Per-analysis file-content cache _(NEW in v3)_
 
 **As** the analysis,
-**I want** repeated `read_file(path)` / `get_file_diff(path)` calls within the same analysis to be served from a content-addressable cache keyed by `(headSha, repoRelativePath)`,
+**I want** repeated `read_file(path)` / `get_file_diff(path)` calls within the same analysis to be served from a content-addressable cache keyed by the full tuple of inputs that affect output,
 **so that** the same file appearing 8× in the context never happens again (Raptor trace pathology) and the iteration budget isn't wasted on re-fetching.
 
 Pattern borrowed from AsyncReview (`MAX_CACHE_ENTRIES = 200`, FIFO, keyed by ref+path).
 
 Done:
 
-- New `src/services/fileContentCache.ts`. Bounded FIFO (configurable; default 200 entries). Keyed by `(headSha, path, range?)`.
+- New `src/services/fileContentCache.ts`. Bounded FIFO (configurable; default 200 entries). Two key shapes, one per tool:
+    - `readFileTool` → `(headSha, path, range?)` — a read at a given sha is a pure function of those three.
+    - `getFileDiffTool` → `(baseSha, headSha, path)` — a diff depends on **both** refs. Keying by `headSha` alone would serve stale diffs if `baseSha` ever varies within an analysis (e.g. a follow-up analysis against a rebased PR that shares `headSha`).
 - `readFileTool` and `getFileDiffTool` consult the cache before re-fetching.
-- Cache instance lifecycle is per-analysis — created in `AnalysisEngine.analyze()`, discarded on exit.
+- Cache instance lifecycle is per-analysis — created in `AnalysisEngine.analyze()`, discarded on exit. (Per-analysis lifecycle means `baseSha` is normally constant within scope; the richer diff key is defence-in-depth for the case where it isn't.)
 - Eviction emits a log line so the telemetry side can see cache pressure.
-- Unit tests cover: exact hit, miss, eviction, different-sha-same-path = miss.
+- Unit tests cover: exact hit, miss, eviction, different-sha-same-path = miss, **different-base-same-head-same-path on diff cache = miss**.
 
 ---
 
@@ -310,6 +313,7 @@ interface PROverview {
         fileCount: number;
         addedLines: number;
         removedLines: number;
+        hunkCount: number; // number of diff hunks across all files; source for Quest 5.1's recursion thresholds
         languages: string[];
         primaryDirectories: string[];
     };
@@ -466,6 +470,8 @@ Replace "1–2 files <30 LOC: review directly" with:
 - `totalChangedLines < 60 && fileCount <= 2 && hunkCount <= 3` → direct review allowed
 - `totalChangedLines >= 60 || hunkCount >= 4 || fileCount >= 3` → MUST spawn subagents
 - Spawning unit is **concern**, not file.
+
+All three inputs (`totalChangedLines`, `fileCount`, `hunkCount`) come from `PROverview.changeShape` (Quest 3.1). They are deterministic, computed from the diff parser before the first model call, and surfaced to the prompt as literal numbers — the model doesn't estimate them.
 
 Done:
 
@@ -909,13 +915,26 @@ Done:
 
 Pattern: AsyncReview's required `sources: ["file1.py#L10-L20", ...]` output field (see `rlm-tools-deep-dive.md` §1.5). Stronger than Lupa's current `verification_evidence` free-form string.
 
+**Two-layer design** — the schema requirement and the grounding enforcement are distinct gates with different on/off policies. Keep them separate:
+
+| Layer                                                          | What it does                                                                                           | Policy                                                                                                                                    |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Schema**                                                     | `record_finding` rejects calls missing `sources` (or with length 0 for P0–P2) at tool-validation time. | **Always on once 11.3 ships.** The model must provide something; this is cheap and forces the prompt pattern.                             |
+| **Grounding check** (`PreJudgeGate` / `findingValidationStep`) | Cross-references `sources[].path` against `investigatedFiles`; rejects findings citing un-read files.  | **Flag-gated** by `lupa.findingGrounding.mode ∈ { 'off' \| 'warn' \| 'enforce' }`. Default `warn` until Quest 11.2 lands, then `enforce`. |
+
+This resolves the apparent schema-required-vs-warn-only contradiction: the **schema** stays required, the **grounding check** is what runs in warn-only mode. A fabricated citation gets logged at `warn`, dropped at `enforce`.
+
 Done:
 
-- `record_finding` schema gains required `sources: Array<{ path: string; lineStart: number; lineEnd: number }>`. Minimum length: 1 for P0–P2 (P3 allowed without if style/suggestion).
-- `PreJudgeGate` (or `findingValidationStep`) rejects findings whose `sources` reference files not in the analysis's `investigatedFiles` set (coming from Quest 1.2's `extractFilesTouched`).
+- `record_finding` schema gains required `sources: Array<{ path: string; lineStart: number; lineEnd: number }>`. Minimum length: 1 for P0–P2 (P3 allowed without if style/suggestion). Schema validation is always on.
+- `PreJudgeGate` (or `findingValidationStep`) cross-references `sources` against `investigatedFiles`. Behaviour controlled by `lupa.findingGrounding.mode`:
+    - `off` — skip the check entirely (rollback).
+    - `warn` — log `[grounding-warn]` per offending finding, keep the finding.
+    - `enforce` — drop the finding; counted in telemetry as `grounding_rejected`.
+- `investigatedFiles` is built per Quest 1.2 (main agent + merged subagent `filesTouched`). Any discrepancy is a Quest 1.2 bug, not a Quest 11.3 bug.
 - Output renderer surfaces the citations as clickable `file:line-line` links.
 - Prompt block: "Every finding MUST include sources you actually read via `read_file` or `get_file_diff`. Do not fabricate citations."
-- Eval: measure ungrounded-drop rate; expect a step-change reduction in hallucinated findings.
+- Eval: measure ungrounded-`warn` rate pre-Wave-7 as baseline; after Wave 7 measure `grounding_rejected` rate — expect a step-change reduction in hallucinated findings.
 
 ---
 

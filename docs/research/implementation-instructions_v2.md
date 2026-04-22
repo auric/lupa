@@ -23,15 +23,15 @@ Waves are deployable milestones. Each wave has a clear user-facing win and a kil
 
 **Crosswalk to the critique's named waves** (`docs/research/document-improvement-analysis.md` §Rec 2) — the numbered waves below are a concrete re-expression of that proposal against the existing Quest numbering. Mapping:
 
-| Critique wave         | Numbered waves below                 | Notes                                                                                                                                                                                                        |
-| --------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Wave -1 Eval          | Wave 0                               | Eval is the first thing we ship, not the last.                                                                                                                                                               |
-| Wave 0 Foundation     | Wave 1                               | Cache (1.4), structured stubs (1.3), unconditional pipeline (1.1), file-touched tracking (1.2). Feature flags are a per-Quest checklist item, not a Quest.                                                   |
-| Wave 1 Cheap Wins     | Wave 2 + Quest 3.3 in Wave 1         | Sequential thinking (2.x) and convention ingest (3.3) — 3.3 is lifted out of Wave 4 and landed in Wave 1 because it is genuinely standalone.                                                                 |
-| Wave 2 Ground Truth   | Wave 4 (reduced to 3.1/3.2) + Wave 5 | PR overview + tool pruning + externalized checklists.                                                                                                                                                        |
-| Wave 3 Core Reasoning | Wave 3 + Wave 6                      | Subagent IO + recursion/budget.                                                                                                                                                                              |
-| Wave 4 Quality Gates  | Wave 7 + Wave 8                      | Verification moat + pipeline refactor. 11.3 (mandatory citations) is deliberately kept with 11.2 (Judge): shipping required-`sources` without enforcement produces noisy validation failures during the gap. |
-| Wave 5 Advanced       | Wave 9 + Wave 10 + Wave 11           | Compaction, multi-model, scoring.                                                                                                                                                                            |
+| Critique wave         | Numbered waves below                 | Notes                                                                                                                                                                                                                                           |
+| --------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wave -1 Eval          | Wave 0                               | Eval is the first thing we ship, not the last.                                                                                                                                                                                                  |
+| Wave 0 Foundation     | Wave 1                               | Cache (1.4), structured stubs (1.3), unconditional pipeline (1.1), file-touched tracking (1.2). Feature flags are a per-Quest checklist item, not a Quest.                                                                                      |
+| Wave 1 Cheap Wins     | Wave 2 + Quest 3.3 in Wave 1         | Sequential thinking (2.x) and convention ingest (3.3) — 3.3 is lifted out of Wave 4 and landed in Wave 1 because it is genuinely standalone.                                                                                                    |
+| Wave 2 Ground Truth   | Wave 4 (reduced to 3.1/3.2) + Wave 5 | PR overview + tool pruning + externalized checklists.                                                                                                                                                                                           |
+| Wave 3 Core Reasoning | Wave 3 + Wave 6                      | Subagent IO + recursion/budget.                                                                                                                                                                                                                 |
+| Wave 4 Quality Gates  | Wave 7 + Wave 8                      | Verification moat + pipeline refactor. 11.3 (mandatory citations) can ship earlier — its schema layer is always on, its grounding-check layer runs in `warn` mode until 11.2 lands, then flips to `enforce`. See Quest 11.3 "Two-layer design." |
+| Wave 5 Advanced       | Wave 9 + Wave 10 + Wave 11           | Compaction, multi-model, scoring.                                                                                                                                                                                                               |
 
 ### Wave 0 — Foundation (eval harness first)
 
@@ -168,7 +168,7 @@ If you want order-of-magnitude improvement in a few days without the full playbo
 3. **Quest 1.4** — per-analysis file cache. _(Kills Raptor's "same file 8×" cost drain.)_
 4. **Quest 3.3** — convention-file auto-ingest. _(Adds per-repo persistence for free. Now Wave 1.)_
 5. **Quest 2.1** — sequential-thinking tool. _(Older models finally reason in a loop.)_
-6. **Quest 11.3** — mandatory `sources` grounding, _behind a feature flag_. _(Kills most hallucinated findings. If shipped without 11.2 Judge, enable in `warn-only` mode — log ungrounded findings, don't drop — until Wave 7 lands. See crosswalk note above.)_
+6. **Quest 11.3** — mandatory `sources` grounding. _(Kills most hallucinated findings. Two-layer: the `record_finding` schema requirement is always on once shipped; the `PreJudgeGate` grounding check defaults to `lupa.findingGrounding.mode='warn'` — logs fabrications, doesn't drop — until Wave 7 lands, then flips to `'enforce'`. See Quest 11.3 body.)_
 
 Wave 0's eval harness should ideally exist before step 5 so you can measure the gain; in a pinch, land 1–4 without eval and add eval before 5.
 
