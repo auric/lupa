@@ -470,7 +470,7 @@ describe('classifyResolutionForRun', () => {
         expect(mockedSpawn).not.toHaveBeenCalled();
     });
 
-    it('keeps a parsed analysis result when the launcher exits non-zero during teardown', async () => {
+    it('preserves a parsed analysis result as error context when the launcher exits non-zero during teardown', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
                 const outIndex = args.indexOf('--out');
@@ -509,16 +509,23 @@ describe('classifyResolutionForRun', () => {
         });
 
         expect(result).toMatchObject({
-            ok: true,
+            ok: false,
             result: {
                 narrative: 'usable result',
                 modelId: 'copilot/gpt-5-mini',
                 completed: true,
             },
         });
+        expect(result.ok).toBe(false);
+        if (result.ok) {
+            throw new Error('Expected invokeHeadless to return an error');
+        }
+        expect(result.error).toContain(
+            'exited 1 after writing a completed analysis result'
+        );
     });
 
-    it('keeps a parsed resolution-judge result when the launcher exits non-zero during teardown', async () => {
+    it('rejects a parsed resolution-judge result when the launcher exits non-zero during teardown', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
                 const outIndex = args.indexOf('--out');
@@ -535,22 +542,45 @@ describe('classifyResolutionForRun', () => {
             }
         );
 
-        const result = await invokeResolutionJudge({
-            workspaceRoot: '/tmp/workspace',
-            model: 'copilot/gpt-5-mini',
-            payload: {
-                finding: makeProduced(),
-                diffText: 'diff --git a/src/a.ts b/src/a.ts',
-            },
-            timeoutMs: 60_000,
-        });
+        await expect(
+            invokeResolutionJudge({
+                workspaceRoot: '/tmp/workspace',
+                model: 'copilot/gpt-5-mini',
+                payload: {
+                    finding: makeProduced(),
+                    diffText: 'diff --git a/src/a.ts b/src/a.ts',
+                },
+                timeoutMs: 60_000,
+            })
+        ).rejects.toThrow(/exited 1 after writing a valid result payload/i);
+    });
 
-        expect(result).toMatchObject({
-            result: {
-                verdict: 'resolved',
-                modelId: 'copilot/gpt-5-mini',
-            },
-        });
+    it('rejects malformed resolution-judge JSON even when it is parseable and the launcher exits zero', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                const outIndex = args.indexOf('--out');
+                const outPath = args[outIndex + 1];
+                fs.writeFileSync(
+                    outPath,
+                    JSON.stringify({
+                        verdict: 'resolved',
+                    })
+                );
+                return createMockLauncherProcess(0);
+            }
+        );
+
+        await expect(
+            invokeResolutionJudge({
+                workspaceRoot: '/tmp/workspace',
+                model: 'copilot/gpt-5-mini',
+                payload: {
+                    finding: makeProduced(),
+                    diffText: 'diff --git a/src/a.ts b/src/a.ts',
+                },
+                timeoutMs: 60_000,
+            })
+        ).rejects.toThrow(/result\.reason must be a non-empty string/i);
     });
 
     it('returns the parsed incomplete analysis result as an error when the launcher exits non-zero', async () => {
@@ -805,6 +835,58 @@ index 1234567..89abcde 100644
         });
         expect(mockedSpawn).toHaveBeenCalledTimes(2);
         expect(mockedSpawn.mock.calls[0]?.[1]?.[3]).toBe('src/a.ts');
+    });
+
+    it('keeps suffix-only diff fallback ambiguous when more than one candidate matches', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+                return createMockGitDiffProcess(`diff --git a/packages/one/src/a.ts b/packages/one/src/a.ts
+index 1234567..89abcde 100644
+--- a/packages/one/src/a.ts
++++ b/packages/one/src/a.ts
+@@ -10,1 +10,2 @@
+-dangerous();
++safeOne();
++return;
+diff --git a/packages/two/src/a.ts b/packages/two/src/a.ts
+index 1234567..89abcde 100644
+--- a/packages/two/src/a.ts
++++ b/packages/two/src/a.ts
+@@ -10,1 +10,2 @@
+-dangerous();
++safeTwo();
++return;
+`);
+            }
+        );
+        const judge = vi.fn().mockResolvedValue({
+            verdict: 'disputed',
+            reason: 'Multiple suffix-only path candidates make the proxy ambiguous.',
+            modelId: 'copilot/gpt-5-mini',
+        });
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'ambiguous-suffix-fallback',
+                    file: 'a.ts',
+                    sources: [{ path: 'a.ts', lineStart: 10, lineEnd: 10 }],
+                }),
+            ],
+            match: emptyMatch(),
+            judgeClient: { judge },
+        });
+
+        expect(judge).toHaveBeenCalledTimes(1);
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'ambiguous-suffix-fallback',
+            verdict: 'disputed',
+            method: 'judge',
+        });
     });
 
     it('preserves earlier classified findings and marks the remainder invalid when classification aborts mid-run', async () => {

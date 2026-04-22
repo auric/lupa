@@ -472,12 +472,25 @@ describe('runHeadlessResolutionJudge', () => {
             payloadPath,
             JSON.stringify({
                 finding: {
+                    id: 'finding-1',
+                    agentId: 'primary',
+                    timestamp: 0,
                     title: 'Fix timeout handling',
-                    severity: 'medium',
-                    category: 'bug',
+                    severity: 'HIGH',
+                    category: 'logic_error',
                     file: 'src/eval/headlessEntry.ts',
                     lineRange: [10, 20],
                     description: 'Timeout budget is drifting.',
+                    affectedComponent: 'headless-entry',
+                    failureMechanism: 'wrong_return_value',
+                    supportingToolCalls: [],
+                    disproof: {
+                        attempted: false,
+                        method: '',
+                        result: '',
+                    },
+                    verifiableClaims: [],
+                    lspValidation: undefined,
                     sources: [
                         {
                             path: 'src/eval/headlessEntry.ts',
@@ -485,6 +498,28 @@ describe('runHeadlessResolutionJudge', () => {
                             lineEnd: 20,
                         },
                     ],
+                },
+                diffText:
+                    'diff --git a/src/eval/headlessEntry.ts b/src/eval/headlessEntry.ts',
+            })
+        );
+        return payloadPath;
+    }
+
+    function writeInvalidPayloadFile(): string {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lupa-judge-'));
+        const payloadPath = path.join(tmpDir, 'payload.json');
+        fs.writeFileSync(
+            payloadPath,
+            JSON.stringify({
+                finding: {
+                    title: 'Bad payload',
+                    severity: 'medium',
+                    category: 'logic_error',
+                    file: 'src/eval/headlessEntry.ts',
+                    lineRange: [10, 20],
+                    description:
+                        'Wrong severity casing should fail validation.',
                 },
                 diffText:
                     'diff --git a/src/eval/headlessEntry.ts b/src/eval/headlessEntry.ts',
@@ -620,6 +655,45 @@ describe('runHeadlessResolutionJudge', () => {
                 force: true,
             });
         }
+    });
+
+    it('fails fast with a targeted error when the resolution-judge payload shape is invalid', async () => {
+        const payloadPath = writeInvalidPayloadFile();
+        const tokenSource = new vscode.CancellationTokenSource();
+        const services = makeServices({
+            selectedModel: {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            },
+        });
+        vi.mocked(ModelRequestHandler.sendRequest).mockReset();
+
+        try {
+            await expect(
+                runHeadlessResolutionJudge(
+                    {
+                        workspaceRoot: '/ws',
+                        modelIdentifier: 'copilot/gpt-5-mini',
+                        timeoutMs: 60_000,
+                        payloadPath,
+                        cancellationToken: tokenSource.token,
+                    },
+                    services
+                )
+            ).rejects.toThrow(
+                /finding\.severity must be one of CRITICAL, HIGH, MEDIUM, LOW/i
+            );
+        } finally {
+            fs.rmSync(path.dirname(payloadPath), {
+                recursive: true,
+                force: true,
+            });
+        }
+
+        expect(ModelRequestHandler.sendRequest).not.toHaveBeenCalled();
     });
 
     it('frames finding and diff payloads as fenced untrusted data for the auxiliary judge prompt', async () => {

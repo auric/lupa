@@ -3,7 +3,11 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import { spawn, type ChildProcess, execSync } from 'node:child_process';
 import type { HeadlessAnalysisResult } from '../headlessRunner';
-import type { ResolutionJudgePayload, ResolutionJudgeResult } from './types';
+import {
+    getResolutionJudgeResultValidationError,
+    type ResolutionJudgePayload,
+    type ResolutionJudgeResult,
+} from './types';
 import { LAUNCHER_SCRIPT } from './constants';
 import {
     formatHeadlessTimeoutMessage,
@@ -150,13 +154,20 @@ export async function invokeHeadless(
         const durationMs = Date.now() - startedAt;
         const parsed = await tryReadResult(outPath);
 
-        if (parsed.ok && parsed.result.completed && !watchdogFired) {
+        if (
+            exitCode === 0 &&
+            parsed.ok &&
+            parsed.result.completed &&
+            !watchdogFired
+        ) {
             return { ok: true, result: parsed.result, durationMs };
         }
 
         let error: string;
         if (watchdogFired) {
             error = `Launcher killed by harness watchdog after ${watchdogMs}ms`;
+        } else if (exitCode !== 0 && parsed.ok && parsed.result.completed) {
+            error = `Launcher exited ${exitCode} after writing a completed analysis result; treating the run as failed so the parsed result is preserved only as error context; stderr tail: ${tailStderr(stderr, stdout)}`;
         } else if (!parsed.ok && parsed.reason === 'missing') {
             error = `Launcher exited ${exitCode} without writing result JSON; stderr tail: ${tailStderr(stderr, stdout)}`;
         } else if (!parsed.ok) {
@@ -315,7 +326,8 @@ async function tryReadResult(outPath: string): Promise<ParsedResult> {
 }
 
 async function tryReadJsonResult<T>(
-    outPath: string
+    outPath: string,
+    validate?: (value: unknown) => string | null
 ): Promise<ParsedJsonResult<T>> {
     let raw: string;
     try {
@@ -324,8 +336,12 @@ async function tryReadJsonResult<T>(
         return { ok: false, reason: 'missing' };
     }
     try {
-        const parsed = JSON.parse(raw) as T;
-        return { ok: true, result: parsed };
+        const parsed = JSON.parse(raw) as unknown;
+        const validationError = validate?.(parsed) ?? null;
+        if (validationError) {
+            return { ok: false, reason: validationError };
+        }
+        return { ok: true, result: parsed as T };
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return { ok: false, reason: msg };
@@ -398,14 +414,22 @@ export async function invokeResolutionJudge(
         });
 
         const durationMs = Date.now() - startedAt;
-        const parsed = await tryReadJsonResult<ResolutionJudgeResult>(outPath);
-        if (parsed.ok && !watchdogFired) {
+        const parsed = await tryReadJsonResult<ResolutionJudgeResult>(
+            outPath,
+            getResolutionJudgeResultValidationError
+        );
+        if (exitCode === 0 && parsed.ok && !watchdogFired) {
             return { result: parsed.result, durationMs };
         }
 
         if (watchdogFired) {
             throw new Error(
                 `Resolution judge launcher killed by harness watchdog after ${watchdogMs}ms`
+            );
+        }
+        if (exitCode !== 0 && parsed.ok) {
+            throw new Error(
+                `Resolution judge launcher exited ${exitCode} after writing a valid result payload; treating the judge run as failed for safety; stderr tail: ${tailStderr(stderr, stdout)}`
             );
         }
         if (!parsed.ok && parsed.reason === 'missing') {
@@ -415,7 +439,7 @@ export async function invokeResolutionJudge(
         }
         if (!parsed.ok) {
             throw new Error(
-                `Resolution judge JSON was unparseable: ${parsed.reason}; stderr tail: ${tailStderr(stderr, stdout)}`
+                `Resolution judge JSON was invalid: ${parsed.reason}; stderr tail: ${tailStderr(stderr, stdout)}`
             );
         }
         throw new Error(

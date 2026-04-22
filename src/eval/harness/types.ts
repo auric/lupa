@@ -1,3 +1,7 @@
+import {
+    ALLOWED_FINDING_CATEGORIES,
+    FINDING_SEVERITIES,
+} from '../../types/findingTypes';
 import type {
     RecordedFinding,
     FindingSeverity,
@@ -114,6 +118,125 @@ export interface ResolutionJudgeResult {
     verdict: ResolutionJudgeVerdict;
     reason: string;
     modelId: string;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isPositiveInteger(value: unknown): value is number {
+    return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+    return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isResolutionJudgeVerdict(
+    value: unknown
+): value is ResolutionJudgeVerdict {
+    return (
+        value === 'resolved' ||
+        value === 'unresolved' ||
+        value === 'disputed' ||
+        value === 'noise'
+    );
+}
+
+export function getResolutionJudgePayloadValidationError(
+    payload: unknown
+): string | null {
+    if (!isObjectRecord(payload)) {
+        return 'payload must be a JSON object';
+    }
+
+    if (!isObjectRecord(payload.finding)) {
+        return 'finding must be a JSON object';
+    }
+
+    const finding = payload.finding;
+    if (!isNonEmptyString(finding.title)) {
+        return 'finding.title must be a non-empty string';
+    }
+    if (
+        !(FINDING_SEVERITIES as readonly string[]).includes(
+            String(finding.severity)
+        )
+    ) {
+        return `finding.severity must be one of ${(FINDING_SEVERITIES as readonly string[]).join(', ')}`;
+    }
+    if (
+        !(ALLOWED_FINDING_CATEGORIES as readonly string[]).includes(
+            String(finding.category)
+        )
+    ) {
+        return (
+            'finding.category must be one of ' +
+            (ALLOWED_FINDING_CATEGORIES as readonly string[]).join(', ')
+        );
+    }
+    if (!isNonEmptyString(finding.file)) {
+        return 'finding.file must be a non-empty string';
+    }
+    if (
+        !Array.isArray(finding.lineRange) ||
+        finding.lineRange.length !== 2 ||
+        !isPositiveInteger(finding.lineRange[0]) ||
+        !isPositiveInteger(finding.lineRange[1]) ||
+        finding.lineRange[1] < finding.lineRange[0]
+    ) {
+        return 'finding.lineRange must be a two-element array of positive integers with end >= start';
+    }
+    if (!isNonEmptyString(finding.description)) {
+        return 'finding.description must be a non-empty string';
+    }
+    if (finding.sources !== undefined) {
+        if (!Array.isArray(finding.sources)) {
+            return 'finding.sources must be an array when provided';
+        }
+        for (let index = 0; index < finding.sources.length; index++) {
+            const source = finding.sources[index];
+            if (!isObjectRecord(source)) {
+                return `finding.sources[${index}] must be an object`;
+            }
+            if (!isNonEmptyString(source.path)) {
+                return `finding.sources[${index}].path must be a non-empty string`;
+            }
+            if (!isPositiveInteger(source.lineStart)) {
+                return `finding.sources[${index}].lineStart must be a positive integer`;
+            }
+            if (!isPositiveInteger(source.lineEnd)) {
+                return `finding.sources[${index}].lineEnd must be a positive integer`;
+            }
+            if (source.lineEnd < source.lineStart) {
+                return `finding.sources[${index}].lineEnd must be >= lineStart`;
+            }
+        }
+    }
+
+    if (typeof payload.diffText !== 'string') {
+        return 'diffText must be a string';
+    }
+
+    return null;
+}
+
+export function getResolutionJudgeResultValidationError(
+    result: unknown
+): string | null {
+    if (!isObjectRecord(result)) {
+        return 'result must be a JSON object';
+    }
+    if (!isResolutionJudgeVerdict(result.verdict)) {
+        return 'result.verdict must be one of resolved, unresolved, disputed, or noise';
+    }
+    if (!isNonEmptyString(result.reason)) {
+        return 'result.reason must be a non-empty string';
+    }
+    if (!isNonEmptyString(result.modelId)) {
+        return 'result.modelId must be a non-empty string';
+    }
+    return null;
 }
 
 export interface MatchedPair {

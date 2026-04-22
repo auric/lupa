@@ -950,25 +950,29 @@ function findMatchingDiffFile(
         };
     }
 
-    return parsed.find((file) => {
+    const suffixMatches = parsed.filter((file) => {
         const normalizedFilePath = normalizePath(file.filePath);
         return (
             normalizedFilePath.endsWith(`/${normalizedFindingPath}`) ||
             normalizedFindingPath.endsWith(`/${normalizedFilePath}`)
         );
-    }) as
-        | {
-              filePath: string;
-              hunks: Array<{
-                  oldStart: number;
-                  oldLines: number;
-                  newLines: number;
-                  parsedLines: Array<{
-                      type: 'added' | 'removed' | 'context';
-                  }>;
-              }>;
-          }
-        | undefined;
+    });
+
+    if (suffixMatches.length !== 1) {
+        return undefined;
+    }
+
+    return suffixMatches[0] as {
+        filePath: string;
+        hunks: Array<{
+            oldStart: number;
+            oldLines: number;
+            newLines: number;
+            parsedLines: Array<{
+                type: 'added' | 'removed' | 'context';
+            }>;
+        }>;
+    };
 }
 
 function summarizeResolution(

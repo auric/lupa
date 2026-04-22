@@ -2,7 +2,8 @@ import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import { ModelRequestHandler } from '../models/modelRequestHandler';
 import type { IServiceRegistry } from '../services/serviceManager';
-import type {
+import {
+    getResolutionJudgePayloadValidationError,
     ResolutionJudgePayload,
     ResolutionJudgeResult,
 } from './harness/types';
@@ -83,13 +84,23 @@ function readPayload(payloadPath: string): ResolutionJudgePayload {
         );
     }
 
+    let parsed: unknown;
     try {
-        return JSON.parse(raw) as ResolutionJudgePayload;
+        parsed = JSON.parse(raw) as unknown;
     } catch (error) {
         throw new Error(
             `Resolution-judge payload is not valid JSON: ${error instanceof Error ? error.message : String(error)}`
         );
     }
+
+    const validationError = getResolutionJudgePayloadValidationError(parsed);
+    if (validationError) {
+        throw new Error(
+            `Resolution-judge payload is invalid: ${validationError}`
+        );
+    }
+
+    return parsed as ResolutionJudgePayload;
 }
 
 function buildUserPrompt(payload: ResolutionJudgePayload): string {
