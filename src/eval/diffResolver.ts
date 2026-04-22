@@ -243,6 +243,14 @@ function stripFixturePrefixes(
             new RegExp(`^diff --git a/${b}/(.+?) b/${h}/(.+)$`, 'gm'),
             'diff --git a/$1 b/$2'
         )
+        .replace(
+            new RegExp(`^diff --git a/${b}/(.+?) b/(?:/)?dev/null$`, 'gm'),
+            'diff --git a/$1 b/dev/null'
+        )
+        .replace(
+            new RegExp(`^diff --git a/(?:/)?dev/null b/${h}/(.+)$`, 'gm'),
+            'diff --git a/dev/null b/$1'
+        )
         .replace(new RegExp(`^--- a/${b}/`, 'gm'), '--- a/')
         .replace(new RegExp(`^\\+\\+\\+ b/${h}/`, 'gm'), '+++ b/');
 }

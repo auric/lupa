@@ -1,9 +1,17 @@
 export function normalizeModelIdentifier(identifier: string): string {
-    const trimmed = identifier.trim().toLowerCase();
-    if (trimmed.includes('/')) {
+    const trimmed = identifier.trim();
+    const slashIndex = trimmed.indexOf('/');
+    if (slashIndex === -1) {
+        return `copilot/${trimmed}`;
+    }
+
+    const vendor = trimmed.slice(0, slashIndex).trim().toLowerCase();
+    const id = trimmed.slice(slashIndex + 1).trim();
+    if (vendor.length === 0 || id.length === 0) {
         return trimmed;
     }
-    return `copilot/${trimmed}`;
+
+    return `${vendor}/${id}`;
 }
 
 export function createHeadlessDeadline(timeoutMs: number): number {

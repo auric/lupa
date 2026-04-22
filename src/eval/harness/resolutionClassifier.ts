@@ -45,6 +45,11 @@ interface RenameStatusEntry {
     newPath: string;
 }
 
+interface ResolvedDiffTarget {
+    cachePath: string;
+    gitPath: string | undefined;
+}
+
 interface ComparableSources {
     sources: FindingSource[];
     usedFallback: boolean;
@@ -64,6 +69,7 @@ export async function classifyResolutionForRun(
 
     const pathDiffCache = new Map<string, string>();
     const renameStatusCache = new Map<string, readonly RenameStatusEntry[]>();
+    const changedPathsCache = new Map<string, readonly string[]>();
     const findingResolutions: FindingResolution[] = [];
     const warnings: ResolutionWarning[] = [];
     for (let index = 0; index < opts.produced.length; index++) {
@@ -83,6 +89,7 @@ export async function classifyResolutionForRun(
                 matchedExpected,
                 pathDiffCache,
                 renameStatusCache,
+                changedPathsCache,
                 opts.timeoutMs,
                 opts.deadlineAt,
                 opts.judgeClient
@@ -155,6 +162,7 @@ async function classifyRealFinding(
     matchedExpected: ExpectedFinding | undefined,
     pathDiffCache: Map<string, string>,
     renameStatusCache: Map<string, readonly RenameStatusEntry[]>,
+    changedPathsCache: Map<string, readonly string[]>,
     timeoutMs: number,
     deadlineAt: number | undefined,
     judgeClient: ResolutionJudgeClient | undefined
@@ -186,6 +194,7 @@ async function classifyRealFinding(
         comparable.usedFallback,
         pathDiffCache,
         renameStatusCache,
+        changedPathsCache,
         timeoutMs,
         deadlineAt,
         normalizedPath
@@ -225,7 +234,12 @@ async function classifyRealFinding(
 
     try {
         const judged = await judgeClient.judge({
-            finding,
+            finding: sanitizeFindingForJudge(
+                finding,
+                comparable.sources,
+                fixture.workspaceRoot,
+                normalizedPath
+            ),
             diffText: lineCheck.diffText,
         });
         return {
@@ -296,6 +310,7 @@ async function checkRealFindingPaths(
     usedFallback: boolean,
     cache: Map<string, string>,
     renameStatusCache: Map<string, readonly RenameStatusEntry[]>,
+    changedPathsCache: Map<string, readonly string[]>,
     timeoutMs: number,
     deadlineAt: number | undefined,
     defaultPath: string
@@ -309,6 +324,7 @@ async function checkRealFindingPaths(
             fixture,
             findingPath,
             cache,
+            changedPathsCache,
             timeoutMs,
             deadlineAt
         );
@@ -426,6 +442,24 @@ function getPrimaryFindingPath(
         getComparableSources(finding, workspaceRoot).sources[0]?.path ??
         normalizePath(finding.file, workspaceRoot)
     );
+}
+
+function sanitizeFindingForJudge(
+    finding: RecordedFinding,
+    comparableSources: readonly FindingSource[],
+    workspaceRoot: string | undefined,
+    defaultPath: string
+): RecordedFinding {
+    const normalizedFile = normalizePath(finding.file, workspaceRoot);
+    return {
+        ...finding,
+        file: normalizedFile.length > 0 ? normalizedFile : defaultPath,
+        sources: comparableSources.map((source) => ({
+            path: source.path,
+            lineStart: source.lineStart,
+            lineEnd: source.lineEnd,
+        })),
+    };
 }
 
 function checkLineOverlap(
@@ -635,24 +669,34 @@ async function getDiffForPath(
     fixture: LoadedFixture,
     normalizedPath: string,
     cache: Map<string, string>,
+    changedPathsCache: Map<string, readonly string[]>,
     timeoutMs: number,
     deadlineAt: number | undefined
 ): Promise<string> {
-    const cacheKey = `${fixture.headRef}::${fixture.mergeRef ?? 'none'}::${normalizedPath}`;
+    if (!fixture.mergeRef) {
+        const cacheKey = `${fixture.headRef}::${fixture.mergeRef ?? 'none'}::${normalizedPath}`;
+        cache.set(cacheKey, '');
+        return '';
+    }
+
+    const diffTarget = await resolveDiffTarget(
+        fixture,
+        normalizedPath,
+        changedPathsCache,
+        timeoutMs,
+        deadlineAt
+    );
+    const cacheKey = `${fixture.headRef}::${fixture.mergeRef ?? 'none'}::${diffTarget.cachePath}`;
     const cached = cache.get(cacheKey);
     if (cached !== undefined) {
         return cached;
-    }
-    if (!fixture.mergeRef) {
-        cache.set(cacheKey, '');
-        return '';
     }
 
     const diffText = await runGitDiffForPath(
         fixture.workspaceRoot,
         fixture.headRef,
         fixture.mergeRef,
-        normalizedPath,
+        diffTarget.gitPath,
         getResolutionGitTimeoutMs(
             timeoutMs,
             deadlineAt,
@@ -663,20 +707,156 @@ async function getDiffForPath(
     return diffText;
 }
 
+async function resolveDiffTarget(
+    fixture: LoadedFixture,
+    normalizedPath: string,
+    cache: Map<string, readonly string[]>,
+    timeoutMs: number,
+    deadlineAt: number | undefined
+): Promise<ResolvedDiffTarget> {
+    const gitPath = normalizePath(normalizedPath);
+    if (!fixture.mergeRef || gitPath.length === 0) {
+        return { cachePath: gitPath, gitPath };
+    }
+
+    const changedPaths = await getChangedPaths(
+        fixture,
+        cache,
+        timeoutMs,
+        deadlineAt
+    );
+    if (changedPaths.includes(gitPath)) {
+        return {
+            cachePath: gitPath,
+            gitPath,
+        };
+    }
+
+    const suffixMatches = changedPaths.filter((candidatePath) =>
+        pathsMatchBySuffix(candidatePath, gitPath)
+    );
+    if (suffixMatches.length === 1) {
+        return {
+            cachePath: suffixMatches[0]!,
+            gitPath: suffixMatches[0]!,
+        };
+    }
+
+    return {
+        cachePath: '*',
+        gitPath: undefined,
+    };
+}
+
+async function getChangedPaths(
+    fixture: LoadedFixture,
+    cache: Map<string, readonly string[]>,
+    timeoutMs: number,
+    deadlineAt: number | undefined
+): Promise<readonly string[]> {
+    const cacheKey = `${fixture.headRef}::${fixture.mergeRef ?? 'none'}::changed-paths`;
+    const cached = cache.get(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    if (!fixture.mergeRef) {
+        cache.set(cacheKey, []);
+        return [];
+    }
+
+    const stdout = await runGitDiffNameOnly(
+        fixture.workspaceRoot,
+        stripRefPrefix(fixture.headRef),
+        stripRefPrefix(fixture.mergeRef),
+        getResolutionGitTimeoutMs(
+            timeoutMs,
+            deadlineAt,
+            'during resolution classification changed-path lookup'
+        )
+    );
+    const changedPaths = stdout
+        .split(/\r?\n/u)
+        .map((line) => normalizePath(line))
+        .filter((line) => line.length > 0);
+
+    cache.set(cacheKey, changedPaths);
+    return changedPaths;
+}
+
 function runGitDiffForPath(
     workspaceRoot: string,
     headRef: string,
     mergeRef: string,
-    repoPath: string,
+    repoPath: string | undefined,
     timeoutMs: number
 ): Promise<string> {
     const fromRef = stripRefPrefix(headRef);
     const toRef = stripRefPrefix(mergeRef);
-    const gitPath = normalizePath(repoPath);
+    const gitPath = repoPath ? normalizePath(repoPath) : undefined;
+    const args = gitPath
+        ? ['diff', `${fromRef}..${toRef}`, '--', gitPath]
+        : ['diff', `${fromRef}..${toRef}`];
+    const commandLabel = gitPath
+        ? `git diff ${fromRef}..${toRef} -- ${gitPath}`
+        : `git diff ${fromRef}..${toRef}`;
+    return new Promise((resolve, reject) => {
+        const proc = spawn('git', args, {
+            cwd: workspaceRoot,
+            stdio: 'pipe',
+        });
+        let stdout = '';
+        let stderr = '';
+        let settled = false;
+        const timeoutHandle = setTimeout(() => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            proc.kill('SIGKILL');
+            reject(new Error(`${commandLabel} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+        proc.stdout.on('data', (chunk) => {
+            stdout += chunk.toString();
+        });
+        proc.stderr.on('data', (chunk) => {
+            stderr += chunk.toString();
+        });
+        proc.on('error', (error) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timeoutHandle);
+            reject(error);
+        });
+        proc.on('close', (code) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timeoutHandle);
+            if (code === 0 || code === 1) {
+                resolve(stdout);
+                return;
+            }
+            reject(
+                new Error(`${commandLabel} failed (${code}): ${stderr.trim()}`)
+            );
+        });
+    });
+}
+
+function runGitDiffNameOnly(
+    workspaceRoot: string,
+    fromRef: string,
+    toRef: string,
+    timeoutMs: number
+): Promise<string> {
     return new Promise((resolve, reject) => {
         const proc = spawn(
             'git',
-            ['diff', `${fromRef}..${toRef}`, '--', gitPath],
+            ['diff', '--name-only', `${fromRef}..${toRef}`],
             {
                 cwd: workspaceRoot,
                 stdio: 'pipe',
@@ -693,7 +873,7 @@ function runGitDiffForPath(
             proc.kill('SIGKILL');
             reject(
                 new Error(
-                    `git diff ${fromRef}..${toRef} -- ${gitPath} timed out after ${timeoutMs}ms`
+                    `git diff --name-only ${fromRef}..${toRef} timed out after ${timeoutMs}ms`
                 )
             );
         }, timeoutMs);
@@ -723,7 +903,7 @@ function runGitDiffForPath(
             }
             reject(
                 new Error(
-                    `git diff ${fromRef}..${toRef} -- ${gitPath} failed (${code}): ${stderr.trim()}`
+                    `git diff --name-only ${fromRef}..${toRef} failed (${code}): ${stderr.trim()}`
                 )
             );
         });

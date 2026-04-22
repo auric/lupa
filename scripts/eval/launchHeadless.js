@@ -79,6 +79,17 @@ function createPostSignalWatchdog(onForceKill) {
     };
 }
 
+function forwardTerminationSignal(sig, state, child, postSignalWatchdog) {
+    state.forwardedSignal = sig;
+    state.forwardedSignalExitCode = sig === 'SIGINT' ? 130 : 143;
+    if (state.watchdog) {
+        clearTimeout(state.watchdog);
+        state.watchdog = undefined;
+    }
+    postSignalWatchdog.arm(sig);
+    killProcessTree(child);
+}
+
 async function main() {
     let args;
     try {
@@ -180,9 +191,11 @@ async function main() {
         detached: process.platform !== 'win32',
     });
 
-    let forwardedSignalExitCode;
-    let forwardedSignal = null;
-    let watchdog;
+    const signalState = {
+        forwardedSignal: null,
+        forwardedSignalExitCode: undefined,
+        watchdog: undefined,
+    };
     const postSignalWatchdog = createPostSignalWatchdog(() =>
         killProcessTree(child)
     );
@@ -192,22 +205,17 @@ async function main() {
     // launcher must forward operator signals explicitly. Harmless on Windows.
     for (const sig of ['SIGINT', 'SIGTERM']) {
         process.on(sig, () => {
-            if (forwardedSignal !== null) {
-                process.exit(forwardedSignalExitCode ?? 1);
-            }
-            forwardedSignal = sig;
-            forwardedSignalExitCode = sig === 'SIGINT' ? 130 : 143;
-            if (watchdog) {
-                clearTimeout(watchdog);
-                watchdog = undefined;
-            }
-            postSignalWatchdog.arm(sig);
-            killProcessTree(child);
+            forwardTerminationSignal(
+                sig,
+                signalState,
+                child,
+                postSignalWatchdog
+            );
         });
     }
 
     const watchdogMs = getLauncherWatchdogMs(args);
-    watchdog = setTimeout(() => {
+    signalState.watchdog = setTimeout(() => {
         process.stderr.write(
             `Watchdog: VS Code did not exit within ${watchdogMs}ms; killing process tree.\n`
         );
@@ -221,13 +229,14 @@ async function main() {
             resolve(1);
         });
     });
-    if (watchdog) {
-        clearTimeout(watchdog);
+    if (signalState.watchdog) {
+        clearTimeout(signalState.watchdog);
     }
     postSignalWatchdog.clear();
 
     process.exit(
-        forwardedSignalExitCode ?? readSentinelExitCode(childExitCode)
+        signalState.forwardedSignalExitCode ??
+            readSentinelExitCode(childExitCode)
     );
 }
 
@@ -325,6 +334,7 @@ if (require.main === module) {
 
 module.exports = {
     createPostSignalWatchdog,
+    forwardTerminationSignal,
     getLauncherWatchdogMs,
     WATCHDOG_POST_SIGNAL_RETRY_MS,
     WATCHDOG_SIGTERM_GRACE_MS,

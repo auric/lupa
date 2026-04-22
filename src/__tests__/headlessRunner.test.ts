@@ -249,6 +249,44 @@ describe('launchHeadless watchdog', () => {
             vi.useRealTimers();
         }
     });
+
+    it('re-forwards repeated termination signals without exiting early while cleanup is still in progress', async () => {
+        const { forwardTerminationSignal } =
+            await import('../../scripts/eval/launchHeadless.js');
+        const postSignalWatchdog = {
+            arm: vi.fn(),
+        };
+        const state = {
+            forwardedSignal: null,
+            forwardedSignalExitCode: undefined,
+            watchdog: setTimeout(() => {}, 60_000),
+        };
+        const child = {
+            pid: 12345,
+            kill: vi.fn(),
+        };
+
+        forwardTerminationSignal(
+            'SIGINT',
+            state,
+            child as never,
+            postSignalWatchdog as never
+        );
+        expect(state.forwardedSignal).toBe('SIGINT');
+        expect(state.forwardedSignalExitCode).toBe(130);
+        expect(state.watchdog).toBeUndefined();
+        expect(postSignalWatchdog.arm).toHaveBeenCalledWith('SIGINT');
+
+        forwardTerminationSignal(
+            'SIGTERM',
+            state,
+            child as never,
+            postSignalWatchdog as never
+        );
+        expect(state.forwardedSignal).toBe('SIGTERM');
+        expect(state.forwardedSignalExitCode).toBe(143);
+        expect(postSignalWatchdog.arm).toHaveBeenNthCalledWith(2, 'SIGTERM');
+    });
 });
 
 describe('runHeadless', () => {
@@ -459,6 +497,21 @@ describe('runHeadless', () => {
         );
 
         expect(result.modelId).toBe('copilot/gpt-4.1');
+    });
+
+    it('treats model-id case mismatches as fallback mismatches instead of silently normalizing them away', async () => {
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        const services = makeServices({});
+
+        await expect(
+            runHeadless(
+                {
+                    ...baseOpts(),
+                    modelIdentifier: 'copilot/GPT-4.1',
+                },
+                services
+            )
+        ).rejects.toThrow(/copilot\/GPT-4\.1.*copilot\/gpt-4\.1/);
     });
 
     it('passes only the remaining timeout budget to diff resolution when a deadline is supplied', async () => {

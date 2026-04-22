@@ -695,6 +695,12 @@ describe('classifyResolutionForRun', () => {
     it('checks all cited source paths for real fixtures before marking unresolved', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\nsrc/b.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
                 const gitPath = args[3];
                 if (gitPath === 'src/a.ts') {
                     return createMockGitDiffProcess('');
@@ -740,6 +746,9 @@ index 1234567..89abcde 100644
     it('filters invalid sources and falls back to the finding file and lineRange when none remain', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\n');
+                }
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess('');
                 }
@@ -785,6 +794,9 @@ index 1234567..89abcde 100644
     it('canonicalizes absolute and dot-prefixed finding paths before diffing', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\n');
+                }
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess('');
                 }
@@ -833,13 +845,79 @@ index 1234567..89abcde 100644
             path: 'src/a.ts',
             method: 'source-overlap',
         });
-        expect(mockedSpawn).toHaveBeenCalledTimes(2);
-        expect(mockedSpawn.mock.calls[0]?.[1]?.[3]).toBe('src/a.ts');
+        expect(
+            mockedSpawn.mock.calls.some(
+                (call) => call[1]?.includes('--name-only') === true
+            )
+        ).toBe(true);
+        expect(
+            mockedSpawn.mock.calls.some((call) => call[1]?.[3] === 'src/a.ts')
+        ).toBe(true);
+    });
+
+    it('resolves a unique suffix path to a repo-relative candidate before diffing', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess(
+                        'packages/feature/src/a.ts\n'
+                    );
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+
+                const gitPath = args[3];
+                if (gitPath !== 'packages/feature/src/a.ts') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+
+                return createMockGitDiffProcess(`diff --git a/packages/feature/src/a.ts b/packages/feature/src/a.ts
+index 1234567..89abcde 100644
+--- a/packages/feature/src/a.ts
++++ b/packages/feature/src/a.ts
+@@ -10,1 +10,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'unique-suffix-path',
+                    file: 'a.ts',
+                    sources: [{ path: 'a.ts', lineStart: 10, lineEnd: 10 }],
+                }),
+            ],
+            match: emptyMatch(),
+        });
+
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'unique-suffix-path',
+            verdict: 'resolved',
+            method: 'source-overlap',
+        });
+        expect(
+            mockedSpawn.mock.calls.some(
+                (call) =>
+                    call[1]?.[0] === 'diff' &&
+                    call[1]?.[3] === 'packages/feature/src/a.ts'
+            )
+        ).toBe(true);
     });
 
     it('keeps suffix-only diff fallback ambiguous when more than one candidate matches', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess(
+                        'packages/one/src/a.ts\npackages/two/src/a.ts\n'
+                    );
+                }
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess('');
                 }
@@ -892,6 +970,11 @@ index 1234567..89abcde 100644
     it('preserves earlier classified findings and marks the remainder invalid when classification aborts mid-run', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess(
+                        'src/resolved.ts\nsrc/broken.ts\n'
+                    );
+                }
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess('');
                 }
@@ -972,8 +1055,15 @@ index 1234567..89abcde 100644
     });
 
     it('treats insertion-only follow-up patches as ambiguous and escalates to the judge', async () => {
-        mockedSpawn.mockImplementation(() =>
-            createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
 index 1234567..89abcde 100644
 --- a/src/a.ts
 +++ b/src/a.ts
@@ -981,7 +1071,8 @@ index 1234567..89abcde 100644
 +if (!value) {
 +    return;
 +}
-`)
+`);
+            }
         );
         const judge = vi.fn().mockResolvedValue({
             verdict: 'resolved',
@@ -1004,9 +1095,73 @@ index 1234567..89abcde 100644
         });
     });
 
+    it('passes a sanitized fallback finding to the auxiliary judge after invalid sources are discarded', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+index 1234567..89abcde 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -9,0 +10,2 @@
++if (!value) {
++}
+`);
+            }
+        );
+        const judge = vi.fn().mockResolvedValue({
+            verdict: 'resolved',
+            reason: 'Sanitized payload looked correct.',
+            modelId: 'copilot/gpt-5-mini',
+        });
+
+        await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'sanitized-judge-payload',
+                    file: './src/a.ts',
+                    sources: [
+                        { path: './src/a.ts', lineStart: 0, lineEnd: 0 },
+                        { path: './src/a.ts', lineStart: 12, lineEnd: 10 },
+                    ],
+                }),
+            ],
+            match: emptyMatch(),
+            judgeClient: { judge },
+        });
+
+        expect(judge).toHaveBeenCalledWith(
+            expect.objectContaining({
+                finding: expect.objectContaining({
+                    file: 'src/a.ts',
+                    sources: [
+                        {
+                            path: 'src/a.ts',
+                            lineStart: 10,
+                            lineEnd: 10,
+                        },
+                    ],
+                }),
+            })
+        );
+    });
+
     it('treats an overlapping deletion-only hunk as resolved even when another hunk in the file adds lines elsewhere', async () => {
-        mockedSpawn.mockImplementation(() =>
-            createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
 index 1234567..89abcde 100644
 --- a/src/a.ts
 +++ b/src/a.ts
@@ -1014,7 +1169,8 @@ index 1234567..89abcde 100644
 -dangerous();
 @@ -100,0 +100,1 @@
 +const unrelated = true;
-`)
+`);
+            }
         );
 
         const summary = await classifyResolution({
@@ -1031,15 +1187,23 @@ index 1234567..89abcde 100644
     });
 
     it('skips ambiguous real-fixture findings when the auxiliary judge is unavailable', async () => {
-        mockedSpawn.mockImplementation(() =>
-            createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
 index 1234567..89abcde 100644
 --- a/src/a.ts
 +++ b/src/a.ts
 @@ -9,0 +10,2 @@
 +if (!value) {
 +}
-`)
+`);
+            }
         );
 
         const summary = await classifyResolution({
@@ -1065,6 +1229,14 @@ index 1234567..89abcde 100644
     it('preserves classified findings when one ambiguous judge call fails', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess(
+                        'src/resolved.ts\nsrc/ambiguous.ts\n'
+                    );
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
                 const gitPath = args[3];
                 if (gitPath === 'src/resolved.ts') {
                     return createMockGitDiffProcess(`diff --git a/src/resolved.ts b/src/resolved.ts
@@ -1137,6 +1309,9 @@ index 1234567..89abcde 100644
     it('marks a deletion-only overlap as ambiguous only when a pure rename/move is detected', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\n');
+                }
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess(
                         'R100\tsrc/a.ts\tsrc/moved/a.ts\n'
@@ -1174,6 +1349,9 @@ rename to src/moved/a.ts
         const judge = vi.fn();
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\n');
+                }
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess(
                         'R100\tpackages/one/src/a.ts\tpackages/one/src/a-renamed.ts\n' +
@@ -1226,6 +1404,9 @@ index 1234567..89abcde 100644
             const kill = vi.fn();
             mockedSpawn.mockImplementation(
                 (_cmd: string, args: readonly string[]) => {
+                    if (args.includes('--name-only')) {
+                        return createMockGitDiffProcess('src/a.ts\n');
+                    }
                     if (args.includes('--name-status')) {
                         return createMockGitDiffProcess('');
                     }
@@ -1270,22 +1451,31 @@ index 1234567..89abcde 100644
         vi.useFakeTimers();
         try {
             const kill = vi.fn();
-            mockedSpawn.mockImplementation(() => {
-                const proc = new EventEmitter() as EventEmitter & {
-                    stdout: EventEmitter;
-                    stderr: EventEmitter;
-                    kill: typeof kill;
-                };
-                proc.stdout = new EventEmitter();
-                proc.stderr = new EventEmitter();
-                proc.kill = kill;
+            mockedSpawn.mockImplementation(
+                (_cmd: string, args: readonly string[]) => {
+                    if (args.includes('--name-only')) {
+                        return createMockGitDiffProcess('src/a.ts\n');
+                    }
+                    if (args.includes('--name-status')) {
+                        return createMockGitDiffProcess('');
+                    }
 
-                queueMicrotask(() => {
-                    proc.emit('close', 0);
-                });
+                    const proc = new EventEmitter() as EventEmitter & {
+                        stdout: EventEmitter;
+                        stderr: EventEmitter;
+                        kill: typeof kill;
+                    };
+                    proc.stdout = new EventEmitter();
+                    proc.stderr = new EventEmitter();
+                    proc.kill = kill;
 
-                return proc;
-            });
+                    queueMicrotask(() => {
+                        proc.emit('close', 0);
+                    });
+
+                    return proc;
+                }
+            );
 
             const summaryPromise = classifyResolution({
                 fixture: makeRealFixture(),

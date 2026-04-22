@@ -175,6 +175,56 @@ describe('resolveDiff', () => {
         ]);
     });
 
+    it('normalizes add-only no-index headers that point at /dev/null on the base side', async () => {
+        const raw =
+            'diff --git a/dev/null b/head/src/new.ts\n' +
+            'new file mode 100644\n' +
+            '--- /dev/null\n' +
+            '+++ b/head/src/new.ts\n' +
+            '@@ -0,0 +1 @@\n' +
+            '+new\n';
+        mockGitRun({ stdout: raw, exitCode: 1 });
+
+        const diff = await resolveDiff(
+            {
+                workspaceRoot: '/w',
+                baseRef: 'dir:/w/base',
+                headRef: 'dir:/w/head',
+            },
+            services
+        );
+
+        expect(diff).toContain('diff --git a/dev/null b/src/new.ts');
+        expect(diff).toContain('--- /dev/null');
+        expect(diff).toContain('+++ b/src/new.ts');
+        expect(diff).not.toContain('head/');
+    });
+
+    it('normalizes delete-only no-index headers that point at /dev/null on the head side', async () => {
+        const raw =
+            'diff --git a/base/src/old.ts b/dev/null\n' +
+            'deleted file mode 100644\n' +
+            '--- a/base/src/old.ts\n' +
+            '+++ /dev/null\n' +
+            '@@ -1 +0,0 @@\n' +
+            '-old\n';
+        mockGitRun({ stdout: raw, exitCode: 1 });
+
+        const diff = await resolveDiff(
+            {
+                workspaceRoot: '/w',
+                baseRef: 'dir:/w/base',
+                headRef: 'dir:/w/head',
+            },
+            services
+        );
+
+        expect(diff).toContain('diff --git a/src/old.ts b/dev/null');
+        expect(diff).toContain('--- a/src/old.ts');
+        expect(diff).toContain('+++ /dev/null');
+        expect(diff).not.toContain('base/');
+    });
+
     it('kills the git process when cancellation is requested', async () => {
         const proc = new EventEmitter() as unknown as MockChildProcess;
         proc.stdout = new EventEmitter() as never;
