@@ -3,9 +3,9 @@ import { spawn } from 'node:child_process';
 import type { FindingSource, RecordedFinding } from '../../types/findingTypes';
 import { DiffUtils } from '../../utils/diffUtils';
 import type {
-    ExpectedFinding,
     FindingResolution,
     LoadedFixture,
+    MatchedPair,
     MatchResult,
     ResolutionBucket,
     ResolutionJudgePayload,
@@ -63,9 +63,9 @@ type ClassificationOutcome =
 export async function classifyResolutionForRun(
     opts: ClassifyResolutionOptions
 ): Promise<ResolutionSummary> {
-    const matchedExpectedByFindingId = new Map<string, ExpectedFinding>();
+    const matchedPairByFindingId = new Map<string, MatchedPair>();
     for (const pair of opts.match.matched) {
-        matchedExpectedByFindingId.set(pair.produced.id, pair.expected);
+        matchedPairByFindingId.set(pair.produced.id, pair);
     }
 
     const pathDiffCache = new Map<string, string>();
@@ -75,11 +75,11 @@ export async function classifyResolutionForRun(
     const warnings: ResolutionWarning[] = [];
     for (let index = 0; index < opts.produced.length; index++) {
         const finding = opts.produced[index]!;
-        const matchedExpected = matchedExpectedByFindingId.get(finding.id);
+        const matchedPair = matchedPairByFindingId.get(finding.id);
         try {
             if (opts.fixture.kind === 'synthetic') {
                 findingResolutions.push(
-                    classifySyntheticFinding(finding, matchedExpected)
+                    classifySyntheticFinding(finding, matchedPair)
                 );
                 continue;
             }
@@ -87,7 +87,7 @@ export async function classifyResolutionForRun(
             const outcome = await classifyRealFinding(
                 opts.fixture,
                 finding,
-                matchedExpected,
+                matchedPair,
                 pathDiffCache,
                 renameStatusCache,
                 changedPathsCache,
@@ -125,8 +125,9 @@ export async function classifyResolutionForRun(
 
 function classifySyntheticFinding(
     finding: RecordedFinding,
-    matchedExpected: ExpectedFinding | undefined
+    matchedPair: MatchedPair | undefined
 ): FindingResolution {
+    const matchedExpected = matchedPair?.expected;
     if (!matchedExpected) {
         return {
             findingId: finding.id,
@@ -138,20 +139,20 @@ function classifySyntheticFinding(
         };
     }
 
-    const verdict =
-        matchedExpected.resolvedByDefault === false ? 'unresolved' : 'resolved';
+    const defaultOverride = getResolvedByDefaultOverride(matchedPair);
+    const verdict = defaultOverride === false ? 'unresolved' : 'resolved';
     return {
         findingId: finding.id,
         severity: finding.severity,
         verdict,
         method:
-            matchedExpected.resolvedByDefault !== undefined
+            defaultOverride !== undefined
                 ? 'label-override'
                 : 'synthetic-match',
         path: normalizePath(finding.file),
         matchedLabelPath: normalizePath(matchedExpected.path),
         reason:
-            matchedExpected.resolvedByDefault !== undefined
+            defaultOverride !== undefined
                 ? `Synthetic fixture label override forced verdict=${verdict}.`
                 : 'Synthetic fixture finding matched an expected label.',
     };
@@ -160,7 +161,7 @@ function classifySyntheticFinding(
 async function classifyRealFinding(
     fixture: LoadedFixture,
     finding: RecordedFinding,
-    matchedExpected: ExpectedFinding | undefined,
+    matchedPair: MatchedPair | undefined,
     pathDiffCache: Map<string, string>,
     renameStatusCache: Map<string, readonly RenameStatusEntry[]>,
     changedPathsCache: Map<string, readonly string[]>,
@@ -168,19 +169,19 @@ async function classifyRealFinding(
     deadlineAt: number | undefined,
     judgeClient: ResolutionJudgeClient | undefined
 ): Promise<ClassificationOutcome> {
-    if (matchedExpected?.resolvedByDefault !== undefined) {
+    const matchedExpected = matchedPair?.expected;
+    const defaultOverride = getResolvedByDefaultOverride(matchedPair);
+    if (defaultOverride !== undefined) {
         return {
             kind: 'classified',
             resolution: {
                 findingId: finding.id,
                 severity: finding.severity,
-                verdict: matchedExpected.resolvedByDefault
-                    ? 'resolved'
-                    : 'unresolved',
+                verdict: defaultOverride ? 'resolved' : 'unresolved',
                 method: 'label-override',
                 path: normalizePath(finding.file, fixture.workspaceRoot),
-                matchedLabelPath: normalizePath(matchedExpected.path),
-                reason: `Fixture label override forced verdict=${matchedExpected.resolvedByDefault ? 'resolved' : 'unresolved'}.`,
+                matchedLabelPath: normalizePath(matchedPair!.expected.path),
+                reason: `Fixture label override forced verdict=${defaultOverride ? 'resolved' : 'unresolved'}.`,
             },
         };
     }
@@ -303,6 +304,22 @@ function createResolutionWarning(
         path,
         message,
     };
+}
+
+function getResolvedByDefaultOverride(
+    matchedPair: MatchedPair | undefined
+): boolean | undefined {
+    if (!matchedPair) {
+        return undefined;
+    }
+
+    if (matchedPair.expected.resolvedByDefault === undefined) {
+        return undefined;
+    }
+
+    return matchedPair.matchReason === 'both'
+        ? matchedPair.expected.resolvedByDefault
+        : undefined;
 }
 
 async function checkRealFindingPaths(
@@ -694,6 +711,17 @@ async function getDiffForPath(
     }
 
     if (!diffTarget.matchedPath) {
+        const fallbackDiff = await getDiffForOriginalPath(
+            fixture,
+            normalizedPath,
+            cache,
+            timeoutMs,
+            deadlineAt
+        );
+        if (fallbackDiff.trim().length > 0) {
+            return fallbackDiff;
+        }
+
         cache.set(cacheKey, '');
         return '';
     }
@@ -707,6 +735,39 @@ async function getDiffForPath(
             timeoutMs,
             deadlineAt,
             `during resolution classification git diff for ${normalizedPath}`
+        )
+    );
+    cache.set(cacheKey, diffText);
+    return diffText;
+}
+
+async function getDiffForOriginalPath(
+    fixture: LoadedFixture,
+    normalizedPath: string,
+    cache: Map<string, string>,
+    timeoutMs: number,
+    deadlineAt: number | undefined
+): Promise<string> {
+    const gitPath = normalizePath(normalizedPath);
+    if (!fixture.mergeRef || gitPath.length === 0) {
+        return '';
+    }
+
+    const cacheKey = `${fixture.headRef}::${fixture.mergeRef ?? 'none'}::direct:${gitPath}`;
+    const cached = cache.get(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const diffText = await runGitDiffForPath(
+        fixture.workspaceRoot,
+        fixture.headRef,
+        fixture.mergeRef,
+        gitPath,
+        getResolutionGitTimeoutMs(
+            timeoutMs,
+            deadlineAt,
+            `during resolution classification direct git diff for ${normalizedPath}`
         )
     );
     cache.set(cacheKey, diffText);

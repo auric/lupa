@@ -5,6 +5,7 @@ import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { RecordedFinding } from '../types/findingTypes';
 import { resolveDiff } from './diffResolver';
 import {
+    awaitWithinHeadlessBudget,
     normalizeModelIdentifier,
     requireRemainingHeadlessBudgetMs,
 } from './headlessShared';
@@ -80,10 +81,18 @@ export async function runHeadless(
 
     // persist: false — don't persist the model choice into the target
     // workspace's .vscode/lupa.json (treat the analyzed repo as read-only).
-    const model = await services.copilotModelManager.selectModel({
-        identifier: opts.modelIdentifier,
-        persist: false,
-    });
+    const model = await awaitWithinHeadlessBudget(
+        services.copilotModelManager.selectModel({
+            identifier: opts.modelIdentifier,
+            persist: false,
+        }),
+        {
+            timeoutMs: opts.timeoutMs,
+            deadlineAt: opts.deadlineAt,
+            phase: 'during model selection',
+            cancellationToken: opts.cancellationToken,
+        }
+    );
     // No silent fallback in the headless path: if the requested model is
     // unavailable, CopilotModelManager.selectModel returns the first
     // available chat model, which on a Pro install can be a premium-tier

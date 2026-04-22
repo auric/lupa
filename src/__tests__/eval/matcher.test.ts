@@ -692,6 +692,50 @@ describe('classifyResolutionForRun', () => {
         );
     });
 
+    it('ignores resolvedByDefault overrides for weak synthetic matches', async () => {
+        const produced = [
+            makeProduced({
+                id: 'weak-override',
+                category: 'security_vulnerability',
+            }),
+        ];
+        const expected = [
+            makeExpected({
+                category: 'logic_error',
+                severity: 'HIGH',
+                resolvedByDefault: false,
+            }),
+        ];
+        const match = matchFindings(produced, expected);
+
+        const summary = await classifyResolution({
+            fixture: {
+                name: 'synthetic-weak-override',
+                kind: 'synthetic',
+                labels: {
+                    intent: 'test weak override gating',
+                    expected_findings: expected,
+                    minFilesExamined: 1,
+                    maxFalsePositivesTolerated: 0,
+                },
+                workspaceRoot: '/tmp/workspace',
+                baseRef: 'dir:base',
+                headRef: 'dir:head',
+                mergeRef: undefined,
+            },
+            produced,
+            match,
+        });
+
+        expect(summary.findings).toEqual([
+            expect.objectContaining({
+                findingId: 'weak-override',
+                verdict: 'resolved',
+                method: 'synthetic-match',
+            }),
+        ]);
+    });
+
     it('checks all cited source paths for real fixtures before marking unresolved', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
@@ -922,6 +966,11 @@ index 1234567..89abcde 100644
                     return createMockGitDiffProcess('');
                 }
 
+                const gitPath = args[3];
+                if (gitPath === 'a.ts') {
+                    return createMockGitDiffProcess('');
+                }
+
                 throw new Error(`Unexpected git invocation: ${args.join(' ')}`);
             }
         );
@@ -953,10 +1002,11 @@ index 1234567..89abcde 100644
             mockedSpawn.mock.calls.some(
                 (call) =>
                     call[1]?.[0] === 'diff' &&
+                    call[1]?.[3] === 'a.ts' &&
                     !call[1]?.includes('--name-only') &&
                     !call[1]?.includes('--name-status')
             )
-        ).toBe(false);
+        ).toBe(true);
     });
 
     it('preserves earlier classified findings and marks the remainder invalid when classification aborts mid-run', async () => {
@@ -1387,6 +1437,71 @@ index 1234567..89abcde 100644
             verdict: 'resolved',
             method: 'line-range-fallback',
             path: 'src/a.ts',
+        });
+    });
+
+    it('uses a targeted diff for the original path when rename+edit changes are missing from --name-only', async () => {
+        const judge = vi.fn().mockResolvedValue({
+            verdict: 'resolved',
+            reason: 'Rename-and-edit diff still touched the cited code.',
+            modelId: 'copilot/gpt-5-mini',
+        });
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/new-name.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+
+                const gitPath = args[3];
+                if (gitPath !== 'src/old-name.ts') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+
+                return createMockGitDiffProcess(`diff --git a/src/old-name.ts b/src/new-name.ts
+index 1234567..89abcde 100644
+--- a/src/old-name.ts
++++ b/src/new-name.ts
+@@ -10,1 +10,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'rename-edit-old-path',
+                    file: 'src/old-name.ts',
+                    sources: [
+                        {
+                            path: 'src/old-name.ts',
+                            lineStart: 10,
+                            lineEnd: 10,
+                        },
+                    ],
+                }),
+            ],
+            match: emptyMatch(),
+            judgeClient: { judge },
+        });
+
+        expect(judge).toHaveBeenCalledTimes(1);
+        expect(judge).toHaveBeenCalledWith(
+            expect.objectContaining({
+                diffText: expect.stringContaining('b/src/new-name.ts'),
+            })
+        );
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'rename-edit-old-path',
+            verdict: 'resolved',
+            method: 'judge',
+            path: 'src/old-name.ts',
         });
     });
 
