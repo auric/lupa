@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as child_process from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import * as vscode from 'vscode';
 import { resolveDiff } from '../../eval/diffResolver';
 import type { IServiceRegistry } from '../../services/serviceManager';
 
@@ -35,6 +36,7 @@ function mockGitRun({ stdout, stderr = '', exitCode }: FakeGitRun): void {
             const proc = new EventEmitter() as child_process.ChildProcess;
             proc.stdout = new EventEmitter() as never;
             proc.stderr = new EventEmitter() as never;
+            proc.kill = vi.fn().mockReturnValue(true) as never;
             queueMicrotask(() => {
                 proc.stdout!.emit('data', Buffer.from(stdout));
                 if (stderr) {
@@ -133,5 +135,29 @@ describe('resolveDiff', () => {
         expect(diff).not.toContain('head/');
         const args = spawnMock.mock.calls[0]![1]!;
         expect(args).toEqual(['diff', '--no-index', '--', 'base', 'head']);
+    });
+
+    it('kills the git process when cancellation is requested', async () => {
+        const proc = new EventEmitter() as child_process.ChildProcess;
+        proc.stdout = new EventEmitter() as never;
+        proc.stderr = new EventEmitter() as never;
+        proc.kill = vi.fn().mockReturnValue(true) as never;
+        spawnMock.mockImplementationOnce(() => proc);
+
+        const tokenSource = new vscode.CancellationTokenSource();
+        const promise = resolveDiff(
+            {
+                workspaceRoot: '/w',
+                baseRef: 'main',
+                headRef: 'feature',
+                cancellationToken: tokenSource.token,
+            },
+            services
+        );
+
+        tokenSource.cancel();
+
+        await expect(promise).rejects.toBeInstanceOf(vscode.CancellationError);
+        expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
     });
 });

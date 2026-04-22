@@ -7,6 +7,12 @@ import {
     LUPA_HEADLESS_ARGS_ENV,
     LUPA_HEADLESS_SENTINEL_ENV,
 } from './headlessConstants';
+import {
+    createHeadlessDeadline,
+    formatHeadlessTimeoutMessage,
+    normalizeModelIdentifier,
+    requireRemainingHeadlessBudgetMs,
+} from './headlessShared';
 
 /**
  * Environment-variable contract shared with scripts/eval/launchHeadless.js.
@@ -36,14 +42,6 @@ export {
  * in the VS Code main process's lifetime (tracked via the sentinel file).
  */
 let headlessRunStarted = false;
-
-function normalizeModelIdentifier(identifier: string): string {
-    const trimmed = identifier.trim().toLowerCase();
-    if (trimmed.includes('/')) {
-        return trimmed;
-    }
-    return `copilot/${trimmed}`;
-}
 
 interface HeadlessArgs {
     mode: 'analysis' | 'resolution-judge';
@@ -153,7 +151,8 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
  */
 async function waitForCopilotModels(
     timeoutMs: number,
-    requestedIdentifier: string
+    requestedIdentifier: string,
+    token: vscode.CancellationToken
 ): Promise<vscode.LanguageModelChat[]> {
     const normalizedRequestedIdentifier =
         normalizeModelIdentifier(requestedIdentifier);
@@ -168,16 +167,44 @@ async function waitForCopilotModels(
     if (initial.length > 0) {
         return initial;
     }
+
+    if (token.isCancellationRequested) {
+        return [];
+    }
+
     return new Promise((resolve) => {
         let settled = false;
+        let event: vscode.Disposable | undefined;
+        let cancellation: vscode.Disposable | undefined;
+        let interval: ReturnType<typeof setInterval> | undefined;
+        let timeout: ReturnType<typeof setTimeout> | undefined;
         const cleanup = () => {
+            if (settled) {
+                return;
+            }
             settled = true;
-            event.dispose();
-            clearInterval(interval);
-            clearTimeout(timeout);
+            event?.dispose();
+            cancellation?.dispose();
+            if (interval) {
+                clearInterval(interval);
+            }
+            if (timeout) {
+                clearTimeout(timeout);
+            }
+        };
+        const finish = (models: vscode.LanguageModelChat[]) => {
+            if (settled) {
+                return;
+            }
+            cleanup();
+            resolve(models);
         };
         const check = async () => {
             if (settled) {
+                return;
+            }
+            if (token.isCancellationRequested) {
+                finish([]);
                 return;
             }
             try {
@@ -186,9 +213,8 @@ async function waitForCopilotModels(
                         vendor: requestedVendor,
                     })
                 ).filter(matchesRequestedModel);
-                if (!settled && found.length > 0) {
-                    cleanup();
-                    resolve(found);
+                if (found.length > 0) {
+                    finish(found);
                 }
             } catch (err) {
                 // Fire-and-forget callers (event handler, interval) would
@@ -199,18 +225,17 @@ async function waitForCopilotModels(
                 );
             }
         };
-        const event = vscode.lm.onDidChangeChatModels(() => {
+        event = vscode.lm.onDidChangeChatModels(() => {
             void check();
         });
-        const interval = setInterval(() => {
+        cancellation = token.onCancellationRequested(() => {
+            finish([]);
+        });
+        interval = setInterval(() => {
             void check();
         }, 1000);
-        const timeout = setTimeout(() => {
-            if (settled) {
-                return;
-            }
-            cleanup();
-            resolve([]);
+        timeout = setTimeout(() => {
+            finish([]);
         }, timeoutMs);
     });
 }
@@ -303,24 +328,42 @@ export async function runHeadlessFromEnv(
         }
         const args = validateHeadlessArgs(JSON.parse(rawArgs));
         const requestedIdentifier = normalizeModelIdentifier(args.model);
+        const deadlineAt = createHeadlessDeadline(args.timeoutMs);
 
         const cts = new vscode.CancellationTokenSource();
         const timeoutHandle =
             args.timeoutMs > 0
-                ? setTimeout(() => cts.cancel(), args.timeoutMs)
+                ? setTimeout(
+                      () => cts.cancel(),
+                      Math.max(0, deadlineAt - Date.now())
+                  )
                 : undefined;
 
         try {
             const services = await awaitWithCancellation(
                 coordinator.waitForInitialization(),
                 cts.token,
-                `Headless run exceeded timeout (${args.timeoutMs}ms) before initialization completed.`
+                formatHeadlessTimeoutMessage(
+                    args.timeoutMs,
+                    'before initialization completed'
+                )
             );
 
             const models = await awaitWithCancellation(
-                waitForCopilotModels(args.timeoutMs, requestedIdentifier),
+                waitForCopilotModels(
+                    requireRemainingHeadlessBudgetMs(
+                        args.timeoutMs,
+                        deadlineAt,
+                        `while waiting for ${requestedIdentifier}`
+                    ),
+                    requestedIdentifier,
+                    cts.token
+                ),
                 cts.token,
-                `Headless run exceeded timeout (${args.timeoutMs}ms) while waiting for ${requestedIdentifier}.`
+                formatHeadlessTimeoutMessage(
+                    args.timeoutMs,
+                    `while waiting for ${requestedIdentifier}`
+                )
             );
             if (models.length === 0) {
                 throw new Error(
@@ -331,17 +374,25 @@ export async function runHeadlessFromEnv(
             }
 
             if (args.mode === 'analysis') {
-                const result = await runHeadless(
-                    {
-                        workspaceRoot: args.workspace,
-                        baseRef: args.base!,
-                        headRef: args.head!,
-                        modelIdentifier: args.model,
-                        seed: args.seed ?? 0,
-                        timeoutMs: args.timeoutMs,
-                        cancellationToken: cts.token,
-                    },
-                    services
+                const result = await awaitWithCancellation(
+                    runHeadless(
+                        {
+                            workspaceRoot: args.workspace,
+                            baseRef: args.base!,
+                            headRef: args.head!,
+                            modelIdentifier: args.model,
+                            seed: args.seed ?? 0,
+                            timeoutMs: args.timeoutMs,
+                            deadlineAt,
+                            cancellationToken: cts.token,
+                        },
+                        services
+                    ),
+                    cts.token,
+                    formatHeadlessTimeoutMessage(
+                        args.timeoutMs,
+                        `during analysis for ${args.base!}..${args.head!}`
+                    )
                 );
                 if (args.out) {
                     fs.writeFileSync(args.out, JSON.stringify(result, null, 2));
@@ -367,15 +418,23 @@ export async function runHeadlessFromEnv(
                     );
                 }
             } else {
-                const result = await runHeadlessResolutionJudge(
-                    {
-                        workspaceRoot: args.workspace,
-                        modelIdentifier: args.model,
-                        timeoutMs: args.timeoutMs,
-                        payloadPath: args.payload!,
-                        cancellationToken: cts.token,
-                    },
-                    services
+                const result = await awaitWithCancellation(
+                    runHeadlessResolutionJudge(
+                        {
+                            workspaceRoot: args.workspace,
+                            modelIdentifier: args.model,
+                            timeoutMs: args.timeoutMs,
+                            deadlineAt,
+                            payloadPath: args.payload!,
+                            cancellationToken: cts.token,
+                        },
+                        services
+                    ),
+                    cts.token,
+                    formatHeadlessTimeoutMessage(
+                        args.timeoutMs,
+                        'during resolution judging'
+                    )
                 );
                 if (args.out) {
                     fs.writeFileSync(args.out, JSON.stringify(result, null, 2));

@@ -413,6 +413,67 @@ describe('runHeadlessFromEnv', () => {
         expect(typeof sentinel.error).toBe('string');
         expect((sentinel.error as string).length).toBeGreaterThan(0);
     });
+
+    it('uses only the remaining timeout budget while waiting for models after initialization completes', async () => {
+        vi.useFakeTimers();
+        const args = {
+            workspace: '/ws',
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/gpt-4.1',
+            seed: 42,
+            timeoutMs: 1_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        const eventDisposable = { dispose: vi.fn() };
+
+        vi.mocked(vscode.lm.selectChatModels).mockReset();
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReset();
+        vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([]);
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReturnValue(
+            eventDisposable as never
+        );
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockImplementation(
+                () =>
+                    new Promise((resolve) => {
+                        setTimeout(() => resolve({}), 700);
+                    })
+            ),
+        };
+
+        try {
+            const { runHeadlessFromEnv } =
+                await import('../eval/headlessEntry');
+            const runPromise = runHeadlessFromEnv(coordinator as never);
+
+            await vi.advanceTimersByTimeAsync(999);
+            expect(fs.existsSync(sentinelPath)).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(1);
+            await runPromise;
+        } finally {
+            vi.useRealTimers();
+        }
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain(
+            'Headless run exceeded timeout (1000ms) while waiting for copilot/gpt-4.1.'
+        );
+        expect(vscode.lm.selectChatModels).toHaveBeenCalledTimes(1);
+        expect(eventDisposable.dispose).toHaveBeenCalledTimes(1);
+    });
 });
 
 // Regression for round-3 review blocker: ServiceManager.initializeFoundationServices

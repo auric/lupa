@@ -1,8 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { runHeadlessResolutionJudge } from '../eval/headlessJudge';
 import { runHeadless } from '../eval/headlessRunner';
+import { ModelRequestHandler } from '../models/modelRequestHandler';
 import { createMockAnalysisEngineResult } from './testUtils/mockFactories';
 import type { IServiceRegistry } from '../services/serviceManager';
 import * as headlessArgs from '../../scripts/eval/headlessArgs';
@@ -11,6 +14,11 @@ vi.mock('vscode');
 
 vi.mock('../eval/diffResolver', () => ({
     resolveDiff: vi.fn(),
+}));
+vi.mock('../models/modelRequestHandler', () => ({
+    ModelRequestHandler: {
+        sendRequest: vi.fn(),
+    },
 }));
 import { resolveDiff } from '../eval/diffResolver';
 
@@ -371,6 +379,168 @@ describe('runHeadless', () => {
         await expect(runHeadless(baseOpts(), services)).rejects.toThrow(
             /copilot\/gpt-4\.1.*copilot\/gpt-4o-mini/
         );
+    });
+
+    it('accepts an unprefixed requested model identifier when the selected model matches', async () => {
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        const services = makeServices({});
+
+        const result = await runHeadless(
+            {
+                ...baseOpts(),
+                modelIdentifier: 'gpt-4.1',
+            },
+            services
+        );
+
+        expect(result.modelId).toBe('gpt-4.1');
+    });
+
+    it('passes only the remaining timeout budget to diff resolution when a deadline is supplied', async () => {
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        const services = makeServices({});
+        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+
+        try {
+            await runHeadless(
+                {
+                    ...baseOpts(),
+                    timeoutMs: 60_000,
+                    deadlineAt: 27_500,
+                },
+                services
+            );
+        } finally {
+            nowSpy.mockRestore();
+        }
+
+        expect(resolveDiff).toHaveBeenCalledWith(
+            expect.objectContaining({
+                timeoutMs: 17_500,
+            }),
+            services
+        );
+    });
+});
+
+describe('runHeadlessResolutionJudge', () => {
+    function writePayloadFile(): string {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lupa-judge-'));
+        const payloadPath = path.join(tmpDir, 'payload.json');
+        fs.writeFileSync(
+            payloadPath,
+            JSON.stringify({
+                finding: {
+                    title: 'Fix timeout handling',
+                    severity: 'medium',
+                    category: 'bug',
+                    file: 'src/eval/headlessEntry.ts',
+                    lineRange: [10, 20],
+                    description: 'Timeout budget is drifting.',
+                    sources: [
+                        {
+                            path: 'src/eval/headlessEntry.ts',
+                            lineStart: 10,
+                            lineEnd: 20,
+                        },
+                    ],
+                },
+                diffText:
+                    'diff --git a/src/eval/headlessEntry.ts b/src/eval/headlessEntry.ts',
+            })
+        );
+        return payloadPath;
+    }
+
+    it('sends the judge request on the verified model with the remaining timeout budget', async () => {
+        const payloadPath = writePayloadFile();
+        const tokenSource = new vscode.CancellationTokenSource();
+        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+        const model = {
+            id: 'gpt-5-mini',
+            name: 'GPT-5 mini',
+            family: 'gpt-5',
+            vendor: 'copilot',
+            maxInputTokens: 128000,
+        };
+        const services = makeServices({
+            selectedModel: model,
+        });
+        vi.mocked(ModelRequestHandler.sendRequest).mockResolvedValue({
+            content:
+                '{"verdict":"resolved","reason":"Patch now enforces the remaining budget."}',
+        } as never);
+
+        try {
+            const result = await runHeadlessResolutionJudge(
+                {
+                    workspaceRoot: '/ws',
+                    modelIdentifier: 'copilot/gpt-5-mini',
+                    timeoutMs: 60_000,
+                    deadlineAt: 26_500,
+                    payloadPath,
+                    cancellationToken: tokenSource.token,
+                },
+                services
+            );
+
+            expect(result).toMatchObject({
+                verdict: 'resolved',
+                modelId: 'gpt-5-mini',
+            });
+        } finally {
+            nowSpy.mockRestore();
+            fs.rmSync(path.dirname(payloadPath), {
+                recursive: true,
+                force: true,
+            });
+        }
+
+        expect(ModelRequestHandler.sendRequest).toHaveBeenCalledWith(
+            model,
+            expect.objectContaining({
+                tools: [],
+            }),
+            tokenSource.token,
+            16_500
+        );
+    });
+
+    it('returns an informative reason when the auxiliary judge emits only a bare verdict', async () => {
+        const payloadPath = writePayloadFile();
+        const tokenSource = new vscode.CancellationTokenSource();
+        const services = makeServices({
+            selectedModel: {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            },
+        });
+        vi.mocked(ModelRequestHandler.sendRequest).mockResolvedValue({
+            content: 'resolved',
+        } as never);
+
+        try {
+            const result = await runHeadlessResolutionJudge(
+                {
+                    workspaceRoot: '/ws',
+                    modelIdentifier: 'copilot/gpt-5-mini',
+                    timeoutMs: 60_000,
+                    payloadPath,
+                    cancellationToken: tokenSource.token,
+                },
+                services
+            );
+
+            expect(result.reason).toContain("bare verdict 'resolved'");
+        } finally {
+            fs.rmSync(path.dirname(payloadPath), {
+                recursive: true,
+                force: true,
+            });
+        }
     });
 });
 

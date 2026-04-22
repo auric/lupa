@@ -4,6 +4,10 @@ import { DiffUtils } from '../utils/diffUtils';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { RecordedFinding } from '../types/findingTypes';
 import { resolveDiff } from './diffResolver';
+import {
+    normalizeModelIdentifier,
+    requireRemainingHeadlessBudgetMs,
+} from './headlessShared';
 
 export interface HeadlessRunnerOptions {
     workspaceRoot: string;
@@ -12,6 +16,7 @@ export interface HeadlessRunnerOptions {
     modelIdentifier: string;
     seed: number;
     timeoutMs: number;
+    deadlineAt?: number;
     cancellationToken: vscode.CancellationToken;
 }
 
@@ -34,14 +39,6 @@ export interface HeadlessAnalysisResult {
     completed: boolean;
 }
 
-function normalizeModelIdentifier(identifier: string): string {
-    const trimmed = identifier.trim().toLowerCase();
-    if (trimmed.includes('/')) {
-        return trimmed;
-    }
-    return `copilot/${trimmed}`;
-}
-
 /**
  * Run a full Lupa analysis from a (workspaceRoot, baseRef, headRef, model)
  * tuple without invoking any UI. Intended for CI jobs, eval harnesses, and
@@ -59,7 +56,12 @@ export async function runHeadless(
             workspaceRoot: opts.workspaceRoot,
             baseRef: opts.baseRef,
             headRef: opts.headRef,
-            timeoutMs: opts.timeoutMs,
+            timeoutMs: requireRemainingHeadlessBudgetMs(
+                opts.timeoutMs,
+                opts.deadlineAt,
+                'during diff resolution'
+            ),
+            cancellationToken: opts.cancellationToken,
         },
         services
     );
@@ -69,6 +71,12 @@ export async function runHeadless(
         );
     }
     const parsedDiff = DiffUtils.parseDiff(diffText);
+
+    requireRemainingHeadlessBudgetMs(
+        opts.timeoutMs,
+        opts.deadlineAt,
+        'before model selection completed'
+    );
 
     // persist: false — don't persist the model choice into the target
     // workspace's .vscode/lupa.json (treat the analyzed repo as read-only).
@@ -94,6 +102,12 @@ export async function runHeadless(
                 `(e.g. sign in to Copilot and enable the model in the Copilot Chat model picker).`
         );
     }
+
+    requireRemainingHeadlessBudgetMs(
+        opts.timeoutMs,
+        opts.deadlineAt,
+        'during analysis'
+    );
 
     const result = await services.analysisEngine.analyze(
         {

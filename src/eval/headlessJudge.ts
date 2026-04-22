@@ -1,15 +1,21 @@
 import * as fs from 'node:fs';
 import * as vscode from 'vscode';
+import { ModelRequestHandler } from '../models/modelRequestHandler';
 import type { IServiceRegistry } from '../services/serviceManager';
 import type {
     ResolutionJudgePayload,
     ResolutionJudgeResult,
 } from './harness/types';
+import {
+    normalizeModelIdentifier,
+    requireRemainingHeadlessBudgetMs,
+} from './headlessShared';
 
 export interface HeadlessResolutionJudgeOptions {
     workspaceRoot: string;
     modelIdentifier: string;
     timeoutMs: number;
+    deadlineAt?: number;
     payloadPath: string;
     cancellationToken: vscode.CancellationToken;
 }
@@ -18,14 +24,6 @@ const SYSTEM_PROMPT =
     'You are classifying whether a code-review finding was actually resolved by a later patch. ' +
     'Return exactly one JSON object: {"verdict":"resolved|disputed|noise","reason":"short explanation"}. ' +
     'Use resolved only when the diff likely fixes the finding. Use disputed when the diff touches related code but the fix is unclear. Use noise when the finding appears unsupported or irrelevant to the diff. Never output markdown.';
-
-function normalizeModelIdentifier(identifier: string): string {
-    const trimmed = identifier.trim().toLowerCase();
-    if (trimmed.includes('/')) {
-        return trimmed;
-    }
-    return `copilot/${trimmed}`;
-}
 
 export async function runHeadlessResolutionJudge(
     opts: HeadlessResolutionJudgeOptions,
@@ -51,7 +49,14 @@ export async function runHeadlessResolutionJudge(
         );
     }
 
-    const response = await services.copilotModelManager.sendRequest(
+    const requestTimeoutMs = requireRemainingHeadlessBudgetMs(
+        opts.timeoutMs,
+        opts.deadlineAt,
+        'during resolution judging'
+    );
+
+    const response = await ModelRequestHandler.sendRequest(
+        model,
         {
             messages: [
                 { role: 'system', content: SYSTEM_PROMPT },
@@ -59,7 +64,8 @@ export async function runHeadlessResolutionJudge(
             ],
             tools: [],
         },
-        opts.cancellationToken
+        opts.cancellationToken,
+        requestTimeoutMs
     );
 
     return parseJudgeResponse(response.content, model.id);
@@ -133,11 +139,11 @@ function parseJudgeResponse(
     }
 
     if (isVerdict(normalized.toLowerCase())) {
+        const verdict =
+            normalized.toLowerCase() as ResolutionJudgeResult['verdict'];
         return {
-            verdict:
-                normalized.toLowerCase() as ResolutionJudgeResult['verdict'],
-            reason:
-                normalized || 'Auxiliary judge returned only a bare verdict.',
+            verdict,
+            reason: `Auxiliary judge returned only the bare verdict '${verdict}' without a supporting explanation.`,
             modelId,
         };
     }

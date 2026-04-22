@@ -1,5 +1,6 @@
 import * as child_process from 'node:child_process';
 import * as path from 'node:path';
+import * as vscode from 'vscode';
 import type { IServiceRegistry } from '../services/serviceManager';
 import { getErrorMessage } from '../utils/errorUtils';
 
@@ -11,6 +12,7 @@ export interface DiffResolveOptions {
     baseRef: string;
     headRef: string;
     timeoutMs?: number;
+    cancellationToken?: vscode.CancellationToken;
 }
 
 const DEFAULT_DIFF_TIMEOUT_MS = 30_000;
@@ -39,6 +41,10 @@ export async function resolveDiff(
     opts: DiffResolveOptions,
     _services: IServiceRegistry
 ): Promise<string> {
+    if (opts.cancellationToken?.isCancellationRequested) {
+        throw new vscode.CancellationError();
+    }
+
     const baseIsDir = opts.baseRef.startsWith(DIR_REF_PREFIX);
     const headIsDir = opts.headRef.startsWith(DIR_REF_PREFIX);
     if (baseIsDir !== headIsDir) {
@@ -52,7 +58,8 @@ export async function resolveDiff(
             opts.workspaceRoot,
             opts.baseRef.slice(DIR_REF_PREFIX.length),
             opts.headRef.slice(DIR_REF_PREFIX.length),
-            opts.timeoutMs ?? DEFAULT_DIFF_TIMEOUT_MS
+            opts.timeoutMs ?? DEFAULT_DIFF_TIMEOUT_MS,
+            opts.cancellationToken
         );
     }
 
@@ -60,7 +67,8 @@ export async function resolveDiff(
         opts.workspaceRoot,
         stripShaPrefix(opts.baseRef),
         stripShaPrefix(opts.headRef),
-        opts.timeoutMs ?? DEFAULT_DIFF_TIMEOUT_MS
+        opts.timeoutMs ?? DEFAULT_DIFF_TIMEOUT_MS,
+        opts.cancellationToken
     );
 }
 
@@ -73,25 +81,42 @@ function stripShaPrefix(ref: string): string {
 function spawnGit(
     cwd: string,
     args: string[],
-    timeoutMs: number
+    timeoutMs: number,
+    cancellationToken?: vscode.CancellationToken
 ): Promise<string> {
     return new Promise((resolve, reject) => {
         const proc = child_process.spawn('git', args, { cwd });
         let stdout = '';
         let stderr = '';
         let settled = false;
+        let cancellation: vscode.Disposable | undefined;
+        const cleanup = () => {
+            clearTimeout(timeoutHandle);
+            cancellation?.dispose();
+        };
         const timeoutHandle = setTimeout(() => {
             if (settled) {
                 return;
             }
             settled = true;
             proc.kill('SIGKILL');
+            cleanup();
             reject(
                 new Error(
                     `git ${args.join(' ')} timed out after ${timeoutMs}ms`
                 )
             );
         }, timeoutMs);
+
+        cancellation = cancellationToken?.onCancellationRequested(() => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            proc.kill('SIGKILL');
+            cleanup();
+            reject(new vscode.CancellationError());
+        });
         proc.stdout.on('data', (d) => (stdout += d.toString()));
         proc.stderr.on('data', (d) => (stderr += d.toString()));
         proc.on('error', (error) => {
@@ -99,7 +124,7 @@ function spawnGit(
                 return;
             }
             settled = true;
-            clearTimeout(timeoutHandle);
+            cleanup();
             reject(error);
         });
         // `git diff` exits 0 when the trees are identical, 1 when there are
@@ -110,7 +135,7 @@ function spawnGit(
                 return;
             }
             settled = true;
-            clearTimeout(timeoutHandle);
+            cleanup();
             if (code === 0 || code === 1) {
                 resolve(stdout);
             } else {
@@ -139,14 +164,16 @@ async function runGitDiffNoIndex(
     cwd: string,
     basePath: string,
     headPath: string,
-    timeoutMs: number
+    timeoutMs: number,
+    cancellationToken?: vscode.CancellationToken
 ): Promise<string> {
     const baseRel = toPosixRelative(cwd, basePath);
     const headRel = toPosixRelative(cwd, headPath);
     const stdout = await spawnGit(
         cwd,
         ['diff', '--no-index', '--', baseRel, headRel],
-        timeoutMs
+        timeoutMs,
+        cancellationToken
     );
     return stripFixturePrefixes(stdout, baseRel, headRel);
 }
@@ -155,9 +182,10 @@ async function runGitDiffRefs(
     cwd: string,
     base: string,
     compare: string,
-    timeoutMs: number
+    timeoutMs: number,
+    cancellationToken?: vscode.CancellationToken
 ): Promise<string> {
-    return spawnGit(cwd, ['diff', base, compare], timeoutMs);
+    return spawnGit(cwd, ['diff', base, compare], timeoutMs, cancellationToken);
 }
 
 function toPosixRelative(cwd: string, target: string): string {
