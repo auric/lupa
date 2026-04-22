@@ -239,6 +239,7 @@ async function ensureHeadCheckout(
         const proc = spawn('git', ['checkout', '--force', sha], {
             cwd: workspaceRoot,
             stdio: 'pipe',
+            detached: process.platform !== 'win32',
         });
         let stderr = '';
         let settled = false;
@@ -247,11 +248,7 @@ async function ensureHeadCheckout(
                 return;
             }
             settled = true;
-            try {
-                proc.kill('SIGKILL');
-            } catch {
-                // already gone
-            }
+            killTree(proc);
             reject(
                 new Error(
                     formatHeadlessTimeoutMessage(
@@ -501,17 +498,30 @@ function killTree(child: ChildProcess): void {
         }
         return;
     }
-    try {
-        child.kill('SIGTERM');
-    } catch {
-        // already gone
-    }
-    setTimeout(() => {
+    const killProcessGroup = (signal: NodeJS.Signals): void => {
         try {
-            child.kill('SIGKILL');
+            process.kill(-child.pid!, signal);
+            return;
+        } catch (error) {
+            if (
+                error &&
+                typeof error === 'object' &&
+                'code' in error &&
+                error.code === 'ESRCH'
+            ) {
+                return;
+            }
+        }
+        try {
+            child.kill(signal);
         } catch {
             // already gone
         }
+    };
+
+    killProcessGroup('SIGTERM');
+    setTimeout(() => {
+        killProcessGroup('SIGKILL');
     }, SIGTERM_GRACE_MS).unref();
 }
 

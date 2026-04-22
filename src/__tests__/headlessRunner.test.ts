@@ -314,6 +314,32 @@ describe('launchHeadless watchdog', () => {
         }
     });
 
+    it('bounds VS Code download/profile setup by the remaining launcher deadline budget', async () => {
+        vi.useFakeTimers();
+
+        try {
+            const { runWithinLauncherDeadline } =
+                await import('../../scripts/eval/launchHeadless.js');
+
+            const budgetPromise = runWithinLauncherDeadline(
+                {
+                    timeoutMs: 60_000,
+                    deadlineAt: Date.now() + 500,
+                },
+                'during VS Code download and headless profile setup',
+                () => new Promise(() => {})
+            );
+
+            await vi.advanceTimersByTimeAsync(500);
+
+            await expect(budgetPromise).rejects.toThrow(
+                /Headless launcher deadline elapsed during VS Code download and headless profile setup\./
+            );
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('re-forwards repeated termination signals without exiting early while cleanup is still in progress', async () => {
         const { forwardTerminationSignal } =
             await import('../../scripts/eval/launchHeadless.js');

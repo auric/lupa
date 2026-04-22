@@ -1,11 +1,14 @@
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-const { mockedSpawn } = vi.hoisted(() => ({ mockedSpawn: vi.fn() }));
+const { mockedSpawn, mockedExecSync } = vi.hoisted(() => ({
+    mockedSpawn: vi.fn(),
+    mockedExecSync: vi.fn(),
+}));
 
 vi.mock('node:child_process', () => ({
     spawn: mockedSpawn,
-    execSync: vi.fn(),
+    execSync: mockedExecSync,
 }));
 
 import { matchFindings } from '../../eval/harness/matcher';
@@ -307,6 +310,7 @@ describe('matchFindings', () => {
 describe('classifyResolutionForRun', () => {
     beforeEach(() => {
         mockedSpawn.mockReset();
+        mockedExecSync.mockReset();
     });
 
     it('forwards the absolute deadline to the analysis launcher', async () => {
@@ -1604,6 +1608,12 @@ index 1234567..89abcde 100644
 
     it('kills a hung pre-launch git checkout when only the remaining deadline budget is available', async () => {
         vi.useFakeTimers();
+        const processKillSpy =
+            process.platform === 'win32'
+                ? undefined
+                : vi
+                      .spyOn(process, 'kill')
+                      .mockImplementation(() => true as never);
         try {
             const kill = vi.fn();
             mockedSpawn.mockImplementation((cmd: string) => {
@@ -1615,10 +1625,12 @@ index 1234567..89abcde 100644
                     stdout: EventEmitter;
                     stderr: EventEmitter;
                     kill: typeof kill;
+                    pid: number;
                 };
                 proc.stdout = new EventEmitter();
                 proc.stderr = new EventEmitter();
                 proc.kill = kill;
+                proc.pid = 123;
                 return proc;
             });
 
@@ -1636,7 +1648,6 @@ index 1234567..89abcde 100644
             await vi.advanceTimersByTimeAsync(500);
 
             const result = await resultPromise;
-            expect(kill).toHaveBeenCalledWith('SIGKILL');
             expect(result).toMatchObject({
                 ok: false,
                 result: null,
@@ -1647,11 +1658,33 @@ index 1234567..89abcde 100644
                     'Expected invokeHeadless to return a failure result'
                 );
             }
+            expect(mockedSpawn).toHaveBeenCalledWith(
+                'git',
+                ['checkout', '--force', 'deadbeef'],
+                expect.objectContaining({
+                    cwd: '/tmp/workspace',
+                    stdio: 'pipe',
+                    detached: process.platform !== 'win32',
+                })
+            );
+            if (process.platform === 'win32') {
+                expect(mockedExecSync).toHaveBeenCalledWith(
+                    'taskkill /F /T /PID 123',
+                    { stdio: 'ignore' }
+                );
+                expect(kill).not.toHaveBeenCalled();
+            } else {
+                expect(processKillSpy).toHaveBeenCalledWith(-123, 'SIGTERM');
+                await vi.advanceTimersByTimeAsync(getHarnessSigtermGraceMs());
+                expect(processKillSpy).toHaveBeenCalledWith(-123, 'SIGKILL');
+                expect(kill).not.toHaveBeenCalled();
+            }
             expect(result.error).toContain(
                 'Headless run exceeded timeout (500ms) during pre-launch checkout.'
             );
             expect(mockedSpawn).toHaveBeenCalledTimes(1);
         } finally {
+            processKillSpy?.mockRestore();
             vi.useRealTimers();
         }
     });

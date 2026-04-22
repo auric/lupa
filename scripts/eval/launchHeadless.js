@@ -117,6 +117,32 @@ function requireLauncherDeadlineRemaining(args, phase, now = Date.now()) {
     return remainingMs;
 }
 
+async function runWithinLauncherDeadline(args, phase, work) {
+    if (typeof args.deadlineAt !== 'number') {
+        return await work();
+    }
+
+    const remainingMs = requireLauncherDeadlineRemaining(args, phase);
+    let timeoutHandle;
+    const deadlineExceeded = new Promise((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+            reject(new Error(`Headless launcher deadline elapsed ${phase}.`));
+        }, remainingMs);
+        timeoutHandle.unref?.();
+    });
+
+    try {
+        return await Promise.race([
+            Promise.resolve().then(work),
+            deadlineExceeded,
+        ]);
+    } finally {
+        if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+        }
+    }
+}
+
 function forwardTerminationSignal(sig, state, child, postSignalWatchdog) {
     state.forwardedSignal = sig;
     state.forwardedSignalExitCode = sig === 'SIGINT' ? 130 : 143;
@@ -173,22 +199,22 @@ async function main() {
         args.payload = path.resolve(args.payload);
     }
 
-    requireLauncherDeadlineRemaining(args, 'before downloading VS Code');
-
-    const executablePath = await downloadAndUnzipVSCode({
-        version: 'stable',
-        cachePath: VSCODE_CACHE_DIR,
-    });
-
-    requireLauncherDeadlineRemaining(args, 'after downloading VS Code');
-
-    // Merge the baseline non-interactive settings into the profile on every
-    // launch so existing profiles pick up new suppressions automatically.
-    ensureProfileSettings();
-
-    requireLauncherDeadlineRemaining(
+    const executablePath = await runWithinLauncherDeadline(
         args,
-        'after preparing the headless profile'
+        'during VS Code download and headless profile setup',
+        async () => {
+            const downloadedExecutablePath = await downloadAndUnzipVSCode({
+                version: 'stable',
+                cachePath: VSCODE_CACHE_DIR,
+            });
+
+            // Merge the baseline non-interactive settings into the profile on
+            // every launch so existing profiles pick up new suppressions
+            // automatically.
+            ensureProfileSettings();
+
+            return downloadedExecutablePath;
+        }
     );
 
     try {
@@ -387,6 +413,7 @@ module.exports = {
     forwardTerminationSignal,
     getLauncherWatchdogMs,
     requireLauncherDeadlineRemaining,
+    runWithinLauncherDeadline,
     WATCHDOG_POST_SIGNAL_RETRY_MS,
     WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS,
     WATCHDOG_SIGTERM_GRACE_MS,
