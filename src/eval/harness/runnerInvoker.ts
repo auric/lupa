@@ -330,7 +330,7 @@ export async function invokeResolutionJudge(
 
         const durationMs = Date.now() - startedAt;
         const parsed = await tryReadJsonResult<ResolutionJudgeResult>(outPath);
-        if (exitCode === 0 && parsed.ok) {
+        if (parsed.ok && !watchdogFired) {
             return { result: parsed.result, durationMs };
         }
 

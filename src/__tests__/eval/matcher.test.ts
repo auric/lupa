@@ -456,6 +456,41 @@ describe('classifyResolutionForRun', () => {
         });
     });
 
+    it('keeps a parsed resolution-judge result when the launcher exits non-zero during teardown', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                const outIndex = args.indexOf('--out');
+                const outPath = args[outIndex + 1];
+                fs.writeFileSync(
+                    outPath,
+                    JSON.stringify({
+                        verdict: 'resolved',
+                        reason: 'Usable judge result written before teardown failed.',
+                        modelId: 'gpt-5-mini',
+                    })
+                );
+                return createMockLauncherProcess(1);
+            }
+        );
+
+        const result = await invokeResolutionJudge({
+            workspaceRoot: '/tmp/workspace',
+            model: 'copilot/gpt-5-mini',
+            payload: {
+                finding: makeProduced(),
+                diffText: 'diff --git a/src/a.ts b/src/a.ts',
+            },
+            timeoutMs: 60_000,
+        });
+
+        expect(result).toMatchObject({
+            result: {
+                verdict: 'resolved',
+                modelId: 'gpt-5-mini',
+            },
+        });
+    });
+
     it('returns the parsed incomplete analysis result as an error when the launcher exits non-zero', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
@@ -643,7 +678,7 @@ index 1234567..89abcde 100644
         });
     });
 
-    it('treats an overlapping deletion-only hunk as ambiguous even when another hunk in the file adds lines elsewhere', async () => {
+    it('treats an overlapping deletion-only hunk as resolved even when another hunk in the file adds lines elsewhere', async () => {
         mockedSpawn.mockImplementation(() =>
             createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
 index 1234567..89abcde 100644
@@ -655,24 +690,17 @@ index 1234567..89abcde 100644
 +const unrelated = true;
 `)
         );
-        const judge = vi.fn().mockResolvedValue({
-            verdict: 'unresolved',
-            reason: 'Only the overlapping hunk removed code; the unrelated addition does not prove a fix.',
-            modelId: 'gpt-5-mini',
-        });
 
         const summary = await classifyResolutionForRun({
             fixture: makeRealFixture(),
             produced: [makeProduced({ id: 'deletion-only-overlap' })],
             match: emptyMatch(),
-            judgeClient: { judge },
         });
 
-        expect(judge).toHaveBeenCalledTimes(1);
         expect(summary.findings[0]).toMatchObject({
             findingId: 'deletion-only-overlap',
-            verdict: 'unresolved',
-            method: 'judge',
+            verdict: 'resolved',
+            method: 'line-range-fallback',
         });
     });
 
@@ -774,7 +802,79 @@ index 1234567..89abcde 100644
                 kind: 'judge-failed',
             }),
         ]);
-        expect(summary.resolutionRate).toBeCloseTo(1, 3);
+        expect(Number.isNaN(summary.resolutionRate)).toBe(true);
+        expect(
+            Number.isNaN(summary.bySeverity.HIGH?.resolutionRate ?? Number.NaN)
+        ).toBe(true);
+    });
+
+    it('marks a deletion-only overlap as ambiguous only when a pure rename/move is detected', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess(
+                        'R100\tsrc/a.ts\tsrc/moved/a.ts\n'
+                    );
+                }
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/moved/a.ts
+similarity index 100%
+rename from src/a.ts
+rename to src/moved/a.ts
+`);
+            }
+        );
+        const judge = vi.fn().mockResolvedValue({
+            verdict: 'disputed',
+            reason: 'Pure rename/move is ambiguous for proxy resolution.',
+            modelId: 'gpt-5-mini',
+        });
+
+        const summary = await classifyResolutionForRun({
+            fixture: makeRealFixture(),
+            produced: [makeProduced({ id: 'rename-only' })],
+            match: emptyMatch(),
+            judgeClient: { judge },
+        });
+
+        expect(judge).toHaveBeenCalledTimes(1);
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'rename-only',
+            verdict: 'disputed',
+            method: 'judge',
+        });
+    });
+
+    it('kills a hung per-path git diff when classification times out', async () => {
+        vi.useFakeTimers();
+        try {
+            const kill = vi.fn();
+            mockedSpawn.mockImplementation(() => {
+                const proc = new EventEmitter() as EventEmitter & {
+                    stdout: EventEmitter;
+                    stderr: EventEmitter;
+                    kill: typeof kill;
+                };
+                proc.stdout = new EventEmitter();
+                proc.stderr = new EventEmitter();
+                proc.kill = kill;
+                return proc;
+            });
+
+            const summaryPromise = classifyResolutionForRun({
+                fixture: makeRealFixture(),
+                produced: [makeProduced({ id: 'git-timeout' })],
+                match: emptyMatch(),
+            });
+
+            await vi.advanceTimersByTimeAsync(15_000);
+
+            await expect(summaryPromise).rejects.toThrow(
+                /timed out after 15000ms/
+            );
+            expect(kill).toHaveBeenCalledWith('SIGKILL');
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('clears the git diff timeout once the child process settles', async () => {

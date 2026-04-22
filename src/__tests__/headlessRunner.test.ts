@@ -188,6 +188,23 @@ describe('parseHeadlessArgs', () => {
             ])
         ).toThrow(/positive integer/);
     });
+
+    it('rejects non-positive --deadline-at', () => {
+        expect(() =>
+            headlessArgs.parseHeadlessArgs([
+                '--workspace',
+                '/w',
+                '--base',
+                'a',
+                '--head',
+                'b',
+                '--model',
+                'm',
+                '--deadline-at',
+                '0',
+            ])
+        ).toThrow(/--deadline-at must be a positive integer/);
+    });
 });
 
 describe('launchHeadless watchdog', () => {

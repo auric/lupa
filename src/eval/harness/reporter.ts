@@ -79,13 +79,13 @@ function renderMarkdown(stamp: string, report: HarnessReport): string {
         '_Resolution proxy semantics: synthetic fixtures count matched expected labels as resolved; real fixtures use the `headSha..mergeSha` follow-up patch plus auxiliary judging for ambiguous touched-file cases._'
     );
     lines.push(
-        '_Overall resolution proxy rows include only runs that produced at least one finding._'
+        '_Overall resolution proxy rows include only runs that produced at least one finding and completed semantic resolution classification without skipped findings._'
     );
     lines.push(
-        '_Severity-specific rows include only runs that produced at least one finding in that severity._'
+        '_Severity-specific rows include only runs that produced at least one finding in that severity and did not skip semantic resolution classification for that severity._'
     );
     lines.push(
-        '_Ambiguous findings skipped because auxiliary judging was unavailable or failed are excluded from resolution-proxy aggregates and listed in the “Resolution proxy warnings” section below._'
+        '_Ambiguous findings skipped because auxiliary judging was unavailable or failed still appear in the per-run summary warnings, but they invalidate the affected resolution-rate metrics and are listed in the “Resolution proxy warnings” section below._'
     );
     lines.push(
         '_Runs where resolution classification failed before producing any summary are also excluded from resolution-proxy aggregates and listed in the same warnings section._'

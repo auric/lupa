@@ -77,6 +77,9 @@ describe('runHeadlessFromEnv', () => {
         const vscode = await import('vscode');
         const { runHeadless } = await import('../eval/headlessRunner');
 
+        vi.mocked(vscode.lm.selectChatModels).mockReset();
+        vi.mocked(vscode.commands.executeCommand).mockReset();
+        vi.mocked(runHeadless).mockReset();
         vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
             {
                 id: 'gpt-4.1',
@@ -226,6 +229,9 @@ describe('runHeadlessFromEnv', () => {
         const vscode = await import('vscode');
         const { runHeadless } = await import('../eval/headlessRunner');
 
+        vi.mocked(vscode.lm.selectChatModels).mockReset();
+        vi.mocked(vscode.commands.executeCommand).mockReset();
+        vi.mocked(runHeadless).mockReset();
         vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
             {
                 id: 'gpt-4.1',
@@ -290,6 +296,9 @@ describe('runHeadlessFromEnv', () => {
         const { runHeadlessResolutionJudge } =
             await import('../eval/headlessJudge');
 
+        vi.mocked(vscode.lm.selectChatModels).mockReset();
+        vi.mocked(vscode.commands.executeCommand).mockReset();
+        vi.mocked(runHeadlessResolutionJudge).mockReset();
         vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
             {
                 id: 'gpt-5-mini',
@@ -352,6 +361,9 @@ describe('runHeadlessFromEnv', () => {
         const { runHeadlessResolutionJudge } =
             await import('../eval/headlessJudge');
 
+        vi.mocked(vscode.lm.selectChatModels).mockReset();
+        vi.mocked(vscode.commands.executeCommand).mockReset();
+        vi.mocked(runHeadlessResolutionJudge).mockReset();
         vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
             {
                 id: 'gpt-5-mini',
@@ -615,6 +627,128 @@ describe('runHeadlessFromEnv', () => {
             'Headless run exceeded timeout (1000ms) before initialization completed.'
         );
         expect(vscode.lm.selectChatModels).not.toHaveBeenCalled();
+    });
+
+    it('times out while runHeadless is still pending', async () => {
+        vi.useFakeTimers();
+        const args = {
+            workspace: '/ws',
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/gpt-4.1',
+            seed: 42,
+            timeoutMs: 1_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        const { runHeadless } = await import('../eval/headlessRunner');
+
+        vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
+            {
+                id: 'gpt-4.1',
+                name: 'GPT-4.1',
+                family: 'gpt-4',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            } as unknown as import('vscode').LanguageModelChat,
+        ]);
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+        vi.mocked(runHeadless).mockImplementation(
+            () => new Promise(() => {}) as never
+        );
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        try {
+            const { runHeadlessFromEnv } =
+                await import('../eval/headlessEntry');
+            const runPromise = runHeadlessFromEnv(coordinator as never);
+
+            await vi.advanceTimersByTimeAsync(999);
+            expect(fs.existsSync(sentinelPath)).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(1);
+            await runPromise;
+        } finally {
+            vi.useRealTimers();
+        }
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain(
+            'Headless run exceeded timeout (1000ms) during analysis for main..feature/x.'
+        );
+        expect(runHeadless).toHaveBeenCalled();
+    });
+
+    it('times out while runHeadlessResolutionJudge is still pending', async () => {
+        vi.useFakeTimers();
+        const args = {
+            mode: 'resolution-judge',
+            workspace: '/ws',
+            model: 'copilot/gpt-5-mini',
+            payload: path.join(tmpDir, 'payload.json'),
+            timeoutMs: 1_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        const { runHeadlessResolutionJudge } =
+            await import('../eval/headlessJudge');
+
+        vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
+            {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            } as unknown as import('vscode').LanguageModelChat,
+        ]);
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+        vi.mocked(runHeadlessResolutionJudge).mockImplementation(
+            () => new Promise(() => {}) as never
+        );
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        try {
+            const { runHeadlessFromEnv } =
+                await import('../eval/headlessEntry');
+            const runPromise = runHeadlessFromEnv(coordinator as never);
+
+            await vi.advanceTimersByTimeAsync(999);
+            expect(fs.existsSync(sentinelPath)).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(1);
+            await runPromise;
+        } finally {
+            vi.useRealTimers();
+        }
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain(
+            'Headless run exceeded timeout (1000ms) during resolution judging.'
+        );
+        expect(runHeadlessResolutionJudge).toHaveBeenCalled();
     });
 });
 

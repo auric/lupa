@@ -1,6 +1,10 @@
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import type { FindingSource, RecordedFinding } from '../../types/findingTypes';
+import type {
+    FindingSeverity,
+    FindingSource,
+    RecordedFinding,
+} from '../../types/findingTypes';
 import { DiffUtils } from '../../utils/diffUtils';
 import type {
     ExpectedFinding,
@@ -36,6 +40,11 @@ interface LineCheckResult {
     path: string;
 }
 
+interface RenameStatusEntry {
+    oldPath: string;
+    newPath: string;
+}
+
 type ClassificationOutcome =
     | { kind: 'classified'; resolution: FindingResolution }
     | { kind: 'warning'; warning: ResolutionWarning };
@@ -49,6 +58,7 @@ export async function classifyResolutionForRun(
     }
 
     const pathDiffCache = new Map<string, string>();
+    const renameStatusCache = new Map<string, readonly RenameStatusEntry[]>();
     const findingResolutions: FindingResolution[] = [];
     const warnings: ResolutionWarning[] = [];
     for (const finding of opts.produced) {
@@ -65,6 +75,7 @@ export async function classifyResolutionForRun(
             finding,
             matchedExpected,
             pathDiffCache,
+            renameStatusCache,
             opts.judgeClient
         );
         if (outcome.kind === 'classified') {
@@ -120,6 +131,7 @@ async function classifyRealFinding(
     finding: RecordedFinding,
     matchedExpected: ExpectedFinding | undefined,
     pathDiffCache: Map<string, string>,
+    renameStatusCache: Map<string, readonly RenameStatusEntry[]>,
     judgeClient: ResolutionJudgeClient | undefined
 ): Promise<ClassificationOutcome> {
     if (matchedExpected?.resolvedByDefault !== undefined) {
@@ -147,6 +159,7 @@ async function classifyRealFinding(
         comparable.sources,
         comparable.usedFallback,
         pathDiffCache,
+        renameStatusCache,
         normalizedPath
     );
     if (
@@ -236,6 +249,7 @@ async function checkRealFindingPaths(
     sources: readonly FindingSource[],
     usedFallback: boolean,
     cache: Map<string, string>,
+    renameStatusCache: Map<string, readonly RenameStatusEntry[]>,
     defaultPath: string
 ): Promise<LineCheckResult> {
     const sourcesByPath = groupSourcesByPath(sources);
@@ -244,6 +258,22 @@ async function checkRealFindingPaths(
 
     for (const [findingPath, pathSources] of sourcesByPath.entries()) {
         const diffText = await getDiffForPath(fixture, findingPath, cache);
+        if (
+            await pathHasPureRenameOrMove(
+                fixture,
+                findingPath,
+                renameStatusCache
+            )
+        ) {
+            ambiguousResults.push({
+                verdict: 'ambiguous',
+                method: usedFallback ? 'line-range-fallback' : 'source-overlap',
+                path: findingPath,
+                reason: `The follow-up change for ${findingPath} appears to be a pure rename or move without a semantic edit, so the proxy is ambiguous.`,
+                diffText,
+            });
+            continue;
+        }
         const lineCheck = checkLineOverlap(
             findingPath,
             pathSources,
@@ -352,16 +382,6 @@ function checkLineOverlap(
         };
     }
 
-    if (isLikelyRenameWithoutSemanticEdit(matchingFile, diffText)) {
-        return {
-            verdict: 'ambiguous',
-            method: usedFallback ? 'line-range-fallback' : 'source-overlap',
-            path: findingPath,
-            reason: `The follow-up diff for ${findingPath} looks like a pure rename or move without an obvious semantic edit, so the proxy is ambiguous.`,
-            diffText,
-        };
-    }
-
     let hadInvalidSource = false;
     const validSources = sources.filter((source) => {
         if (isValidSource(source)) {
@@ -378,10 +398,10 @@ function checkLineOverlap(
     if (overlappingHunks.length > 0) {
         if (overlappingHunks.every((hunk) => !hunkContainsAnyAdditions(hunk))) {
             return {
-                verdict: 'ambiguous',
+                verdict: 'resolved',
                 method: usedFallback ? 'line-range-fallback' : 'source-overlap',
                 path: findingPath,
-                reason: `Cited lines overlapped only deletion-style hunks in ${findingPath}; this can indicate a pure move/rename or a removal-only fix, so the proxy is ambiguous.`,
+                reason: `Cited old lines were removed or rewritten by deletion-only hunks in ${findingPath}, which generally indicates the finding was addressed.`,
                 diffText,
             };
         }
@@ -533,26 +553,6 @@ function hunkContainsAnyAdditions(hunk: {
     return false;
 }
 
-function isLikelyRenameWithoutSemanticEdit(
-    matchingFile: {
-        hunks: Array<{
-            parsedLines: Array<{ type: 'added' | 'removed' | 'context' }>;
-            newLines: number;
-        }>;
-    },
-    diffText: string
-): boolean {
-    const hasRenameMetadata =
-        /^rename from /m.test(diffText) ||
-        /^rename to /m.test(diffText) ||
-        /^similarity index 100%$/m.test(diffText);
-    if (!hasRenameMetadata) {
-        return false;
-    }
-
-    return matchingFile.hunks.every((hunk) => !hunkContainsAnyAdditions(hunk));
-}
-
 async function getDiffForPath(
     fixture: LoadedFixture,
     normalizedPath: string,
@@ -644,12 +644,143 @@ function runGitDiffForPath(
     });
 }
 
+async function pathHasPureRenameOrMove(
+    fixture: LoadedFixture,
+    findingPath: string,
+    cache: Map<string, readonly RenameStatusEntry[]>
+): Promise<boolean> {
+    if (!fixture.mergeRef) {
+        return false;
+    }
+
+    const renameEntries = await getPureRenameEntries(fixture, cache);
+    return renameEntries.some(
+        (entry) =>
+            pathsPossiblyMatch(entry.oldPath, findingPath) ||
+            pathsPossiblyMatch(entry.newPath, findingPath)
+    );
+}
+
+async function getPureRenameEntries(
+    fixture: LoadedFixture,
+    cache: Map<string, readonly RenameStatusEntry[]>
+): Promise<readonly RenameStatusEntry[]> {
+    const cacheKey = `${fixture.headRef}::${fixture.mergeRef ?? 'none'}::rename-status`;
+    const cached = cache.get(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    if (!fixture.mergeRef) {
+        cache.set(cacheKey, []);
+        return [];
+    }
+
+    const fromRef = stripRefPrefix(fixture.headRef);
+    const toRef = stripRefPrefix(fixture.mergeRef);
+    const stdout = await runGitDiffNameStatus(
+        fixture.workspaceRoot,
+        fromRef,
+        toRef
+    );
+    const entries = stdout
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('R100\t'))
+        .map((line) => line.split('\t'))
+        .filter((parts) => parts.length >= 3)
+        .map((parts) => ({
+            oldPath: normalizePath(parts[1]!),
+            newPath: normalizePath(parts[2]!),
+        }));
+
+    cache.set(cacheKey, entries);
+    return entries;
+}
+
+function runGitDiffNameStatus(
+    workspaceRoot: string,
+    fromRef: string,
+    toRef: string
+): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const proc = spawn(
+            'git',
+            [
+                'diff',
+                '--name-status',
+                '--find-renames=100%',
+                `${fromRef}..${toRef}`,
+            ],
+            {
+                cwd: workspaceRoot,
+                stdio: 'pipe',
+            }
+        );
+        let stdout = '';
+        let stderr = '';
+        let settled = false;
+        const timeoutHandle = setTimeout(() => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            proc.kill('SIGKILL');
+            reject(
+                new Error(
+                    `git diff --name-status --find-renames=100% ${fromRef}..${toRef} timed out after ${GIT_DIFF_TIMEOUT_MS}ms`
+                )
+            );
+        }, GIT_DIFF_TIMEOUT_MS);
+        proc.stdout.on('data', (chunk) => {
+            stdout += chunk.toString();
+        });
+        proc.stderr.on('data', (chunk) => {
+            stderr += chunk.toString();
+        });
+        proc.on('error', (error) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timeoutHandle);
+            reject(error);
+        });
+        proc.on('close', (code) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timeoutHandle);
+            if (code === 0 || code === 1) {
+                resolve(stdout);
+                return;
+            }
+            reject(
+                new Error(
+                    `git diff --name-status --find-renames=100% ${fromRef}..${toRef} failed (${code}): ${stderr.trim()}`
+                )
+            );
+        });
+    });
+}
+
 function stripRefPrefix(ref: string): string {
     return ref.startsWith('sha:') ? ref.slice('sha:'.length) : ref;
 }
 
 function normalizePath(filePath: string): string {
     return filePath.replace(/\\/g, '/');
+}
+
+function pathsPossiblyMatch(leftPath: string, rightPath: string): boolean {
+    const normalizedLeft = normalizePath(leftPath);
+    const normalizedRight = normalizePath(rightPath);
+    return (
+        normalizedLeft === normalizedRight ||
+        normalizedLeft.endsWith(`/${normalizedRight}`) ||
+        normalizedRight.endsWith(`/${normalizedLeft}`)
+    );
 }
 
 function findMatchingDiffFile(
@@ -709,10 +840,15 @@ function summarizeResolution(
     warnings: readonly ResolutionWarning[]
 ): ResolutionSummary {
     const bySeverity: ResolutionSummary['bySeverity'] = {};
+    const severitiesWithSkipped = new Set<FindingSeverity>();
     let resolved = 0;
     let unresolved = 0;
     let disputed = 0;
     let noise = 0;
+
+    for (const warning of warnings) {
+        severitiesWithSkipped.add(warning.severity);
+    }
 
     for (const finding of findings) {
         const bucket =
@@ -735,8 +871,10 @@ function summarizeResolution(
         }
     }
 
-    for (const bucket of Object.values(bySeverity)) {
-        finalizeBucket(bucket!);
+    for (const [severity, bucket] of Object.entries(bySeverity) as Array<
+        [FindingSeverity, ResolutionBucket]
+    >) {
+        finalizeBucket(bucket, severitiesWithSkipped.has(severity));
     }
 
     const total = findings.length;
@@ -748,7 +886,8 @@ function summarizeResolution(
         unresolved,
         disputed,
         noise,
-        resolutionRate: total === 0 ? Number.NaN : resolved / total,
+        resolutionRate:
+            total === 0 || warnings.length > 0 ? Number.NaN : resolved / total,
         bySeverity,
         findings: [...findings],
         warnings: [...warnings],
@@ -787,7 +926,12 @@ function incrementBucket(
     }
 }
 
-function finalizeBucket(bucket: ResolutionBucket): void {
+function finalizeBucket(
+    bucket: ResolutionBucket,
+    classificationIncomplete: boolean
+): void {
     bucket.resolutionRate =
-        bucket.total === 0 ? Number.NaN : bucket.resolved / bucket.total;
+        classificationIncomplete || bucket.total === 0
+            ? Number.NaN
+            : bucket.resolved / bucket.total;
 }

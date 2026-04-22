@@ -17,6 +17,8 @@ vi.mock('node:child_process', async () => {
 
 const spawnMock = vi.mocked(child_process.spawn);
 
+type MockChildProcess = EventEmitter & child_process.ChildProcess;
+
 interface FakeGitRun {
     stdout: string;
     stderr?: string;
@@ -33,7 +35,7 @@ function mockGitRun({ stdout, stderr = '', exitCode }: FakeGitRun): void {
             // Keep the args accessible for assertions without needing a
             // dedicated spy by piggybacking on spawnMock's call log.
             void args;
-            const proc = new EventEmitter() as child_process.ChildProcess;
+            const proc = new EventEmitter() as unknown as MockChildProcess;
             proc.stdout = new EventEmitter() as never;
             proc.stderr = new EventEmitter() as never;
             proc.kill = vi.fn().mockReturnValue(true) as never;
@@ -138,7 +140,7 @@ describe('resolveDiff', () => {
     });
 
     it('kills the git process when cancellation is requested', async () => {
-        const proc = new EventEmitter() as child_process.ChildProcess;
+        const proc = new EventEmitter() as unknown as MockChildProcess;
         proc.stdout = new EventEmitter() as never;
         proc.stderr = new EventEmitter() as never;
         proc.kill = vi.fn().mockReturnValue(true) as never;
@@ -159,5 +161,33 @@ describe('resolveDiff', () => {
 
         await expect(promise).rejects.toBeInstanceOf(vscode.CancellationError);
         expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
+    });
+
+    it('kills the git process when diff resolution times out', async () => {
+        vi.useFakeTimers();
+        try {
+            const proc = new EventEmitter() as unknown as MockChildProcess;
+            proc.stdout = new EventEmitter() as never;
+            proc.stderr = new EventEmitter() as never;
+            proc.kill = vi.fn().mockReturnValue(true) as never;
+            spawnMock.mockImplementationOnce(() => proc);
+
+            const promise = resolveDiff(
+                {
+                    workspaceRoot: '/w',
+                    baseRef: 'main',
+                    headRef: 'feature',
+                    timeoutMs: 250,
+                },
+                services
+            );
+
+            await vi.advanceTimersByTimeAsync(250);
+
+            await expect(promise).rejects.toThrow(/timed out after 250ms/);
+            expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

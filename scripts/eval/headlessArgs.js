@@ -122,6 +122,12 @@ function parseHeadlessArgs(argv) {
         );
     }
 
+    if (opts.deadlineAt !== null && opts.deadlineAt <= 0) {
+        throw new HeadlessArgError(
+            `--deadline-at must be a positive integer (got ${opts.deadlineAt})`
+        );
+    }
+
     return opts;
 }
 
