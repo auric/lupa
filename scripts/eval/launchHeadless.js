@@ -47,36 +47,74 @@ const {
 const WATCHDOG_OVERHEAD_MS = 60_000;
 const WATCHDOG_SIGTERM_GRACE_MS = 5_000;
 const WATCHDOG_POST_SIGNAL_RETRY_MS = WATCHDOG_SIGTERM_GRACE_MS + 2_000;
+const WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS = 20_000;
 
-function createPostSignalWatchdog(onForceKill) {
+function createPostSignalWatchdog(onForceKill, onForceExit) {
     let activeSignal = 'signal';
-    let timeoutHandle;
+    let retryTimeoutHandle;
+    let exitTimeoutHandle;
 
-    const schedule = () => {
-        timeoutHandle = setTimeout(() => {
+    const scheduleRetry = () => {
+        retryTimeoutHandle = setTimeout(() => {
             process.stderr.write(
                 `Post-signal watchdog: VS Code did not exit within ${WATCHDOG_POST_SIGNAL_RETRY_MS}ms after ${activeSignal}; force-killing process tree again.\n`
             );
             onForceKill();
-            schedule();
+            scheduleRetry();
         }, WATCHDOG_POST_SIGNAL_RETRY_MS);
-        timeoutHandle.unref?.();
+        retryTimeoutHandle.unref?.();
+    };
+
+    const scheduleForcedExit = () => {
+        exitTimeoutHandle = setTimeout(() => {
+            process.stderr.write(
+                `Post-signal watchdog: VS Code still had not exited ${WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS}ms after ${activeSignal}; force-exiting launcher.\n`
+            );
+            if (retryTimeoutHandle) {
+                clearTimeout(retryTimeoutHandle);
+                retryTimeoutHandle = undefined;
+            }
+            exitTimeoutHandle = undefined;
+            onForceKill();
+            onForceExit();
+        }, WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS);
+        exitTimeoutHandle.unref?.();
     };
 
     return {
         arm(signal) {
             activeSignal = signal;
-            if (!timeoutHandle) {
-                schedule();
+            if (!retryTimeoutHandle) {
+                scheduleRetry();
+            }
+            if (!exitTimeoutHandle) {
+                scheduleForcedExit();
             }
         },
         clear() {
-            if (timeoutHandle) {
-                clearTimeout(timeoutHandle);
-                timeoutHandle = undefined;
+            if (retryTimeoutHandle) {
+                clearTimeout(retryTimeoutHandle);
+                retryTimeoutHandle = undefined;
+            }
+            if (exitTimeoutHandle) {
+                clearTimeout(exitTimeoutHandle);
+                exitTimeoutHandle = undefined;
             }
         },
     };
+}
+
+function requireLauncherDeadlineRemaining(args, phase, now = Date.now()) {
+    if (typeof args.deadlineAt !== 'number') {
+        return args.timeoutMs;
+    }
+
+    const remainingMs = args.deadlineAt - now;
+    if (remainingMs <= 0) {
+        throw new Error(`Headless launcher deadline elapsed ${phase}.`);
+    }
+
+    return remainingMs;
 }
 
 function forwardTerminationSignal(sig, state, child, postSignalWatchdog) {
@@ -135,14 +173,23 @@ async function main() {
         args.payload = path.resolve(args.payload);
     }
 
+    requireLauncherDeadlineRemaining(args, 'before downloading VS Code');
+
     const executablePath = await downloadAndUnzipVSCode({
         version: 'stable',
         cachePath: VSCODE_CACHE_DIR,
     });
 
+    requireLauncherDeadlineRemaining(args, 'after downloading VS Code');
+
     // Merge the baseline non-interactive settings into the profile on every
     // launch so existing profiles pick up new suppressions automatically.
     ensureProfileSettings();
+
+    requireLauncherDeadlineRemaining(
+        args,
+        'after preparing the headless profile'
+    );
 
     try {
         fs.unlinkSync(SENTINEL_PATH);
@@ -180,6 +227,8 @@ async function main() {
         LUPA_HEADLESS_SENTINEL: SENTINEL_PATH,
     };
 
+    requireLauncherDeadlineRemaining(args, 'before starting VS Code');
+
     const child = spawn(executablePath, launchArgs, {
         env: childEnv,
         stdio: 'inherit',
@@ -196,8 +245,9 @@ async function main() {
         forwardedSignalExitCode: undefined,
         watchdog: undefined,
     };
-    const postSignalWatchdog = createPostSignalWatchdog(() =>
-        killProcessTree(child)
+    const postSignalWatchdog = createPostSignalWatchdog(
+        () => killProcessTree(child),
+        () => process.exit(signalState.forwardedSignalExitCode ?? 1)
     );
 
     // `detached: true` on POSIX puts the child in its own process group, so
@@ -336,6 +386,8 @@ module.exports = {
     createPostSignalWatchdog,
     forwardTerminationSignal,
     getLauncherWatchdogMs,
+    requireLauncherDeadlineRemaining,
     WATCHDOG_POST_SIGNAL_RETRY_MS,
+    WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS,
     WATCHDOG_SIGTERM_GRACE_MS,
 };

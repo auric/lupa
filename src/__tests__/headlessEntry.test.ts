@@ -571,6 +571,90 @@ describe('runHeadlessFromEnv', () => {
         expect(vscode.lm.selectChatModels).not.toHaveBeenCalled();
     });
 
+    it('caps exact-model preflight below a large remaining timeout budget', async () => {
+        const {
+            EXACT_MODEL_PREFLIGHT_MAX_MS,
+            getExactModelPreflightTimeoutMs,
+        } = await import('../eval/headlessEntry');
+
+        expect(
+            getExactModelPreflightTimeoutMs(
+                60_000,
+                70_000,
+                'copilot/gpt-4.1',
+                10_000
+            )
+        ).toBe(EXACT_MODEL_PREFLIGHT_MAX_MS);
+    });
+
+    it('fails early when Copilot is registered but the requested exact model never appears', async () => {
+        vi.useFakeTimers();
+        const args = {
+            workspace: '/ws',
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/gpt-4.1',
+            seed: 42,
+            timeoutMs: 60_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        const { runHeadless } = await import('../eval/headlessRunner');
+        const {
+            EXACT_MODEL_PREFLIGHT_VENDOR_READY_GRACE_MS,
+            runHeadlessFromEnv,
+        } = await import('../eval/headlessEntry');
+
+        vi.mocked(vscode.lm.selectChatModels).mockReset();
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReset();
+        vi.mocked(vscode.commands.executeCommand).mockReset();
+        vi.mocked(runHeadless).mockReset();
+        vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
+            {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            } as unknown as import('vscode').LanguageModelChat,
+        ]);
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReturnValue({
+            dispose: vi.fn(),
+        } as never);
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        try {
+            const runPromise = runHeadlessFromEnv(coordinator as never);
+
+            await vi.advanceTimersByTimeAsync(
+                EXACT_MODEL_PREFLIGHT_VENDOR_READY_GRACE_MS - 1
+            );
+            expect(fs.existsSync(sentinelPath)).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(1);
+
+            await runPromise;
+        } finally {
+            vi.useRealTimers();
+        }
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain('exact-model preflight');
+        expect(runHeadless).not.toHaveBeenCalled();
+    });
+
     it('uses only the remaining timeout budget while waiting for models after initialization completes', async () => {
         vi.useFakeTimers();
         const args = {

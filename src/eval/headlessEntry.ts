@@ -57,6 +57,10 @@ interface HeadlessArgs {
     payload?: string;
 }
 
+export const EXACT_MODEL_PREFLIGHT_MAX_MS = 15_000;
+export const EXACT_MODEL_PREFLIGHT_VENDOR_READY_GRACE_MS = 2_000;
+const MODEL_DISCOVERY_POLL_INTERVAL_MS = 1_000;
+
 /**
  * Validate the JSON shape produced by scripts/eval/headlessArgs.js. A
  * malformed env var otherwise surfaces as a cryptic downstream error;
@@ -177,15 +181,20 @@ async function waitForCopilotModels(
     const matchesRequestedModel = (model: vscode.LanguageModelChat): boolean =>
         normalizeModelIdentifier(`${model.vendor}/${model.id}`) ===
         normalizedRequestedIdentifier;
+    const findRequestedModels = (
+        models: readonly vscode.LanguageModelChat[]
+    ): vscode.LanguageModelChat[] => models.filter(matchesRequestedModel);
+    const selectRequestedVendorModels = async (): Promise<
+        vscode.LanguageModelChat[]
+    > => await vscode.lm.selectChatModels({ vendor: requestedVendor });
 
-    const initial = (
-        await vscode.lm.selectChatModels({ vendor: requestedVendor })
-    ).filter(matchesRequestedModel);
+    const initialVendorModels = await selectRequestedVendorModels();
+    const initial = findRequestedModels(initialVendorModels);
     if (initial.length > 0) {
         return initial;
     }
 
-    if (token.isCancellationRequested) {
+    if (token.isCancellationRequested || timeoutMs <= 0) {
         return [];
     }
 
@@ -195,6 +204,8 @@ async function waitForCopilotModels(
         let cancellation: vscode.Disposable | undefined;
         let interval: ReturnType<typeof setInterval> | undefined;
         let timeout: ReturnType<typeof setTimeout> | undefined;
+        let vendorReadyAt =
+            initialVendorModels.length > 0 ? Date.now() : undefined;
         const cleanup = () => {
             if (settled) {
                 return;
@@ -216,6 +227,19 @@ async function waitForCopilotModels(
             cleanup();
             resolve(models);
         };
+        const finishIfVendorReadyGraceElapsed = (): boolean => {
+            if (vendorReadyAt === undefined) {
+                return false;
+            }
+            if (
+                Date.now() - vendorReadyAt >=
+                EXACT_MODEL_PREFLIGHT_VENDOR_READY_GRACE_MS
+            ) {
+                finish([]);
+                return true;
+            }
+            return false;
+        };
         const check = async () => {
             if (settled) {
                 return;
@@ -225,13 +249,17 @@ async function waitForCopilotModels(
                 return;
             }
             try {
-                const found = (
-                    await vscode.lm.selectChatModels({
-                        vendor: requestedVendor,
-                    })
-                ).filter(matchesRequestedModel);
+                const vendorModels = await selectRequestedVendorModels();
+                const found = findRequestedModels(vendorModels);
                 if (found.length > 0) {
                     finish(found);
+                    return;
+                }
+                if (vendorModels.length > 0) {
+                    vendorReadyAt ??= Date.now();
+                    finishIfVendorReadyGraceElapsed();
+                } else {
+                    vendorReadyAt = undefined;
                 }
             } catch (err) {
                 // Fire-and-forget callers (event handler, interval) would
@@ -250,11 +278,31 @@ async function waitForCopilotModels(
         });
         interval = setInterval(() => {
             void check();
-        }, 1000);
+        }, MODEL_DISCOVERY_POLL_INTERVAL_MS);
+        interval.unref?.();
         timeout = setTimeout(() => {
             finish([]);
         }, timeoutMs);
+        timeout.unref?.();
+        finishIfVendorReadyGraceElapsed();
     });
+}
+
+export function getExactModelPreflightTimeoutMs(
+    timeoutMs: number,
+    deadlineAt: number | undefined,
+    requestedIdentifier: string,
+    now: number = Date.now()
+): number {
+    return Math.min(
+        EXACT_MODEL_PREFLIGHT_MAX_MS,
+        requireRemainingHeadlessBudgetMs(
+            timeoutMs,
+            deadlineAt,
+            `while waiting for ${requestedIdentifier}`,
+            now
+        )
+    );
 }
 
 async function awaitWithCancellation<T>(
@@ -367,13 +415,14 @@ export async function runHeadlessFromEnv(
                 )
             );
 
+            const modelPreflightTimeoutMs = getExactModelPreflightTimeoutMs(
+                args.timeoutMs,
+                deadlineAt,
+                requestedIdentifier
+            );
             const models = await awaitWithCancellation(
                 waitForCopilotModels(
-                    requireRemainingHeadlessBudgetMs(
-                        args.timeoutMs,
-                        deadlineAt,
-                        `while waiting for ${requestedIdentifier}`
-                    ),
+                    modelPreflightTimeoutMs,
                     requestedIdentifier,
                     cts.token
                 ),
@@ -385,7 +434,7 @@ export async function runHeadlessFromEnv(
             );
             if (models.length === 0) {
                 throw new Error(
-                    `Requested model ${requestedIdentifier} was not available before timeout. If this is the first run, ` +
+                    `Requested model ${requestedIdentifier} was not available during exact-model preflight (${modelPreflightTimeoutMs}ms). If this is the first run, ` +
                         'approve the "Allow Lupa to use Copilot?" prompt in the spawned window. ' +
                         'Otherwise re-run `npm run headless:setup` and complete the model sign-in/setup.'
                 );

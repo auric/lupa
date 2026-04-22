@@ -232,7 +232,8 @@ describe('launchHeadless watchdog', () => {
             const { createPostSignalWatchdog, WATCHDOG_POST_SIGNAL_RETRY_MS } =
                 await import('../../scripts/eval/launchHeadless.js');
             const onForceKill = vi.fn();
-            const watchdog = createPostSignalWatchdog(onForceKill);
+            const onForceExit = vi.fn();
+            const watchdog = createPostSignalWatchdog(onForceKill, onForceExit);
 
             watchdog.arm('SIGINT');
 
@@ -245,8 +246,71 @@ describe('launchHeadless watchdog', () => {
             watchdog.clear();
             await vi.advanceTimersByTimeAsync(WATCHDOG_POST_SIGNAL_RETRY_MS);
             expect(onForceKill).toHaveBeenCalledTimes(2);
+            expect(onForceExit).not.toHaveBeenCalled();
         } finally {
             vi.useRealTimers();
+        }
+    });
+
+    it('force-exits the launcher when post-signal cleanup misses its bounded shutdown deadline', async () => {
+        vi.useFakeTimers();
+        try {
+            const {
+                createPostSignalWatchdog,
+                WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS,
+                WATCHDOG_POST_SIGNAL_RETRY_MS,
+            } = await import('../../scripts/eval/launchHeadless.js');
+            const onForceKill = vi.fn();
+            const onForceExit = vi.fn();
+            const watchdog = createPostSignalWatchdog(onForceKill, onForceExit);
+
+            watchdog.arm('SIGTERM');
+
+            await vi.advanceTimersByTimeAsync(
+                WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS - 1
+            );
+            expect(onForceExit).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(1);
+
+            const expectedRetryCallsBeforeExit = Math.floor(
+                (WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS - 1) /
+                    WATCHDOG_POST_SIGNAL_RETRY_MS
+            );
+            expect(onForceKill).toHaveBeenCalledTimes(
+                expectedRetryCallsBeforeExit + 1
+            );
+            expect(onForceExit).toHaveBeenCalledTimes(1);
+
+            await vi.advanceTimersByTimeAsync(WATCHDOG_POST_SIGNAL_RETRY_MS);
+            expect(onForceKill).toHaveBeenCalledTimes(
+                expectedRetryCallsBeforeExit + 1
+            );
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('fails fast once the launcher deadline has already elapsed during pre-launch work', async () => {
+        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+
+        try {
+            const { requireLauncherDeadlineRemaining } =
+                await import('../../scripts/eval/launchHeadless.js');
+
+            expect(() =>
+                requireLauncherDeadlineRemaining(
+                    {
+                        timeoutMs: 60_000,
+                        deadlineAt: 9_999,
+                    },
+                    'before starting VS Code'
+                )
+            ).toThrow(
+                /Headless launcher deadline elapsed before starting VS Code\./
+            );
+        } finally {
+            nowSpy.mockRestore();
         }
     });
 
