@@ -21,6 +21,18 @@
 
 Waves are deployable milestones. Each wave has a clear user-facing win and a kill-switch.
 
+**Crosswalk to the critique's named waves** (`docs/research/document-improvement-analysis.md` §Rec 2) — the numbered waves below are a concrete re-expression of that proposal against the existing Quest numbering. Mapping:
+
+| Critique wave         | Numbered waves below                 | Notes                                                                                                                                                                                                        |
+| --------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Wave -1 Eval          | Wave 0                               | Eval is the first thing we ship, not the last.                                                                                                                                                               |
+| Wave 0 Foundation     | Wave 1                               | Cache (1.4), structured stubs (1.3), unconditional pipeline (1.1), file-touched tracking (1.2). Feature flags are a per-Quest checklist item, not a Quest.                                                   |
+| Wave 1 Cheap Wins     | Wave 2 + Quest 3.3 in Wave 1         | Sequential thinking (2.x) and convention ingest (3.3) — 3.3 is lifted out of Wave 4 and landed in Wave 1 because it is genuinely standalone.                                                                 |
+| Wave 2 Ground Truth   | Wave 4 (reduced to 3.1/3.2) + Wave 5 | PR overview + tool pruning + externalized checklists.                                                                                                                                                        |
+| Wave 3 Core Reasoning | Wave 3 + Wave 6                      | Subagent IO + recursion/budget.                                                                                                                                                                              |
+| Wave 4 Quality Gates  | Wave 7 + Wave 8                      | Verification moat + pipeline refactor. 11.3 (mandatory citations) is deliberately kept with 11.2 (Judge): shipping required-`sources` without enforcement produces noisy validation failures during the gap. |
+| Wave 5 Advanced       | Wave 9 + Wave 10 + Wave 11           | Compaction, multi-model, scoring.                                                                                                                                                                            |
+
 ### Wave 0 — Foundation (eval harness first)
 
 **Goal**: "We can measure." No prompt / tool changes yet.
@@ -31,17 +43,17 @@ Waves are deployable milestones. Each wave has a clear user-facing win and a kil
 
 **Why first**: every later wave must prove itself against this baseline.
 
-### Wave 1 — Stop the bleeding
+### Wave 1 — Stop the bleeding (+ convention ingest)
 
-**Goal**: Zero silent data loss; deterministic tool behavior; cache eliminates repeat reads.
+**Goal**: Zero silent data loss; deterministic tool behavior; cache eliminates repeat reads; per-repo conventions respected from iteration 1.
 
-**Quests**: 1.1 → 1.2 → 1.3 → 1.4.
+**Quests**: 1.1 → 1.2 → 1.3 → 1.4 → 3.3. Quest 3.3 (convention-file auto-ingest) is lifted out of Wave 4 because it has no dependency on 3.1 / 3.2 and delivers a cheap, high-impact win: reading `CLAUDE.md` / `AGENTS.md` / `.cursorrules` at analysis start and injecting a `<project_conventions>` prompt block. Shipping it here means every subsequent wave benefits from it.
 
-**Gate**: synthetic 100-iteration test produces results; Raptor-trace repeat-read pathology gone on fixture PRs; `toolError` kinds covered by unit tests.
+**Gate**: synthetic 100-iteration test produces results; Raptor-trace repeat-read pathology gone on fixture PRs; `toolError` kinds covered by unit tests; convention-ingest snapshot test confirms the block is rendered on fixtures that carry committed convention files.
 
-**Kill-switch**: none needed — all four Quests are low-risk bug fixes.
+**Kill-switch**: none needed for 1.1–1.4 — low-risk bug fixes. Quest 3.3 is gated by workspace setting `lupa.conventionFiles.enabled`.
 
-**Expected eval delta**: small precision bump (hallucinations from free-form errors go away) + measurable cost/iteration drop from cache.
+**Expected eval delta**: small precision bump (hallucinations from free-form errors go away) + measurable cost/iteration drop from cache + reduction in "didn't know about our conventions" false positives on fixtures that include convention files.
 
 ### Wave 2 — Thinking + scaffolding
 
@@ -67,15 +79,15 @@ Waves are deployable milestones. Each wave has a clear user-facing win and a kil
 
 ### Wave 4 — Big picture
 
-**Goal**: Final review has a narrative; per-repo conventions respected.
+**Goal**: Final review has a narrative grounded in a pre-computed PR overview.
 
-**Quests**: 3.1 → 3.2 → 3.3.
+**Quests**: 3.1 → 3.2. (Quest 3.3 landed in Wave 1.)
 
-**Gate**: 100 % of fixture outputs include a `narrative` section; auto-ingest unit tests pass; snapshot test confirms `<project_conventions>` block rendered.
+**Gate**: 100 % of fixture outputs include a `narrative` section; PR-type classification accuracy ≥ 85 % across the 5 fixtures (per Quest 3.1's `expected_pr_type` eval field); `categoryEmphasis` propagation from `PROverview` into the main prompt verified by snapshot test.
 
-**Kill-switch**: disable `prOverviewBuilder` and `conventionFileLoader` via workspace setting.
+**Kill-switch**: disable `prOverviewBuilder` via workspace setting; failure falls back to `prType: 'mixed'` and the pre-classification prompt shape.
 
-**Expected eval delta**: findings better targeted to PR intent; false positives from "didn't know about our conventions" drop.
+**Expected eval delta**: findings better targeted to PR intent; `dep-update` and `docs` PRs should show notably tighter budgets and lower style-category FP.
 
 ### Wave 5 — Tool pruning + externalized checklists
 
@@ -149,14 +161,14 @@ Waves are deployable milestones. Each wave has a clear user-facing win and a kil
 
 ## Cheapest wins you can ship this week
 
-If you want order-of-magnitude improvement in a few days without the full playbook, ship these six Quests in order. All are low-risk, evidence-grounded, and low-LOC:
+If you want order-of-magnitude improvement in a few days without the full playbook, ship these six Quests in order. All are low-risk, evidence-grounded, and low-LOC. This set is the same content as Wave 1 + the head of Wave 2 — landing them in isolation is a subset of the wave plan, not a parallel track:
 
 1. **Quest 1.1** — unconditional post-analysis pipeline run. _(Prevents silent data loss — the highest-impact bug fix.)_
 2. **Quest 1.3** — structured stub returns. _(Deterministic model reactions to tool failures.)_
 3. **Quest 1.4** — per-analysis file cache. _(Kills Raptor's "same file 8×" cost drain.)_
-4. **Quest 3.3** — convention-file auto-ingest. _(Adds per-repo persistence for free.)_
+4. **Quest 3.3** — convention-file auto-ingest. _(Adds per-repo persistence for free. Now Wave 1.)_
 5. **Quest 2.1** — sequential-thinking tool. _(Older models finally reason in a loop.)_
-6. **Quest 11.3** — mandatory `sources` grounding. _(Kills most hallucinated findings with a one-field schema change.)_
+6. **Quest 11.3** — mandatory `sources` grounding, _behind a feature flag_. _(Kills most hallucinated findings. If shipped without 11.2 Judge, enable in `warn-only` mode — log ungrounded findings, don't drop — until Wave 7 lands. See crosswalk note above.)_
 
 Wave 0's eval harness should ideally exist before step 5 so you can measure the gain; in a pinch, land 1–4 without eval and add eval before 5.
 
