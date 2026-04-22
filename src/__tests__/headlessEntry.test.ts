@@ -492,6 +492,27 @@ describe('runHeadlessFromEnv', () => {
         return JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
     }
 
+    async function advanceFakeTimersUntil(
+        condition: () => boolean,
+        failureMessage: string,
+        maxElapsedMs: number
+    ): Promise<number> {
+        const startedAt = Date.now();
+        vi.runAllTicks();
+        await vi.waitFor(
+            () => {
+                if (!condition()) {
+                    throw new Error(failureMessage);
+                }
+            },
+            {
+                timeout: maxElapsedMs,
+                interval: 1,
+            }
+        );
+        return Date.now() - startedAt;
+    }
+
     it('writes sentinel exitCode:1 with a diagnostic error when LUPA_HEADLESS_ARGS has a field of the wrong type', async () => {
         const bad = JSON.stringify({
             workspace: 123,
@@ -647,6 +668,7 @@ describe('runHeadlessFromEnv', () => {
 
         const vscode = await import('vscode');
         const { runHeadless } = await import('../eval/headlessRunner');
+        let analysisStarted = false;
 
         vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
             {
@@ -660,9 +682,10 @@ describe('runHeadlessFromEnv', () => {
         vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
             undefined as never
         );
-        vi.mocked(runHeadless).mockImplementation(
-            () => new Promise(() => {}) as never
-        );
+        vi.mocked(runHeadless).mockImplementation(() => {
+            analysisStarted = true;
+            return new Promise(() => {}) as never;
+        });
 
         const coordinator = {
             waitForInitialization: vi.fn().mockResolvedValue({}),
@@ -673,7 +696,15 @@ describe('runHeadlessFromEnv', () => {
                 await import('../eval/headlessEntry');
             const runPromise = runHeadlessFromEnv(coordinator as never);
 
-            await vi.advanceTimersByTimeAsync(999);
+            const elapsedBeforeAnalysis = await advanceFakeTimersUntil(
+                () => analysisStarted,
+                'runHeadless did not start before advancing fake timers.',
+                50
+            );
+
+            await vi.advanceTimersByTimeAsync(
+                args.timeoutMs - elapsedBeforeAnalysis - 1
+            );
             expect(fs.existsSync(sentinelPath)).toBe(false);
 
             await vi.advanceTimersByTimeAsync(1);
@@ -708,6 +739,7 @@ describe('runHeadlessFromEnv', () => {
         const vscode = await import('vscode');
         const { runHeadlessResolutionJudge } =
             await import('../eval/headlessJudge');
+        let judgeStarted = false;
 
         vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
             {
@@ -721,9 +753,10 @@ describe('runHeadlessFromEnv', () => {
         vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
             undefined as never
         );
-        vi.mocked(runHeadlessResolutionJudge).mockImplementation(
-            () => new Promise(() => {}) as never
-        );
+        vi.mocked(runHeadlessResolutionJudge).mockImplementation(() => {
+            judgeStarted = true;
+            return new Promise(() => {}) as never;
+        });
 
         const coordinator = {
             waitForInitialization: vi.fn().mockResolvedValue({}),
@@ -734,7 +767,15 @@ describe('runHeadlessFromEnv', () => {
                 await import('../eval/headlessEntry');
             const runPromise = runHeadlessFromEnv(coordinator as never);
 
-            await vi.advanceTimersByTimeAsync(999);
+            const elapsedBeforeJudge = await advanceFakeTimersUntil(
+                () => judgeStarted,
+                'runHeadlessResolutionJudge did not start before advancing fake timers.',
+                50
+            );
+
+            await vi.advanceTimersByTimeAsync(
+                args.timeoutMs - elapsedBeforeJudge - 1
+            );
             expect(fs.existsSync(sentinelPath)).toBe(false);
 
             await vi.advanceTimersByTimeAsync(1);
