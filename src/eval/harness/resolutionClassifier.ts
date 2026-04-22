@@ -45,6 +45,11 @@ interface RenameStatusEntry {
     newPath: string;
 }
 
+interface ComparableSources {
+    sources: FindingSource[];
+    usedFallback: boolean;
+}
+
 type ClassificationOutcome =
     | { kind: 'classified'; resolution: FindingResolution }
     | { kind: 'warning'; warning: ResolutionWarning };
@@ -61,29 +66,45 @@ export async function classifyResolutionForRun(
     const renameStatusCache = new Map<string, readonly RenameStatusEntry[]>();
     const findingResolutions: FindingResolution[] = [];
     const warnings: ResolutionWarning[] = [];
-    for (const finding of opts.produced) {
+    for (let index = 0; index < opts.produced.length; index++) {
+        const finding = opts.produced[index]!;
         const matchedExpected = matchedExpectedByFindingId.get(finding.id);
-        if (opts.fixture.kind === 'synthetic') {
-            findingResolutions.push(
-                classifySyntheticFinding(finding, matchedExpected)
-            );
-            continue;
-        }
+        try {
+            if (opts.fixture.kind === 'synthetic') {
+                findingResolutions.push(
+                    classifySyntheticFinding(finding, matchedExpected)
+                );
+                continue;
+            }
 
-        const outcome = await classifyRealFinding(
-            opts.fixture,
-            finding,
-            matchedExpected,
-            pathDiffCache,
-            renameStatusCache,
-            opts.timeoutMs,
-            opts.deadlineAt,
-            opts.judgeClient
-        );
-        if (outcome.kind === 'classified') {
-            findingResolutions.push(outcome.resolution);
-        } else {
-            warnings.push(outcome.warning);
+            const outcome = await classifyRealFinding(
+                opts.fixture,
+                finding,
+                matchedExpected,
+                pathDiffCache,
+                renameStatusCache,
+                opts.timeoutMs,
+                opts.deadlineAt,
+                opts.judgeClient
+            );
+            if (outcome.kind === 'classified') {
+                findingResolutions.push(outcome.resolution);
+            } else {
+                warnings.push(outcome.warning);
+            }
+        } catch (error) {
+            return summarizeResolution(
+                findingResolutions,
+                opts.produced.length,
+                [
+                    ...warnings,
+                    ...createClassificationFailureWarnings(
+                        opts.fixture,
+                        opts.produced.slice(index),
+                        error
+                    ),
+                ]
+            );
         }
     }
 
@@ -148,16 +169,17 @@ async function classifyRealFinding(
                     ? 'resolved'
                     : 'unresolved',
                 method: 'label-override',
-                path: normalizePath(finding.file),
+                path: normalizePath(finding.file, fixture.workspaceRoot),
                 matchedLabelPath: normalizePath(matchedExpected.path),
                 reason: `Fixture label override forced verdict=${matchedExpected.resolvedByDefault ? 'resolved' : 'unresolved'}.`,
             },
         };
     }
 
-    const comparable = getComparableSources(finding);
+    const comparable = getComparableSources(finding, fixture.workspaceRoot);
     const normalizedPath =
-        comparable.sources[0]?.path ?? normalizePath(finding.file);
+        comparable.sources[0]?.path ??
+        normalizePath(finding.file, fixture.workspaceRoot);
     const lineCheck = await checkRealFindingPaths(
         fixture,
         comparable.sources,
@@ -233,6 +255,24 @@ async function classifyRealFinding(
             ),
         };
     }
+}
+
+function createClassificationFailureWarnings(
+    fixture: LoadedFixture,
+    remainingFindings: readonly RecordedFinding[],
+    error: unknown
+): ResolutionWarning[] {
+    const message = error instanceof Error ? error.message : String(error);
+    return remainingFindings.map((finding, index) => ({
+        findingId: finding.id,
+        severity: finding.severity,
+        kind: 'classification-failed',
+        path: getPrimaryFindingPath(finding, fixture.workspaceRoot),
+        message:
+            index === 0
+                ? `Resolution classification aborted while processing finding '${finding.id}': ${message}. Earlier classifications were preserved, but this run's resolution metrics are invalid.`
+                : `Resolution classification stopped before finding '${finding.id}' could be classified because an earlier classification step failed: ${message}. Earlier classifications were preserved, but this run's resolution metrics are invalid.`,
+    }));
 }
 
 function createResolutionWarning(
@@ -343,17 +383,25 @@ async function checkRealFindingPaths(
     };
 }
 
-function getComparableSources(finding: RecordedFinding): {
-    sources: FindingSource[];
-    usedFallback: boolean;
-} {
-    if (finding.sources && finding.sources.length > 0) {
+function getComparableSources(finding: RecordedFinding): ComparableSources;
+function getComparableSources(
+    finding: RecordedFinding,
+    workspaceRoot: string | undefined
+): ComparableSources;
+function getComparableSources(
+    finding: RecordedFinding,
+    workspaceRoot?: string
+): ComparableSources {
+    const normalizedSources = (finding.sources ?? [])
+        .map((source) => ({
+            path: normalizePath(source.path, workspaceRoot),
+            lineStart: source.lineStart,
+            lineEnd: source.lineEnd,
+        }))
+        .filter(isComparableSource);
+    if (normalizedSources.length > 0) {
         return {
-            sources: finding.sources.map((source) => ({
-                path: normalizePath(source.path),
-                lineStart: source.lineStart,
-                lineEnd: source.lineEnd,
-            })),
+            sources: normalizedSources,
             usedFallback: false,
         };
     }
@@ -361,13 +409,23 @@ function getComparableSources(finding: RecordedFinding): {
     return {
         sources: [
             {
-                path: normalizePath(finding.file),
+                path: normalizePath(finding.file, workspaceRoot),
                 lineStart: finding.lineRange[0],
                 lineEnd: finding.lineRange[1],
             },
         ],
         usedFallback: true,
     };
+}
+
+function getPrimaryFindingPath(
+    finding: RecordedFinding,
+    workspaceRoot: string | undefined
+): string {
+    return (
+        getComparableSources(finding, workspaceRoot).sources[0]?.path ??
+        normalizePath(finding.file, workspaceRoot)
+    );
 }
 
 function checkLineOverlap(
@@ -495,6 +553,10 @@ function isValidSource(source: FindingSource): boolean {
     );
 }
 
+function isComparableSource(source: FindingSource): boolean {
+    return source.path.length > 0 && isValidSource(source);
+}
+
 function sourceOverlapsOldRange(
     source: FindingSource,
     oldStart: number,
@@ -610,7 +672,7 @@ function runGitDiffForPath(
 ): Promise<string> {
     const fromRef = stripRefPrefix(headRef);
     const toRef = stripRefPrefix(mergeRef);
-    const gitPath = repoPath.split(path.sep).join('/');
+    const gitPath = normalizePath(repoPath);
     return new Promise((resolve, reject) => {
         const proc = spawn(
             'git',
@@ -808,8 +870,44 @@ function stripRefPrefix(ref: string): string {
     return ref.startsWith('sha:') ? ref.slice('sha:'.length) : ref;
 }
 
-function normalizePath(filePath: string): string {
-    return filePath.replace(/\\/g, '/');
+function normalizePath(filePath: string): string;
+function normalizePath(
+    filePath: string,
+    workspaceRoot: string | undefined
+): string;
+function normalizePath(filePath: string, workspaceRoot?: string): string {
+    const trimmed = filePath.trim();
+    if (trimmed.length === 0) {
+        return '';
+    }
+
+    if (workspaceRoot && isAbsolutePathLike(trimmed)) {
+        const relativePath = path.relative(workspaceRoot, trimmed);
+        if (
+            relativePath.length > 0 &&
+            !isAbsolutePathLike(relativePath) &&
+            !relativePath.startsWith('..')
+        ) {
+            return normalizePosixPath(relativePath);
+        }
+    }
+
+    return normalizePosixPath(trimmed);
+}
+
+function isAbsolutePathLike(filePath: string): boolean {
+    return (
+        path.isAbsolute(filePath) ||
+        /^[a-zA-Z]:[\\/]/.test(filePath) ||
+        filePath.startsWith('\\\\')
+    );
+}
+
+function normalizePosixPath(filePath: string): string {
+    const normalized = path.posix
+        .normalize(filePath.replace(/\\/g, '/'))
+        .replace(/^(?:\.\/)+/, '');
+    return normalized === '.' ? '' : normalized;
 }
 
 function pathsPossiblyMatch(leftPath: string, rightPath: string): boolean {

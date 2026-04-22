@@ -85,7 +85,7 @@ export function renderMarkdown(stamp: string, report: HarnessReport): string {
         '_Resolution proxy cells use `—` when no findings contributed to that cell and `⚠` when relevant findings were skipped/unclassified or resolution classification failed._'
     );
     lines.push(
-        '_Ambiguous findings skipped because auxiliary judging was unavailable or failed still appear in the per-run summary warnings, but they invalidate the affected resolution-rate metrics and are listed in the “Resolution proxy warnings” section below._'
+        '_Findings skipped because auxiliary judging was unavailable, auxiliary judging failed, or resolution classification aborted mid-run still appear in the per-run summary warnings, but they invalidate the affected resolution-rate metrics and are listed in the “Resolution proxy warnings” section below._'
     );
     lines.push(
         '_Runs where resolution classification failed before producing any summary are also excluded from resolution-proxy aggregates and listed in the same warnings section._'

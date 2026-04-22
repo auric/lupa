@@ -139,6 +139,42 @@ describe('resolveDiff', () => {
         expect(args).toEqual(['diff', '--no-index', '--', 'base', 'head']);
     });
 
+    it('rewrites dir: diff headers correctly when fixture paths contain spaces', async () => {
+        const raw =
+            'diff --git a/base dir/src/file with spaces.ts b/head dir/src/file with spaces.ts\n' +
+            'index 111..222 100644\n' +
+            '--- a/base dir/src/file with spaces.ts\n' +
+            '+++ b/head dir/src/file with spaces.ts\n' +
+            '@@ -1 +1 @@\n' +
+            '-old\n' +
+            '+new\n';
+        mockGitRun({ stdout: raw, exitCode: 1 });
+
+        const diff = await resolveDiff(
+            {
+                workspaceRoot: '/w',
+                baseRef: 'dir:/w/base dir',
+                headRef: 'dir:/w/head dir',
+            },
+            services
+        );
+
+        expect(diff).toContain(
+            'diff --git a/src/file with spaces.ts b/src/file with spaces.ts'
+        );
+        expect(diff).toContain('--- a/src/file with spaces.ts');
+        expect(diff).toContain('+++ b/src/file with spaces.ts');
+        expect(diff).not.toContain('base dir/');
+        expect(diff).not.toContain('head dir/');
+        expect(spawnMock.mock.calls[0]![1]).toEqual([
+            'diff',
+            '--no-index',
+            '--',
+            'base dir',
+            'head dir',
+        ]);
+    });
+
     it('kills the git process when cancellation is requested', async () => {
         const proc = new EventEmitter() as unknown as MockChildProcess;
         proc.stdout = new EventEmitter() as never;

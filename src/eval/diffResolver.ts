@@ -207,7 +207,7 @@ function stripFixturePrefixes(
     const h = escapeRegex(headRel);
     return diff
         .replace(
-            new RegExp(`^diff --git a/${b}/(\\S+) b/${h}/(\\S+)$`, 'gm'),
+            new RegExp(`^diff --git a/${b}/(.+?) b/${h}/(.+)$`, 'gm'),
             'diff --git a/$1 b/$2'
         )
         .replace(new RegExp(`^--- a/${b}/`, 'gm'), '--- a/')

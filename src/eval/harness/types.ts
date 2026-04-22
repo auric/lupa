@@ -74,7 +74,7 @@ export interface FindingResolution {
 export interface ResolutionWarning {
     findingId: string;
     severity: FindingSeverity;
-    kind: 'judge-unavailable' | 'judge-failed';
+    kind: 'judge-unavailable' | 'judge-failed' | 'classification-failed';
     path: string;
     message: string;
 }

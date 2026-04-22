@@ -707,6 +707,188 @@ index 1234567..89abcde 100644
         });
     });
 
+    it('filters invalid sources and falls back to the finding file and lineRange when none remain', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+                const gitPath = args[3];
+                if (gitPath !== 'src/a.ts') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+index 1234567..89abcde 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -10,1 +10,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'fallback-invalid-sources',
+                    file: './src/a.ts',
+                    sources: [
+                        { path: './src/a.ts', lineStart: 0, lineEnd: 0 },
+                        { path: './src/a.ts', lineStart: 12, lineEnd: 10 },
+                    ],
+                }),
+            ],
+            match: emptyMatch(),
+        });
+
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'fallback-invalid-sources',
+            verdict: 'resolved',
+            path: 'src/a.ts',
+            method: 'line-range-fallback',
+        });
+    });
+
+    it('canonicalizes absolute and dot-prefixed finding paths before diffing', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+                const gitPath = args[3];
+                if (gitPath !== 'src/a.ts') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+index 1234567..89abcde 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -10,1 +10,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'canonical-paths',
+                    file: '/tmp/workspace/src/a.ts',
+                    sources: [
+                        {
+                            path: '/tmp/workspace/src/a.ts',
+                            lineStart: 10,
+                            lineEnd: 10,
+                        },
+                        {
+                            path: './src/a.ts',
+                            lineStart: 10,
+                            lineEnd: 10,
+                        },
+                    ],
+                }),
+            ],
+            match: emptyMatch(),
+        });
+
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'canonical-paths',
+            verdict: 'resolved',
+            path: 'src/a.ts',
+            method: 'source-overlap',
+        });
+        expect(mockedSpawn).toHaveBeenCalledTimes(2);
+        expect(mockedSpawn.mock.calls[0]?.[1]?.[3]).toBe('src/a.ts');
+    });
+
+    it('preserves earlier classified findings and marks the remainder invalid when classification aborts mid-run', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+
+                const gitPath = args[3];
+                if (gitPath === 'src/resolved.ts') {
+                    return createMockGitDiffProcess(`diff --git a/src/resolved.ts b/src/resolved.ts
+index 1234567..89abcde 100644
+--- a/src/resolved.ts
++++ b/src/resolved.ts
+@@ -10,1 +10,2 @@
+-dangerous();
++safe();
++return;
+`);
+                }
+
+                if (gitPath === 'src/broken.ts') {
+                    const proc = new EventEmitter() as EventEmitter & {
+                        stdout: EventEmitter;
+                        stderr: EventEmitter;
+                    };
+                    proc.stdout = new EventEmitter();
+                    proc.stderr = new EventEmitter();
+                    queueMicrotask(() => {
+                        proc.emit('error', new Error('git exploded'));
+                    });
+                    return proc;
+                }
+
+                throw new Error(`Unexpected git path: ${gitPath}`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'resolved-before-error',
+                    file: 'src/resolved.ts',
+                    lineRange: [10, 10],
+                }),
+                makeProduced({
+                    id: 'failed-during-error',
+                    file: 'src/broken.ts',
+                    lineRange: [30, 30],
+                }),
+                makeProduced({
+                    id: 'never-attempted',
+                    file: 'src/skipped.ts',
+                    lineRange: [40, 40],
+                }),
+            ],
+            match: emptyMatch(),
+        });
+
+        expect(summary.total).toBe(1);
+        expect(summary.resolved).toBe(1);
+        expect(summary.skipped).toBe(2);
+        expect(summary.metricStatus).toBe('invalid-skipped');
+        expect(summary.findings).toEqual([
+            expect.objectContaining({
+                findingId: 'resolved-before-error',
+                verdict: 'resolved',
+            }),
+        ]);
+        expect(summary.warnings).toEqual([
+            expect.objectContaining({
+                findingId: 'failed-during-error',
+                kind: 'classification-failed',
+            }),
+            expect.objectContaining({
+                findingId: 'never-attempted',
+                kind: 'classification-failed',
+            }),
+        ]);
+        expect(Number.isNaN(summary.resolutionRate)).toBe(true);
+    });
+
     it('treats insertion-only follow-up patches as ambiguous and escalates to the judge', async () => {
         mockedSpawn.mockImplementation(() =>
             createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
@@ -910,17 +1092,22 @@ rename to src/moved/a.ts
         vi.useFakeTimers();
         try {
             const kill = vi.fn();
-            mockedSpawn.mockImplementation(() => {
-                const proc = new EventEmitter() as EventEmitter & {
-                    stdout: EventEmitter;
-                    stderr: EventEmitter;
-                    kill: typeof kill;
-                };
-                proc.stdout = new EventEmitter();
-                proc.stderr = new EventEmitter();
-                proc.kill = kill;
-                return proc;
-            });
+            mockedSpawn.mockImplementation(
+                (_cmd: string, args: readonly string[]) => {
+                    if (args.includes('--name-status')) {
+                        return createMockGitDiffProcess('');
+                    }
+                    const proc = new EventEmitter() as EventEmitter & {
+                        stdout: EventEmitter;
+                        stderr: EventEmitter;
+                        kill: typeof kill;
+                    };
+                    proc.stdout = new EventEmitter();
+                    proc.stderr = new EventEmitter();
+                    proc.kill = kill;
+                    return proc;
+                }
+            );
 
             const summaryPromise = classifyResolution({
                 fixture: makeRealFixture(),
@@ -931,9 +1118,16 @@ rename to src/moved/a.ts
 
             await vi.advanceTimersByTimeAsync(500);
 
-            await expect(summaryPromise).rejects.toThrow(
-                /timed out after 500ms/
-            );
+            await expect(summaryPromise).resolves.toMatchObject({
+                metricStatus: 'invalid-skipped',
+                skipped: 1,
+                warnings: [
+                    expect.objectContaining({
+                        findingId: 'git-timeout',
+                        kind: 'classification-failed',
+                    }),
+                ],
+            });
             expect(kill).toHaveBeenCalledWith('SIGKILL');
         } finally {
             vi.useRealTimers();
