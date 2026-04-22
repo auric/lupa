@@ -10,12 +10,20 @@ vi.mock('node:child_process', () => ({
 
 import { matchFindings } from '../../eval/harness/matcher';
 import { classifyResolutionForRun } from '../../eval/harness/resolutionClassifier';
+import { aggregate } from '../../eval/harness/metrics';
+import { renderMarkdown } from '../../eval/harness/reporter';
 import {
+    getHarnessSigtermGraceMs,
     getResolutionJudgeWatchdogMs,
     invokeHeadless,
     invokeResolutionJudge,
 } from '../../eval/harness/runnerInvoker';
-import type { ExpectedFinding, MatchResult } from '../../eval/harness/types';
+import type {
+    ExpectedFinding,
+    HarnessReport,
+    MatchResult,
+    SingleRun,
+} from '../../eval/harness/types';
 import type { RecordedFinding } from '../../types/findingTypes';
 
 function makeProduced(
@@ -60,6 +68,17 @@ function metrics(result: MatchResult) {
         missed: result.missedExpected.length,
         falsePositives: result.falsePositives.length,
     };
+}
+
+async function classifyResolution(
+    opts: Omit<Parameters<typeof classifyResolutionForRun>[0], 'timeoutMs'> & {
+        timeoutMs?: number;
+    }
+) {
+    return classifyResolutionForRun({
+        timeoutMs: 60_000,
+        ...opts,
+    });
 }
 
 describe('matchFindings', () => {
@@ -312,7 +331,7 @@ describe('classifyResolutionForRun', () => {
                             compactionsUsed: 0,
                         },
                         rawToolCallLog: [],
-                        modelId: 'gpt-5-mini',
+                        modelId: 'copilot/gpt-5-mini',
                         seed: 7,
                         completed: true,
                     })
@@ -357,7 +376,7 @@ describe('classifyResolutionForRun', () => {
                     JSON.stringify({
                         verdict: 'unresolved',
                         reason: 'Touched code still leaves the finding unresolved.',
-                        modelId: 'gpt-5-mini',
+                        modelId: 'copilot/gpt-5-mini',
                     })
                 );
                 return createMockLauncherProcess(0);
@@ -377,12 +396,55 @@ describe('classifyResolutionForRun', () => {
 
         expect(result.result).toMatchObject({
             verdict: 'unresolved',
-            modelId: 'gpt-5-mini',
+            modelId: 'copilot/gpt-5-mini',
         });
         expect(spawnedArgs).toContain('--deadline-at');
         expect(spawnedArgs[spawnedArgs.indexOf('--deadline-at') + 1]).toBe(
             String(deadlineAt)
         );
+    });
+
+    it('returns a failed run when the analysis deadline already elapsed before pre-launch work begins', async () => {
+        const result = await invokeHeadless({
+            workspaceRoot: '/tmp/workspace',
+            baseRef: 'main',
+            headRef: 'feature/x',
+            model: 'copilot/gpt-5-mini',
+            seed: 7,
+            timeoutMs: 60_000,
+            deadlineAt: Date.now() - 1,
+            bailOnError: false,
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            result: null,
+        });
+        expect(result.ok).toBe(false);
+        if (result.ok) {
+            throw new Error(
+                'Expected invokeHeadless to return a failure result'
+            );
+        }
+        expect(result.error).toContain('before pre-launch checkout');
+        expect(mockedSpawn).not.toHaveBeenCalled();
+    });
+
+    it('throws when the analysis deadline already elapsed before pre-launch work begins and bailOnError is true', async () => {
+        await expect(
+            invokeHeadless({
+                workspaceRoot: '/tmp/workspace',
+                baseRef: 'main',
+                headRef: 'feature/x',
+                model: 'copilot/gpt-5-mini',
+                seed: 7,
+                timeoutMs: 60_000,
+                deadlineAt: Date.now() - 1,
+                bailOnError: true,
+            })
+        ).rejects.toThrow(/before pre-launch checkout/i);
+
+        expect(mockedSpawn).not.toHaveBeenCalled();
     });
 
     it('gives the resolution-judge harness watchdog cleanup headroom beyond the child deadline', () => {
@@ -427,7 +489,7 @@ describe('classifyResolutionForRun', () => {
                             compactionsUsed: 0,
                         },
                         rawToolCallLog: [],
-                        modelId: 'gpt-5-mini',
+                        modelId: 'copilot/gpt-5-mini',
                         seed: 7,
                         completed: true,
                     })
@@ -450,7 +512,7 @@ describe('classifyResolutionForRun', () => {
             ok: true,
             result: {
                 narrative: 'usable result',
-                modelId: 'gpt-5-mini',
+                modelId: 'copilot/gpt-5-mini',
                 completed: true,
             },
         });
@@ -466,7 +528,7 @@ describe('classifyResolutionForRun', () => {
                     JSON.stringify({
                         verdict: 'resolved',
                         reason: 'Usable judge result written before teardown failed.',
-                        modelId: 'gpt-5-mini',
+                        modelId: 'copilot/gpt-5-mini',
                     })
                 );
                 return createMockLauncherProcess(1);
@@ -486,7 +548,7 @@ describe('classifyResolutionForRun', () => {
         expect(result).toMatchObject({
             result: {
                 verdict: 'resolved',
-                modelId: 'gpt-5-mini',
+                modelId: 'copilot/gpt-5-mini',
             },
         });
     });
@@ -510,7 +572,7 @@ describe('classifyResolutionForRun', () => {
                             compactionsUsed: 0,
                         },
                         rawToolCallLog: [],
-                        modelId: 'gpt-5-mini',
+                        modelId: 'copilot/gpt-5-mini',
                         seed: 7,
                         completed: false,
                     })
@@ -561,7 +623,7 @@ describe('classifyResolutionForRun', () => {
         ];
         const match = matchFindings(produced, expected);
 
-        const summary = await classifyResolutionForRun({
+        const summary = await classifyResolution({
             fixture: {
                 name: 'synthetic-case',
                 kind: 'synthetic',
@@ -630,7 +692,7 @@ index 1234567..89abcde 100644
             }),
         ];
 
-        const summary = await classifyResolutionForRun({
+        const summary = await classifyResolution({
             fixture: makeRealFixture(),
             produced,
             match: emptyMatch(),
@@ -660,10 +722,10 @@ index 1234567..89abcde 100644
         const judge = vi.fn().mockResolvedValue({
             verdict: 'resolved',
             reason: 'Added guard likely resolves the finding.',
-            modelId: 'gpt-5-mini',
+            modelId: 'copilot/gpt-5-mini',
         });
 
-        const summary = await classifyResolutionForRun({
+        const summary = await classifyResolution({
             fixture: makeRealFixture(),
             produced: [makeProduced({ id: 'insertion-fix' })],
             match: emptyMatch(),
@@ -691,7 +753,7 @@ index 1234567..89abcde 100644
 `)
         );
 
-        const summary = await classifyResolutionForRun({
+        const summary = await classifyResolution({
             fixture: makeRealFixture(),
             produced: [makeProduced({ id: 'deletion-only-overlap' })],
             match: emptyMatch(),
@@ -716,7 +778,7 @@ index 1234567..89abcde 100644
 `)
         );
 
-        const summary = await classifyResolutionForRun({
+        const summary = await classifyResolution({
             fixture: makeRealFixture(),
             produced: [makeProduced({ id: 'judge-unavailable' })],
             match: emptyMatch(),
@@ -763,7 +825,7 @@ index 1234567..89abcde 100644
             }
         );
 
-        const summary = await classifyResolutionForRun({
+        const summary = await classifyResolution({
             fixture: makeRealFixture(),
             produced: [
                 makeProduced({
@@ -826,10 +888,10 @@ rename to src/moved/a.ts
         const judge = vi.fn().mockResolvedValue({
             verdict: 'disputed',
             reason: 'Pure rename/move is ambiguous for proxy resolution.',
-            modelId: 'gpt-5-mini',
+            modelId: 'copilot/gpt-5-mini',
         });
 
-        const summary = await classifyResolutionForRun({
+        const summary = await classifyResolution({
             fixture: makeRealFixture(),
             produced: [makeProduced({ id: 'rename-only' })],
             match: emptyMatch(),
@@ -860,16 +922,17 @@ rename to src/moved/a.ts
                 return proc;
             });
 
-            const summaryPromise = classifyResolutionForRun({
+            const summaryPromise = classifyResolution({
                 fixture: makeRealFixture(),
                 produced: [makeProduced({ id: 'git-timeout' })],
                 match: emptyMatch(),
+                deadlineAt: Date.now() + 500,
             });
 
-            await vi.advanceTimersByTimeAsync(15_000);
+            await vi.advanceTimersByTimeAsync(500);
 
             await expect(summaryPromise).rejects.toThrow(
-                /timed out after 15000ms/
+                /timed out after 500ms/
             );
             expect(kill).toHaveBeenCalledWith('SIGKILL');
         } finally {
@@ -898,10 +961,11 @@ rename to src/moved/a.ts
                 return proc;
             });
 
-            const summaryPromise = classifyResolutionForRun({
+            const summaryPromise = classifyResolution({
                 fixture: makeRealFixture(),
                 produced: [makeProduced({ id: 'timeout-cleanup' })],
                 match: emptyMatch(),
+                deadlineAt: Date.now() + 5_000,
             });
 
             await expect(summaryPromise).resolves.toMatchObject({
@@ -913,6 +977,169 @@ rename to src/moved/a.ts
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it('kills a hung pre-launch git checkout when only the remaining deadline budget is available', async () => {
+        vi.useFakeTimers();
+        try {
+            const kill = vi.fn();
+            mockedSpawn.mockImplementation((cmd: string) => {
+                if (cmd !== 'git') {
+                    throw new Error(`Unexpected command: ${cmd}`);
+                }
+
+                const proc = new EventEmitter() as EventEmitter & {
+                    stdout: EventEmitter;
+                    stderr: EventEmitter;
+                    kill: typeof kill;
+                };
+                proc.stdout = new EventEmitter();
+                proc.stderr = new EventEmitter();
+                proc.kill = kill;
+                return proc;
+            });
+
+            const resultPromise = invokeHeadless({
+                workspaceRoot: '/tmp/workspace',
+                baseRef: 'main',
+                headRef: 'sha:deadbeef',
+                model: 'copilot/gpt-5-mini',
+                seed: 7,
+                timeoutMs: 60_000,
+                deadlineAt: Date.now() + 500,
+                bailOnError: false,
+            });
+
+            await vi.advanceTimersByTimeAsync(500);
+
+            const result = await resultPromise;
+            expect(kill).toHaveBeenCalledWith('SIGKILL');
+            expect(result).toMatchObject({
+                ok: false,
+                result: null,
+            });
+            expect(result.ok).toBe(false);
+            if (result.ok) {
+                throw new Error(
+                    'Expected invokeHeadless to return a failure result'
+                );
+            }
+            expect(result.error).toContain('during pre-launch checkout');
+            expect(mockedSpawn).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('separates resolution-only warnings from failures and renders invalid severity metrics distinctly from no-findings severities', () => {
+        const noFindingsRun: SingleRun = {
+            fixture: 'fixture-no-findings',
+            kind: 'real',
+            model: 'copilot/gpt-5-mini',
+            seed: 0,
+            durationMs: 100,
+            ok: true,
+            errorMessage: null,
+            resolutionWarning: null,
+            result: {
+                findings: [],
+                narrative: 'clean',
+                telemetry: {
+                    iterations: 1,
+                    toolCalls: 0,
+                    promptTokens: 0,
+                    completionTokens: 0,
+                    durationMs: 100,
+                    compactionsUsed: 0,
+                },
+                rawToolCallLog: [],
+                modelId: 'copilot/gpt-5-mini',
+                seed: 0,
+                completed: true,
+            },
+            match: emptyMatch(),
+            resolution: {
+                attempted: 0,
+                skipped: 0,
+                total: 0,
+                resolved: 0,
+                unresolved: 0,
+                disputed: 0,
+                noise: 0,
+                resolutionRate: Number.NaN,
+                metricStatus: 'no-findings',
+                bySeverity: {},
+                findings: [],
+                warnings: [],
+            },
+        };
+        const invalidHighRun: SingleRun = {
+            fixture: 'fixture-invalid',
+            kind: 'real',
+            model: 'copilot/gpt-5-mini',
+            seed: 1,
+            durationMs: 120,
+            ok: true,
+            errorMessage: null,
+            resolutionWarning:
+                'Resolution proxy unavailable: remaining budget exhausted',
+            result: {
+                findings: [makeProduced({ id: 'high-only', severity: 'HIGH' })],
+                narrative: 'warning',
+                telemetry: {
+                    iterations: 1,
+                    toolCalls: 0,
+                    promptTokens: 0,
+                    completionTokens: 0,
+                    durationMs: 120,
+                    compactionsUsed: 0,
+                },
+                rawToolCallLog: [],
+                modelId: 'copilot/gpt-5-mini',
+                seed: 1,
+                completed: true,
+            },
+            match: emptyMatch(),
+            resolution: null,
+        };
+
+        const runs = [noFindingsRun, invalidHighRun];
+        const { perFixture, perModel } = aggregate(runs);
+        const report: HarnessReport = {
+            generatedAt: '2026-04-22T00:00:00.000Z',
+            gitSha: 'abcdef0123456789',
+            models: ['copilot/gpt-5-mini'],
+            seeds: 1,
+            fixtures: ['fixture-no-findings', 'fixture-invalid'],
+            perFixture,
+            perModel,
+            rawRuns: runs,
+        };
+
+        const markdown = renderMarkdown('2026-04-22_00-00-00', report);
+
+        expect(perModel[0]?.resolutionRateBySeverity.HIGH).toMatchObject({
+            invalidCount: 1,
+        });
+        expect(perModel[0]?.resolutionRateBySeverity.LOW).toMatchObject({
+            count: 0,
+            invalidCount: 0,
+        });
+        expect(markdown).toContain('| copilot/gpt-5-mini | HIGH | ⚠ |');
+        expect(markdown).toContain('| copilot/gpt-5-mini | LOW | — |');
+        expect(markdown).toContain(
+            'Resolution proxy unavailable: remaining budget exhausted'
+        );
+        expect(markdown).toContain('## Failures\n\n(none)');
+    });
+
+    it('keeps the harness POSIX SIGKILL grace longer than the launcher grace it depends on', async () => {
+        const { WATCHDOG_SIGTERM_GRACE_MS } =
+            await import('../../../scripts/eval/launchHeadless.js');
+
+        expect(getHarnessSigtermGraceMs()).toBeGreaterThan(
+            WATCHDOG_SIGTERM_GRACE_MS
+        );
     });
 });
 

@@ -152,7 +152,7 @@ export async function runHeadless(
             compactionsUsed: 0,
         },
         rawToolCallLog: result.toolCallRecords,
-        modelId: model.id,
+        modelId: actualIdentifier,
         seed: opts.seed,
         completed: result.completed,
     };

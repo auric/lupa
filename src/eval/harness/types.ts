@@ -47,6 +47,11 @@ export type ResolutionVerdict =
     | 'disputed'
     | 'noise';
 
+export type ResolutionMetricStatus =
+    | 'valid'
+    | 'no-findings'
+    | 'invalid-skipped';
+
 export type ResolutionMethod =
     | 'synthetic-match'
     | 'label-override'
@@ -75,12 +80,15 @@ export interface ResolutionWarning {
 }
 
 export interface ResolutionBucket {
+    attempted: number;
+    skipped: number;
     total: number;
     resolved: number;
     unresolved: number;
     disputed: number;
     noise: number;
     resolutionRate: number;
+    metricStatus: ResolutionMetricStatus;
 }
 
 export interface ResolutionSummary extends ResolutionBucket {
@@ -131,6 +139,7 @@ export interface SingleRun {
     durationMs: number;
     ok: boolean;
     errorMessage: string | null;
+    resolutionWarning: string | null;
     result: HeadlessAnalysisResult | null;
     match: MatchResult | null;
     resolution: ResolutionSummary | null;
@@ -140,6 +149,8 @@ export interface AggregateStats {
     count: number;
     mean: number;
     stddev: number;
+    invalidCount: number;
+    noFindingsCount: number;
 }
 
 export interface PerModelAggregate {

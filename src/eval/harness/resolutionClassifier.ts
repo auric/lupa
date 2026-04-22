@@ -1,10 +1,6 @@
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import type {
-    FindingSeverity,
-    FindingSource,
-    RecordedFinding,
-} from '../../types/findingTypes';
+import type { FindingSource, RecordedFinding } from '../../types/findingTypes';
 import { DiffUtils } from '../../utils/diffUtils';
 import type {
     ExpectedFinding,
@@ -14,10 +10,12 @@ import type {
     ResolutionBucket,
     ResolutionJudgePayload,
     ResolutionJudgeResult,
+    ResolutionMetricStatus,
     ResolutionMethod,
     ResolutionSummary,
     ResolutionWarning,
 } from './types';
+import { requireRemainingHeadlessBudgetMs } from '../headlessShared';
 
 const GIT_DIFF_TIMEOUT_MS = 15_000;
 
@@ -29,6 +27,8 @@ interface ClassifyResolutionOptions {
     fixture: LoadedFixture;
     produced: readonly RecordedFinding[];
     match: MatchResult;
+    timeoutMs: number;
+    deadlineAt?: number;
     judgeClient?: ResolutionJudgeClient;
 }
 
@@ -76,6 +76,8 @@ export async function classifyResolutionForRun(
             matchedExpected,
             pathDiffCache,
             renameStatusCache,
+            opts.timeoutMs,
+            opts.deadlineAt,
             opts.judgeClient
         );
         if (outcome.kind === 'classified') {
@@ -132,6 +134,8 @@ async function classifyRealFinding(
     matchedExpected: ExpectedFinding | undefined,
     pathDiffCache: Map<string, string>,
     renameStatusCache: Map<string, readonly RenameStatusEntry[]>,
+    timeoutMs: number,
+    deadlineAt: number | undefined,
     judgeClient: ResolutionJudgeClient | undefined
 ): Promise<ClassificationOutcome> {
     if (matchedExpected?.resolvedByDefault !== undefined) {
@@ -160,6 +164,8 @@ async function classifyRealFinding(
         comparable.usedFallback,
         pathDiffCache,
         renameStatusCache,
+        timeoutMs,
+        deadlineAt,
         normalizedPath
     );
     if (
@@ -250,6 +256,8 @@ async function checkRealFindingPaths(
     usedFallback: boolean,
     cache: Map<string, string>,
     renameStatusCache: Map<string, readonly RenameStatusEntry[]>,
+    timeoutMs: number,
+    deadlineAt: number | undefined,
     defaultPath: string
 ): Promise<LineCheckResult> {
     const sourcesByPath = groupSourcesByPath(sources);
@@ -257,12 +265,20 @@ async function checkRealFindingPaths(
     const touchedWithoutOverlap: string[] = [];
 
     for (const [findingPath, pathSources] of sourcesByPath.entries()) {
-        const diffText = await getDiffForPath(fixture, findingPath, cache);
+        const diffText = await getDiffForPath(
+            fixture,
+            findingPath,
+            cache,
+            timeoutMs,
+            deadlineAt
+        );
         if (
             await pathHasPureRenameOrMove(
                 fixture,
                 findingPath,
-                renameStatusCache
+                renameStatusCache,
+                timeoutMs,
+                deadlineAt
             )
         ) {
             ambiguousResults.push({
@@ -556,7 +572,9 @@ function hunkContainsAnyAdditions(hunk: {
 async function getDiffForPath(
     fixture: LoadedFixture,
     normalizedPath: string,
-    cache: Map<string, string>
+    cache: Map<string, string>,
+    timeoutMs: number,
+    deadlineAt: number | undefined
 ): Promise<string> {
     const cacheKey = `${fixture.headRef}::${fixture.mergeRef ?? 'none'}::${normalizedPath}`;
     const cached = cache.get(cacheKey);
@@ -572,7 +590,12 @@ async function getDiffForPath(
         fixture.workspaceRoot,
         fixture.headRef,
         fixture.mergeRef,
-        normalizedPath
+        normalizedPath,
+        getResolutionGitTimeoutMs(
+            timeoutMs,
+            deadlineAt,
+            `during resolution classification git diff for ${normalizedPath}`
+        )
     );
     cache.set(cacheKey, diffText);
     return diffText;
@@ -582,7 +605,8 @@ function runGitDiffForPath(
     workspaceRoot: string,
     headRef: string,
     mergeRef: string,
-    repoPath: string
+    repoPath: string,
+    timeoutMs: number
 ): Promise<string> {
     const fromRef = stripRefPrefix(headRef);
     const toRef = stripRefPrefix(mergeRef);
@@ -607,10 +631,10 @@ function runGitDiffForPath(
             proc.kill('SIGKILL');
             reject(
                 new Error(
-                    `git diff ${fromRef}..${toRef} -- ${gitPath} timed out after ${GIT_DIFF_TIMEOUT_MS}ms`
+                    `git diff ${fromRef}..${toRef} -- ${gitPath} timed out after ${timeoutMs}ms`
                 )
             );
-        }, GIT_DIFF_TIMEOUT_MS);
+        }, timeoutMs);
         proc.stdout.on('data', (chunk) => {
             stdout += chunk.toString();
         });
@@ -647,13 +671,20 @@ function runGitDiffForPath(
 async function pathHasPureRenameOrMove(
     fixture: LoadedFixture,
     findingPath: string,
-    cache: Map<string, readonly RenameStatusEntry[]>
+    cache: Map<string, readonly RenameStatusEntry[]>,
+    timeoutMs: number,
+    deadlineAt: number | undefined
 ): Promise<boolean> {
     if (!fixture.mergeRef) {
         return false;
     }
 
-    const renameEntries = await getPureRenameEntries(fixture, cache);
+    const renameEntries = await getPureRenameEntries(
+        fixture,
+        cache,
+        timeoutMs,
+        deadlineAt
+    );
     return renameEntries.some(
         (entry) =>
             pathsPossiblyMatch(entry.oldPath, findingPath) ||
@@ -663,7 +694,9 @@ async function pathHasPureRenameOrMove(
 
 async function getPureRenameEntries(
     fixture: LoadedFixture,
-    cache: Map<string, readonly RenameStatusEntry[]>
+    cache: Map<string, readonly RenameStatusEntry[]>,
+    timeoutMs: number,
+    deadlineAt: number | undefined
 ): Promise<readonly RenameStatusEntry[]> {
     const cacheKey = `${fixture.headRef}::${fixture.mergeRef ?? 'none'}::rename-status`;
     const cached = cache.get(cacheKey);
@@ -681,7 +714,12 @@ async function getPureRenameEntries(
     const stdout = await runGitDiffNameStatus(
         fixture.workspaceRoot,
         fromRef,
-        toRef
+        toRef,
+        getResolutionGitTimeoutMs(
+            timeoutMs,
+            deadlineAt,
+            'during resolution classification rename detection'
+        )
     );
     const entries = stdout
         .split(/\r?\n/u)
@@ -701,7 +739,8 @@ async function getPureRenameEntries(
 function runGitDiffNameStatus(
     workspaceRoot: string,
     fromRef: string,
-    toRef: string
+    toRef: string,
+    timeoutMs: number
 ): Promise<string> {
     return new Promise((resolve, reject) => {
         const proc = spawn(
@@ -728,10 +767,10 @@ function runGitDiffNameStatus(
             proc.kill('SIGKILL');
             reject(
                 new Error(
-                    `git diff --name-status --find-renames=100% ${fromRef}..${toRef} timed out after ${GIT_DIFF_TIMEOUT_MS}ms`
+                    `git diff --name-status --find-renames=100% ${fromRef}..${toRef} timed out after ${timeoutMs}ms`
                 )
             );
-        }, GIT_DIFF_TIMEOUT_MS);
+        }, timeoutMs);
         proc.stdout.on('data', (chunk) => {
             stdout += chunk.toString();
         });
@@ -840,20 +879,24 @@ function summarizeResolution(
     warnings: readonly ResolutionWarning[]
 ): ResolutionSummary {
     const bySeverity: ResolutionSummary['bySeverity'] = {};
-    const severitiesWithSkipped = new Set<FindingSeverity>();
     let resolved = 0;
     let unresolved = 0;
     let disputed = 0;
     let noise = 0;
 
     for (const warning of warnings) {
-        severitiesWithSkipped.add(warning.severity);
+        const bucket =
+            bySeverity[warning.severity] ??
+            (bySeverity[warning.severity] = emptyBucket());
+        bucket.attempted++;
+        bucket.skipped++;
     }
 
     for (const finding of findings) {
         const bucket =
             bySeverity[finding.severity] ??
             (bySeverity[finding.severity] = emptyBucket());
+        bucket.attempted++;
         incrementBucket(bucket, finding.verdict);
         switch (finding.verdict) {
             case 'resolved':
@@ -871,13 +914,12 @@ function summarizeResolution(
         }
     }
 
-    for (const [severity, bucket] of Object.entries(bySeverity) as Array<
-        [FindingSeverity, ResolutionBucket]
-    >) {
-        finalizeBucket(bucket, severitiesWithSkipped.has(severity));
+    for (const bucket of Object.values(bySeverity)) {
+        finalizeBucket(bucket);
     }
 
     const total = findings.length;
+    const metricStatus = getResolutionMetricStatus(attempted, warnings.length);
     return {
         attempted,
         skipped: warnings.length,
@@ -887,7 +929,8 @@ function summarizeResolution(
         disputed,
         noise,
         resolutionRate:
-            total === 0 || warnings.length > 0 ? Number.NaN : resolved / total,
+            metricStatus === 'valid' ? resolved / total : Number.NaN,
+        metricStatus,
         bySeverity,
         findings: [...findings],
         warnings: [...warnings],
@@ -896,12 +939,15 @@ function summarizeResolution(
 
 function emptyBucket(): ResolutionBucket {
     return {
+        attempted: 0,
+        skipped: 0,
         total: 0,
         resolved: 0,
         unresolved: 0,
         disputed: 0,
         noise: 0,
         resolutionRate: Number.NaN,
+        metricStatus: 'no-findings',
     };
 }
 
@@ -926,12 +972,37 @@ function incrementBucket(
     }
 }
 
-function finalizeBucket(
-    bucket: ResolutionBucket,
-    classificationIncomplete: boolean
-): void {
+function finalizeBucket(bucket: ResolutionBucket): void {
+    bucket.metricStatus = getResolutionMetricStatus(
+        bucket.attempted,
+        bucket.skipped
+    );
     bucket.resolutionRate =
-        classificationIncomplete || bucket.total === 0
-            ? Number.NaN
-            : bucket.resolved / bucket.total;
+        bucket.metricStatus === 'valid'
+            ? bucket.resolved / bucket.total
+            : Number.NaN;
+}
+
+function getResolutionGitTimeoutMs(
+    timeoutMs: number,
+    deadlineAt: number | undefined,
+    phase: string
+): number {
+    return Math.min(
+        GIT_DIFF_TIMEOUT_MS,
+        requireRemainingHeadlessBudgetMs(timeoutMs, deadlineAt, phase)
+    );
+}
+
+function getResolutionMetricStatus(
+    attempted: number,
+    skipped: number
+): ResolutionMetricStatus {
+    if (attempted === 0) {
+        return 'no-findings';
+    }
+    if (skipped > 0) {
+        return 'invalid-skipped';
+    }
+    return 'valid';
 }

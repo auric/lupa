@@ -6,6 +6,7 @@ import type {
     AggregateStats,
     PerFixtureAggregate,
     PerModelAggregate,
+    ResolutionMetricStatus,
     SingleRun,
 } from './types';
 
@@ -53,15 +54,7 @@ function aggregateModel(
         ok.map((r) => r.match?.recall ?? 0).filter(isFinite)
     );
     const f1 = meanStddev(ok.map((r) => r.match?.f1 ?? 0).filter(isFinite));
-    const resolutionRate = meanStddev(
-        ok
-            .map((r) =>
-                r.resolution && r.resolution.total > 0
-                    ? r.resolution.resolutionRate
-                    : Number.NaN
-            )
-            .filter(isFinite)
-    );
+    const resolutionRate = aggregateResolutionRate(ok);
     const iterations = meanStddev(
         ok.map((r) => r.result?.telemetry.iterations ?? 0)
     );
@@ -95,10 +88,22 @@ function aggregateModel(
 export function meanStddev(values: readonly number[]): AggregateStats {
     const n = values.length;
     if (n === 0) {
-        return { count: 0, mean: Number.NaN, stddev: Number.NaN };
+        return {
+            count: 0,
+            mean: Number.NaN,
+            stddev: Number.NaN,
+            invalidCount: 0,
+            noFindingsCount: 0,
+        };
     }
     if (n === 1) {
-        return { count: 1, mean: values[0]!, stddev: 0 };
+        return {
+            count: 1,
+            mean: values[0]!,
+            stddev: 0,
+            invalidCount: 0,
+            noFindingsCount: 0,
+        };
     }
     let sum = 0;
     for (const v of values) {
@@ -110,35 +115,113 @@ export function meanStddev(values: readonly number[]): AggregateStats {
         const d = v - mean;
         sqSum += d * d;
     }
-    return { count: n, mean, stddev: Math.sqrt(sqSum / n) };
+    return {
+        count: n,
+        mean,
+        stddev: Math.sqrt(sqSum / n),
+        invalidCount: 0,
+        noFindingsCount: 0,
+    };
+}
+
+function aggregateResolutionRate(runs: readonly SingleRun[]): AggregateStats {
+    const values: number[] = [];
+    let invalidCount = 0;
+    let noFindingsCount = 0;
+
+    for (const run of runs) {
+        const status = getRunResolutionMetricStatus(run);
+        if (status === 'valid') {
+            const rate = run.resolution?.resolutionRate ?? Number.NaN;
+            if (Number.isFinite(rate)) {
+                values.push(rate);
+            } else {
+                invalidCount++;
+            }
+            continue;
+        }
+
+        if (status === 'invalid-skipped') {
+            invalidCount++;
+            continue;
+        }
+
+        noFindingsCount++;
+    }
+
+    return withResolutionStatusCounts(values, invalidCount, noFindingsCount);
 }
 
 function aggregateResolutionRateBySeverity(
     runs: readonly SingleRun[]
 ): Partial<Record<FindingSeverity, AggregateStats>> {
-    const values: Partial<Record<FindingSeverity, number[]>> = {};
-    for (const severity of FINDING_SEVERITIES) {
-        values[severity] = [];
-    }
-
-    for (const run of runs) {
-        for (const severity of FINDING_SEVERITIES) {
-            const bucket = run.resolution?.bySeverity[severity];
-            if (!bucket || bucket.total === 0) {
-                continue;
-            }
-            const rate = bucket.resolutionRate;
-            if (Number.isFinite(rate)) {
-                values[severity]!.push(rate);
-            }
-        }
-    }
-
     const result: Partial<Record<FindingSeverity, AggregateStats>> = {};
     for (const severity of FINDING_SEVERITIES) {
-        result[severity] = meanStddev(values[severity] ?? []);
+        const values: number[] = [];
+        let invalidCount = 0;
+        let noFindingsCount = 0;
+
+        for (const run of runs) {
+            if (run.resolutionWarning) {
+                if (
+                    run.result?.findings.some(
+                        (finding) => finding.severity === severity
+                    )
+                ) {
+                    invalidCount++;
+                } else {
+                    noFindingsCount++;
+                }
+                continue;
+            }
+
+            const bucket = run.resolution?.bySeverity[severity];
+            const status = bucket?.metricStatus ?? 'no-findings';
+            if (status === 'valid') {
+                const rate = bucket?.resolutionRate ?? Number.NaN;
+                if (Number.isFinite(rate)) {
+                    values.push(rate);
+                } else {
+                    invalidCount++;
+                }
+                continue;
+            }
+
+            if (status === 'invalid-skipped') {
+                invalidCount++;
+                continue;
+            }
+
+            noFindingsCount++;
+        }
+
+        result[severity] = withResolutionStatusCounts(
+            values,
+            invalidCount,
+            noFindingsCount
+        );
     }
     return result;
+}
+
+function getRunResolutionMetricStatus(run: SingleRun): ResolutionMetricStatus {
+    if (run.resolutionWarning) {
+        return run.result && run.result.findings.length === 0
+            ? 'no-findings'
+            : 'invalid-skipped';
+    }
+    return run.resolution?.metricStatus ?? 'no-findings';
+}
+
+function withResolutionStatusCounts(
+    values: readonly number[],
+    invalidCount: number,
+    noFindingsCount: number
+): AggregateStats {
+    const stats = meanStddev(values);
+    stats.invalidCount = invalidCount;
+    stats.noFindingsCount = noFindingsCount;
+    return stats;
 }
 
 function groupBy<T, K>(

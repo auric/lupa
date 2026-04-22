@@ -285,4 +285,5 @@ if (require.main === module) {
 
 module.exports = {
     getLauncherWatchdogMs,
+    WATCHDOG_SIGTERM_GRACE_MS,
 };

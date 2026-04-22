@@ -19,6 +19,7 @@ import {
 import { matchFindings } from '../../src/eval/harness/matcher';
 import { writeReport } from '../../src/eval/harness/reporter';
 import { classifyResolutionForRun } from '../../src/eval/harness/resolutionClassifier';
+import { normalizeModelIdentifier } from '../../src/eval/headlessShared';
 import {
     DEFAULT_AUXILIARY_MODEL,
     DEFAULT_MODELS,
@@ -344,6 +345,11 @@ async function main(): Promise<number> {
         return 0;
     }
 
+    args.models = Array.from(
+        new Set(args.models.map((model) => normalizeModelIdentifier(model)))
+    );
+    args.auxModel = normalizeModelIdentifier(args.auxModel);
+
     const fixtures = await loadFixtures({
         kinds: args.fixtures,
         only: args.only,
@@ -400,6 +406,7 @@ async function main(): Promise<number> {
                               durationMs: r.durationMs,
                               ok: true,
                               errorMessage: null,
+                              resolutionWarning: null,
                               result: r.result,
                               match,
                               resolution: null,
@@ -413,6 +420,7 @@ async function main(): Promise<number> {
                           durationMs: r.durationMs,
                           ok: false,
                           errorMessage: r.error,
+                          resolutionWarning: null,
                           result: r.result,
                           match: null,
                           resolution: null,
@@ -423,6 +431,8 @@ async function main(): Promise<number> {
                             fixture,
                             produced: single.result.findings,
                             match: single.match,
+                            timeoutMs: args.timeoutMs,
+                            deadlineAt,
                             judgeClient: {
                                 judge: async (payload) => {
                                     const judgeBudget =
@@ -453,7 +463,7 @@ async function main(): Promise<number> {
                                 ? error.message
                                 : String(error);
                         single.resolution = null;
-                        single.errorMessage = `Resolution proxy unavailable: ${message}`;
+                        single.resolutionWarning = `Resolution proxy unavailable: ${message}`;
                         if (!args.silent) {
                             process.stderr.write(
                                 `[eval] warn  ${progress} — resolution classification failed: ${message}\n`
@@ -466,11 +476,20 @@ async function main(): Promise<number> {
                 if (!args.silent) {
                     if (single.ok && single.match) {
                         const m = single.match;
-                        const rr = single.resolution?.resolutionRate;
+                        const resolutionDisplay = single.resolutionWarning
+                            ? '⚠'
+                            : single.resolution?.metricStatus ===
+                                'invalid-skipped'
+                              ? '⚠'
+                              : Number.isFinite(
+                                      single.resolution?.resolutionRate
+                                  )
+                                ? single.resolution!.resolutionRate.toFixed(2)
+                                : '—';
                         process.stderr.write(
                             `[eval] done  ${progress} — P=${m.precision.toFixed(2)} ` +
                                 `R=${m.recall.toFixed(2)} F1=${m.f1.toFixed(2)} ` +
-                                `RProxy=${Number.isFinite(rr) ? rr!.toFixed(2) : '—'} ` +
+                                `RProxy=${resolutionDisplay} ` +
                                 `in ${(single.durationMs / 1000).toFixed(1)}s\n`
                         );
                     } else {

@@ -5,11 +5,16 @@ import { spawn, type ChildProcess, execSync } from 'node:child_process';
 import type { HeadlessAnalysisResult } from '../headlessRunner';
 import type { ResolutionJudgePayload, ResolutionJudgeResult } from './types';
 import { LAUNCHER_SCRIPT } from './constants';
+import {
+    formatHeadlessTimeoutMessage,
+    requireRemainingHeadlessBudgetMs,
+} from '../headlessShared';
 
 const MIN_TIMEOUT_MS = 10_000;
 const LAUNCHER_HEADROOM_MS = 60_000;
 const HARNESS_HEADROOM_MS = 60_000;
-const SIGTERM_GRACE_MS = 3_000;
+const LAUNCHER_POSIX_SIGTERM_GRACE_MS = 5_000;
+const SIGTERM_GRACE_MS = LAUNCHER_POSIX_SIGTERM_GRACE_MS + 1_000;
 const STDERR_TAIL_CHARS = 2_000;
 
 export interface InvokeHeadlessOptions {
@@ -56,18 +61,42 @@ export async function invokeHeadless(
         );
     }
 
-    // Kind-B (sha:) fixtures are cloned --no-checkout for speed, but Lupa's
-    // tools need a working tree to read files. Check out the head SHA before
-    // spawning VS Code so get_file_diff and friends have real content. Safe
-    // to do sequentially — the eval harness runs fixtures one at a time.
-    await ensureHeadCheckout(opts.workspaceRoot, opts.headRef);
-
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lupa-eval-'));
-    const outPath = path.join(tmpDir, 'result.json');
     const startedAt = Date.now();
+    let tmpDir: string | undefined;
 
     let watchdog: NodeJS.Timeout | undefined;
     try {
+        // Kind-B (sha:) fixtures are cloned --no-checkout for speed, but
+        // Lupa's tools need a working tree to read files. Check out the head
+        // SHA before spawning VS Code so get_file_diff and friends have real
+        // content. Safe to do sequentially — the eval harness runs fixtures
+        // one at a time.
+        await ensureHeadCheckout(
+            opts.workspaceRoot,
+            opts.headRef,
+            requireRemainingHeadlessBudgetMs(
+                opts.timeoutMs,
+                opts.deadlineAt,
+                'before pre-launch checkout'
+            ),
+            opts.timeoutMs
+        );
+
+        requireRemainingHeadlessBudgetMs(
+            opts.timeoutMs,
+            opts.deadlineAt,
+            'before launcher preparation completed'
+        );
+
+        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lupa-eval-'));
+        const outPath = path.join(tmpDir, 'result.json');
+
+        requireRemainingHeadlessBudgetMs(
+            opts.timeoutMs,
+            opts.deadlineAt,
+            'before the launcher started'
+        );
+
         const watchdogMs = getHeadlessWatchdogMs(
             opts.timeoutMs,
             opts.deadlineAt,
@@ -151,15 +180,21 @@ export async function invokeHeadless(
             throw new Error(error);
         }
         return outcome;
+    } catch (error) {
+        return handleInvokeHeadlessError(opts, startedAt, error);
     } finally {
         if (watchdog !== undefined) {
             clearTimeout(watchdog);
         }
-        await fs.rm(tmpDir, { recursive: true, force: true }).catch((err) => {
-            process.stderr.write(
-                `[harness] warn: failed to remove temp dir ${tmpDir}: ${err instanceof Error ? err.message : String(err)}\n`
-            );
-        });
+        if (tmpDir !== undefined) {
+            await fs
+                .rm(tmpDir, { recursive: true, force: true })
+                .catch((err) => {
+                    process.stderr.write(
+                        `[harness] warn: failed to remove temp dir ${tmpDir}: ${err instanceof Error ? err.message : String(err)}\n`
+                    );
+                });
+        }
     }
 }
 
@@ -183,7 +218,9 @@ function getHeadlessWatchdogMs(
 
 async function ensureHeadCheckout(
     workspaceRoot: string,
-    headRef: string
+    headRef: string,
+    checkoutTimeoutMs: number,
+    timeoutLabelMs: number
 ): Promise<void> {
     if (!headRef.startsWith('sha:')) {
         return;
@@ -195,9 +232,41 @@ async function ensureHeadCheckout(
             stdio: 'pipe',
         });
         let stderr = '';
+        let settled = false;
+        const timeoutHandle = setTimeout(() => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            try {
+                proc.kill('SIGKILL');
+            } catch {
+                // already gone
+            }
+            reject(
+                new Error(
+                    formatHeadlessTimeoutMessage(
+                        timeoutLabelMs,
+                        'during pre-launch checkout'
+                    )
+                )
+            );
+        }, checkoutTimeoutMs);
         proc.stderr?.on('data', (d) => (stderr += d.toString()));
-        proc.on('error', reject);
+        proc.on('error', (error) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timeoutHandle);
+            reject(error);
+        });
         proc.on('close', (code) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timeoutHandle);
             if (code === 0) {
                 resolve();
                 return;
@@ -382,6 +451,10 @@ export function getResolutionJudgeWatchdogMs(
     return timeoutMs + LAUNCHER_HEADROOM_MS + HARNESS_HEADROOM_MS;
 }
 
+export function getHarnessSigtermGraceMs(): number {
+    return SIGTERM_GRACE_MS;
+}
+
 function tailStderr(stderr: string, stdout: string): string {
     const combined = (stderr + stdout).trim();
     if (combined.length <= STDERR_TAIL_CHARS) {
@@ -418,4 +491,21 @@ function killTree(child: ChildProcess): void {
             // already gone
         }
     }, SIGTERM_GRACE_MS).unref();
+}
+
+function handleInvokeHeadlessError(
+    opts: InvokeHeadlessOptions,
+    startedAt: number,
+    error: unknown
+): InvokeHeadlessResult {
+    const message = error instanceof Error ? error.message : String(error);
+    if (opts.bailOnError) {
+        throw error instanceof Error ? error : new Error(message);
+    }
+    return {
+        ok: false,
+        error: message,
+        durationMs: Date.now() - startedAt,
+        result: null,
+    };
 }

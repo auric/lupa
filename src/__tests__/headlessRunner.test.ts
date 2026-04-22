@@ -265,7 +265,7 @@ describe('runHeadless', () => {
 
         expect(result.findings).toEqual([]);
         expect(result.narrative).toBe('ok');
-        expect(result.modelId).toBe('gpt-4.1');
+        expect(result.modelId).toBe('copilot/gpt-4.1');
         expect(result.seed).toBe(42);
         expect(result.completed).toBe(true);
         expect(result.rawToolCallLog).toHaveLength(1);
@@ -434,7 +434,7 @@ describe('runHeadless', () => {
             services
         );
 
-        expect(result.modelId).toBe('gpt-4.1');
+        expect(result.modelId).toBe('copilot/gpt-4.1');
     });
 
     it('passes only the remaining timeout budget to diff resolution when a deadline is supplied', async () => {
@@ -639,5 +639,18 @@ describe('headlessRunner architectural reuse', () => {
         expect(source).not.toMatch(/promptGenerator/i);
         // It MUST go through the shared AnalysisEngine seam.
         expect(source).toMatch(/analysisEngine\.analyze\(/);
+    });
+});
+
+describe('launcher/harness teardown grace', () => {
+    it('keeps the parent harness grace longer than the launcher POSIX grace window', async () => {
+        const { WATCHDOG_SIGTERM_GRACE_MS } =
+            await import('../../scripts/eval/launchHeadless.js');
+        const { getHarnessSigtermGraceMs } =
+            await import('../eval/harness/runnerInvoker');
+
+        expect(getHarnessSigtermGraceMs()).toBeGreaterThan(
+            WATCHDOG_SIGTERM_GRACE_MS
+        );
     });
 });

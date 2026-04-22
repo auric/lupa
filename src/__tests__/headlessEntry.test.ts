@@ -105,7 +105,7 @@ describe('runHeadlessFromEnv', () => {
                 compactionsUsed: 0,
             },
             rawToolCallLog: [],
-            modelId: 'gpt-4.1',
+            modelId: 'copilot/gpt-4.1',
             seed: 42,
             completed: false,
         };
@@ -161,7 +161,7 @@ describe('runHeadlessFromEnv', () => {
                 compactionsUsed: 0,
             },
             rawToolCallLog: [],
-            modelId: 'gpt-4.1',
+            modelId: 'copilot/gpt-4.1',
             seed: 42,
             completed: false,
         };
@@ -256,7 +256,7 @@ describe('runHeadlessFromEnv', () => {
                 compactionsUsed: 0,
             },
             rawToolCallLog: [],
-            modelId: 'gpt-4.1',
+            modelId: 'copilot/gpt-4.1',
             seed: 42,
             completed: false,
         } as never);
@@ -439,7 +439,7 @@ describe('runHeadlessFromEnv', () => {
                 compactionsUsed: 0,
             },
             rawToolCallLog: [],
-            modelId: 'gpt-4.1',
+            modelId: 'copilot/gpt-4.1',
             seed: 0,
             completed: true,
         } as never);

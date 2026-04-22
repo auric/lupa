@@ -56,7 +56,7 @@ export async function writeReport(
     return { jsonPath, markdownPath };
 }
 
-function renderMarkdown(stamp: string, report: HarnessReport): string {
+export function renderMarkdown(stamp: string, report: HarnessReport): string {
     const lines: string[] = [];
     lines.push(`# Lupa eval — ${stamp}`);
     lines.push('');
@@ -82,7 +82,7 @@ function renderMarkdown(stamp: string, report: HarnessReport): string {
         '_Overall resolution proxy rows include only runs that produced at least one finding and completed semantic resolution classification without skipped findings._'
     );
     lines.push(
-        '_Severity-specific rows include only runs that produced at least one finding in that severity and did not skip semantic resolution classification for that severity._'
+        '_Resolution proxy cells use `—` when no findings contributed to that cell and `⚠` when relevant findings were skipped/unclassified or resolution classification failed._'
     );
     lines.push(
         '_Ambiguous findings skipped because auxiliary judging was unavailable or failed still appear in the per-run summary warnings, but they invalidate the affected resolution-rate metrics and are listed in the “Resolution proxy warnings” section below._'
@@ -98,7 +98,7 @@ function renderMarkdown(stamp: string, report: HarnessReport): string {
     for (const m of report.perModel) {
         for (const severity of FINDING_SEVERITIES) {
             lines.push(
-                `| ${m.model} | ${severity} | ${fmtStats(m.resolutionRateBySeverity[severity] ?? emptyStats(), 2)} |`
+                `| ${m.model} | ${severity} | ${fmtResolutionStats(m.resolutionRateBySeverity[severity] ?? emptyStats(), 2)} |`
             );
         }
     }
@@ -121,7 +121,7 @@ function renderMarkdown(stamp: string, report: HarnessReport): string {
         for (const m of pf.perModel) {
             for (const severity of FINDING_SEVERITIES) {
                 lines.push(
-                    `| ${m.model} | ${severity} | ${fmtStats(m.resolutionRateBySeverity[severity] ?? emptyStats(), 2)} |`
+                    `| ${m.model} | ${severity} | ${fmtResolutionStats(m.resolutionRateBySeverity[severity] ?? emptyStats(), 2)} |`
                 );
             }
         }
@@ -144,7 +144,7 @@ function renderMarkdown(stamp: string, report: HarnessReport): string {
     lines.push('## Resolution proxy warnings');
     lines.push('');
     const runLevelResolutionWarnings = report.rawRuns.filter(
-        (r) => r.ok && r.resolution === null && Boolean(r.errorMessage)
+        (r) => r.ok && Boolean(r.resolutionWarning)
     );
     const partialResolutionWarnings = report.rawRuns.flatMap((run) =>
         run.ok && run.resolution
@@ -158,7 +158,7 @@ function renderMarkdown(stamp: string, report: HarnessReport): string {
         lines.push('(none)');
     } else {
         for (const warning of runLevelResolutionWarnings) {
-            const msg = (warning.errorMessage ?? '').slice(
+            const msg = (warning.resolutionWarning ?? '').slice(
                 0,
                 ERROR_MESSAGE_TRUNCATE
             );
@@ -181,7 +181,7 @@ function renderMarkdown(stamp: string, report: HarnessReport): string {
 function renderOverallRow(m: PerModelAggregate): string {
     return (
         `| ${m.model} | ${fmtStats(m.precision, 2)} | ${fmtStats(m.recall, 2)} | ` +
-        `${fmtStats(m.f1, 2)} | ${fmtStats(m.resolutionRate, 2)} | ${fmtStats(m.iterations, 1)} | ` +
+        `${fmtStats(m.f1, 2)} | ${fmtResolutionStats(m.resolutionRate, 2)} | ${fmtStats(m.iterations, 1)} | ` +
         `${fmtStats(m.promptTokens, 0)} | ${fmtStats(m.completionTokens, 0)} | ` +
         `${fmtStats(m.costUsd, 2)} | ${fmtSeconds(m.wallClockMs)} | ` +
         `${m.runs} | ${m.failures} |`
@@ -191,12 +191,18 @@ function renderOverallRow(m: PerModelAggregate): string {
 function renderFixtureRow(m: PerModelAggregate): string {
     return (
         `| ${m.model} | ${fmtStats(m.precision, 2)} | ${fmtStats(m.recall, 2)} | ` +
-        `${fmtStats(m.f1, 2)} | ${fmtStats(m.resolutionRate, 2)} | ${fmtStats(m.iterations, 1)} | ${m.runs} |`
+        `${fmtStats(m.f1, 2)} | ${fmtResolutionStats(m.resolutionRate, 2)} | ${fmtStats(m.iterations, 1)} | ${m.runs} |`
     );
 }
 
 function emptyStats(): AggregateStats {
-    return { count: 0, mean: Number.NaN, stddev: Number.NaN };
+    return {
+        count: 0,
+        mean: Number.NaN,
+        stddev: Number.NaN,
+        invalidCount: 0,
+        noFindingsCount: 0,
+    };
 }
 
 function fmtStats(s: AggregateStats, digits: number): string {
@@ -207,6 +213,13 @@ function fmtStats(s: AggregateStats, digits: number): string {
         return `${s.mean.toFixed(digits)} ± ${s.stddev.toFixed(digits)}`;
     }
     return s.mean.toFixed(digits);
+}
+
+function fmtResolutionStats(s: AggregateStats, digits: number): string {
+    if (s.invalidCount > 0) {
+        return '⚠';
+    }
+    return fmtStats(s, digits);
 }
 
 function fmtSeconds(s: AggregateStats): string {
