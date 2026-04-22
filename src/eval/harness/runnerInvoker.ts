@@ -19,6 +19,7 @@ export interface InvokeHeadlessOptions {
     model: string;
     seed: number;
     timeoutMs: number;
+    deadlineAt?: number;
     bailOnError: boolean;
 }
 
@@ -67,6 +68,11 @@ export async function invokeHeadless(
 
     let watchdog: NodeJS.Timeout | undefined;
     try {
+        const watchdogMs = getHeadlessWatchdogMs(
+            opts.timeoutMs,
+            opts.deadlineAt,
+            Date.now()
+        );
         const args = [
             LAUNCHER_SCRIPT,
             '--workspace',
@@ -81,6 +87,9 @@ export async function invokeHeadless(
             String(opts.seed),
             '--timeout',
             String(opts.timeoutMs),
+            ...(opts.deadlineAt !== undefined
+                ? ['--deadline-at', String(opts.deadlineAt)]
+                : []),
             '--out',
             outPath,
             '--silent',
@@ -92,8 +101,6 @@ export async function invokeHeadless(
         child.stdout?.on('data', (d) => (stdout += d.toString()));
         child.stderr?.on('data', (d) => (stderr += d.toString()));
 
-        const watchdogMs =
-            opts.timeoutMs + LAUNCHER_HEADROOM_MS + HARNESS_HEADROOM_MS;
         let watchdogFired = false;
         watchdog = setTimeout(() => {
             watchdogFired = true;
@@ -114,7 +121,7 @@ export async function invokeHeadless(
         const durationMs = Date.now() - startedAt;
         const parsed = await tryReadResult(outPath);
 
-        if (parsed.ok && !watchdogFired) {
+        if (parsed.ok && parsed.result.completed && !watchdogFired) {
             return { ok: true, result: parsed.result, durationMs };
         }
 
@@ -125,6 +132,8 @@ export async function invokeHeadless(
             error = `Launcher exited ${exitCode} without writing result JSON; stderr tail: ${tailStderr(stderr, stdout)}`;
         } else if (!parsed.ok) {
             error = `Unparseable result JSON: ${parsed.reason}; stderr tail: ${tailStderr(stderr, stdout)}`;
+        } else if (!parsed.result.completed) {
+            error = `Launcher exited ${exitCode} with an incomplete analysis result; stderr tail: ${tailStderr(stderr, stdout)}`;
         } else {
             error = `Launcher exited ${exitCode}; stderr tail: ${tailStderr(stderr, stdout)}`;
         }
@@ -152,6 +161,24 @@ export async function invokeHeadless(
             );
         });
     }
+}
+
+function getHeadlessWatchdogMs(
+    timeoutMs: number,
+    deadlineAt: number | undefined,
+    startedAt: number
+): number {
+    if (deadlineAt !== undefined) {
+        const remainingMs = deadlineAt - startedAt;
+        if (remainingMs <= 0) {
+            throw new Error(
+                'Headless analysis deadline elapsed before the launcher started.'
+            );
+        }
+        return remainingMs + LAUNCHER_HEADROOM_MS + HARNESS_HEADROOM_MS;
+    }
+
+    return timeoutMs + LAUNCHER_HEADROOM_MS + HARNESS_HEADROOM_MS;
 }
 
 async function ensureHeadCheckout(
@@ -253,6 +280,11 @@ export async function invokeResolutionJudge(
     let watchdog: NodeJS.Timeout | undefined;
     try {
         await fs.writeFile(payloadPath, JSON.stringify(opts.payload), 'utf8');
+        const watchdogMs = getResolutionJudgeWatchdogMs(
+            opts.timeoutMs,
+            opts.deadlineAt,
+            Date.now()
+        );
         const args = [
             LAUNCHER_SCRIPT,
             '--mode',
@@ -279,11 +311,6 @@ export async function invokeResolutionJudge(
         child.stdout?.on('data', (d) => (stdout += d.toString()));
         child.stderr?.on('data', (d) => (stderr += d.toString()));
 
-        const watchdogMs = getResolutionJudgeWatchdogMs(
-            opts.timeoutMs,
-            opts.deadlineAt,
-            startedAt
-        );
         let watchdogFired = false;
         watchdog = setTimeout(() => {
             watchdogFired = true;

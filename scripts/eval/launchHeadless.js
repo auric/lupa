@@ -148,18 +148,29 @@ async function main() {
         detached: process.platform !== 'win32',
     });
 
+    let forwardedSignalExitCode;
+    let forwardedSignal = null;
+    let watchdog;
+
     // `detached: true` on POSIX puts the child in its own process group, so
     // terminal Ctrl-C no longer reaches it via the TTY foreground pgid — the
     // launcher must forward operator signals explicitly. Harmless on Windows.
     for (const sig of ['SIGINT', 'SIGTERM']) {
         process.on(sig, () => {
+            if (forwardedSignal !== null) {
+                process.exit(forwardedSignalExitCode ?? 1);
+            }
+            forwardedSignal = sig;
+            forwardedSignalExitCode = sig === 'SIGINT' ? 130 : 143;
+            if (watchdog) {
+                clearTimeout(watchdog);
+            }
             killProcessTree(child);
-            process.exit(sig === 'SIGINT' ? 130 : 143);
         });
     }
 
     const watchdogMs = getLauncherWatchdogMs(args);
-    const watchdog = setTimeout(() => {
+    watchdog = setTimeout(() => {
         process.stderr.write(
             `Watchdog: VS Code did not exit within ${watchdogMs}ms; killing process tree.\n`
         );
@@ -175,7 +186,9 @@ async function main() {
     });
     clearTimeout(watchdog);
 
-    process.exit(readSentinelExitCode(childExitCode));
+    process.exit(
+        forwardedSignalExitCode ?? readSentinelExitCode(childExitCode)
+    );
 }
 
 function getLauncherWatchdogMs(args) {

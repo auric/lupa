@@ -372,6 +372,7 @@ async function main(): Promise<number> {
             for (let seed = 0; seed < args.seeds; seed++) {
                 const progress = `${fixture.name} × ${model} × seed=${seed}`;
                 const cellStartedAt = Date.now();
+                const deadlineAt = cellStartedAt + args.timeoutMs;
                 if (!args.silent) {
                     process.stderr.write(`[eval] start ${progress}\n`);
                 }
@@ -382,6 +383,7 @@ async function main(): Promise<number> {
                     model,
                     seed,
                     timeoutMs: args.timeoutMs,
+                    deadlineAt,
                     bailOnError: args.bailOnError,
                 });
                 const single: SingleRun = r.ok
@@ -424,10 +426,7 @@ async function main(): Promise<number> {
                             judgeClient: {
                                 judge: async (payload) => {
                                     const judgeBudget =
-                                        createAuxiliaryJudgeBudget(
-                                            cellStartedAt,
-                                            args.timeoutMs
-                                        );
+                                        createAuxiliaryJudgeBudget(deadlineAt);
                                     const judged = await invokeResolutionJudge({
                                         workspaceRoot: fixture.workspaceRoot,
                                         model: args.auxModel,
@@ -504,13 +503,11 @@ async function main(): Promise<number> {
 }
 
 function createAuxiliaryJudgeBudget(
-    cellStartedAt: number,
-    totalTimeoutMs: number
+    headlessDeadlineAt: number
 ): AuxiliaryJudgeBudget {
     const now = Date.now();
-    const cellDeadlineAt = cellStartedAt + totalTimeoutMs;
     const judgeDeadlineAt = Math.min(
-        cellDeadlineAt,
+        headlessDeadlineAt,
         now + MAX_AUXILIARY_JUDGE_TIMEOUT_MS
     );
     const remainingMs = judgeDeadlineAt - now;

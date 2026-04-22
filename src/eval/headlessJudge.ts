@@ -68,7 +68,7 @@ export async function runHeadlessResolutionJudge(
         requestTimeoutMs
     );
 
-    return parseJudgeResponse(response.content, model.id);
+    return parseJudgeResponse(response.content, actualIdentifier);
 }
 
 function readPayload(payloadPath: string): ResolutionJudgePayload {

@@ -510,7 +510,7 @@ describe('runHeadlessResolutionJudge', () => {
 
             expect(result).toMatchObject({
                 verdict: 'resolved',
-                modelId: 'gpt-5-mini',
+                modelId: 'copilot/gpt-5-mini',
             });
         } finally {
             nowSpy.mockRestore();
@@ -528,6 +528,43 @@ describe('runHeadlessResolutionJudge', () => {
             tokenSource.token,
             16_500
         );
+    });
+
+    it('throws before sending a judge request when model selection falls back to a different model', async () => {
+        const payloadPath = writePayloadFile();
+        const tokenSource = new vscode.CancellationTokenSource();
+        vi.mocked(ModelRequestHandler.sendRequest).mockReset();
+        const services = makeServices({
+            selectedModel: {
+                id: 'gpt-4o-mini',
+                name: 'GPT-4o mini',
+                family: 'gpt-4o',
+                vendor: 'copilot',
+                maxInputTokens: 64_000,
+            },
+        });
+
+        try {
+            await expect(
+                runHeadlessResolutionJudge(
+                    {
+                        workspaceRoot: '/ws',
+                        modelIdentifier: 'copilot/gpt-5-mini',
+                        timeoutMs: 60_000,
+                        payloadPath,
+                        cancellationToken: tokenSource.token,
+                    },
+                    services
+                )
+            ).rejects.toThrow(/copilot\/gpt-5-mini.*copilot\/gpt-4o-mini/);
+        } finally {
+            fs.rmSync(path.dirname(payloadPath), {
+                recursive: true,
+                force: true,
+            });
+        }
+
+        expect(ModelRequestHandler.sendRequest).not.toHaveBeenCalled();
     });
 
     it('returns an informative reason when the auxiliary judge emits only a bare unresolved verdict', async () => {

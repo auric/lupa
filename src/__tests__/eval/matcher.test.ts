@@ -290,6 +290,60 @@ describe('classifyResolutionForRun', () => {
         mockedSpawn.mockReset();
     });
 
+    it('forwards the absolute deadline to the analysis launcher', async () => {
+        const deadlineAt = Date.now() + 98_765;
+        let spawnedArgs: readonly string[] = [];
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                spawnedArgs = args;
+                const outIndex = args.indexOf('--out');
+                const outPath = args[outIndex + 1];
+                fs.writeFileSync(
+                    outPath,
+                    JSON.stringify({
+                        findings: [],
+                        narrative: 'complete result',
+                        telemetry: {
+                            iterations: 1,
+                            toolCalls: 0,
+                            promptTokens: 0,
+                            completionTokens: 0,
+                            durationMs: 25,
+                            compactionsUsed: 0,
+                        },
+                        rawToolCallLog: [],
+                        modelId: 'gpt-5-mini',
+                        seed: 7,
+                        completed: true,
+                    })
+                );
+                return createMockLauncherProcess(0);
+            }
+        );
+
+        const result = await invokeHeadless({
+            workspaceRoot: '/tmp/workspace',
+            baseRef: 'main',
+            headRef: 'feature/x',
+            model: 'copilot/gpt-5-mini',
+            seed: 7,
+            timeoutMs: 60_000,
+            deadlineAt,
+            bailOnError: false,
+        });
+
+        expect(result).toMatchObject({
+            ok: true,
+            result: {
+                completed: true,
+            },
+        });
+        expect(spawnedArgs).toContain('--deadline-at');
+        expect(spawnedArgs[spawnedArgs.indexOf('--deadline-at') + 1]).toBe(
+            String(deadlineAt)
+        );
+    });
+
     it('forwards the absolute deadline to the resolution-judge launcher', async () => {
         const deadlineAt = Date.now() + 123_456;
         let spawnedArgs: readonly string[] = [];
@@ -335,6 +389,23 @@ describe('classifyResolutionForRun', () => {
         expect(getResolutionJudgeWatchdogMs(60_000, 12_500, 10_000)).toBe(
             122_500
         );
+    });
+
+    it('throws before spawning the resolution-judge launcher when the deadline already elapsed', async () => {
+        await expect(
+            invokeResolutionJudge({
+                workspaceRoot: '/tmp/workspace',
+                model: 'copilot/gpt-5-mini',
+                payload: {
+                    finding: makeProduced(),
+                    diffText: 'diff --git a/src/a.ts b/src/a.ts',
+                },
+                timeoutMs: 60_000,
+                deadlineAt: Date.now() - 1,
+            })
+        ).rejects.toThrow(/deadline elapsed before the launcher started/i);
+
+        expect(mockedSpawn).not.toHaveBeenCalled();
     });
 
     it('keeps a parsed analysis result when the launcher exits non-zero during teardown', async () => {
@@ -383,6 +454,58 @@ describe('classifyResolutionForRun', () => {
                 completed: true,
             },
         });
+    });
+
+    it('returns the parsed incomplete analysis result as an error when the launcher exits non-zero', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                const outIndex = args.indexOf('--out');
+                const outPath = args[outIndex + 1];
+                fs.writeFileSync(
+                    outPath,
+                    JSON.stringify({
+                        findings: [],
+                        narrative: 'partial result',
+                        telemetry: {
+                            iterations: 1,
+                            toolCalls: 0,
+                            promptTokens: 0,
+                            completionTokens: 0,
+                            durationMs: 25,
+                            compactionsUsed: 0,
+                        },
+                        rawToolCallLog: [],
+                        modelId: 'gpt-5-mini',
+                        seed: 7,
+                        completed: false,
+                    })
+                );
+                return createMockLauncherProcess(1);
+            }
+        );
+
+        const result = await invokeHeadless({
+            workspaceRoot: '/tmp/workspace',
+            baseRef: 'main',
+            headRef: 'feature/x',
+            model: 'copilot/gpt-5-mini',
+            seed: 7,
+            timeoutMs: 60_000,
+            bailOnError: false,
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            result: {
+                narrative: 'partial result',
+                completed: false,
+            },
+        });
+        expect(result.ok).toBe(false);
+        if (result.ok) {
+            throw new Error('Expected invokeHeadless to return an error');
+        }
+        expect(result.error).toContain('incomplete analysis result');
     });
 
     it('treats matched synthetic findings as resolved by default and respects overrides', async () => {
