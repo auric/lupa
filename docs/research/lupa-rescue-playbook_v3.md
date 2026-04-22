@@ -297,6 +297,14 @@ Done:
 ```typescript
 interface PROverview {
     intent: string; // 2-3 sentences
+    prType: // classification drives budget & category emphasis (see below)
+        | 'bug-fix'
+        | 'feature'
+        | 'refactor'
+        | 'dep-update'
+        | 'docs'
+        | 'tests-only'
+        | 'mixed';
     changeShape: {
         // factual, computed — NOT LLM
         fileCount: number;
@@ -306,18 +314,34 @@ interface PROverview {
         primaryDirectories: string[];
     };
     riskHotspots: Array<{ file: string; reason: string }>; // LLM-produced
-    reviewPlan: string[]; // 4-7 bullets
+    reviewPlan: string[]; // 4-7 bullets, shaped by prType
+    categoryEmphasis: string[]; // e.g. ['security', 'dep-compatibility'] for dep-update
 }
 ```
+
+**PR-type classification** (addresses CodeRabbit's "planning layer" pattern at minimal cost — one extra field on an existing model call, not a second round-trip):
+
+| `prType`     | `reviewPlan` emphasis                                                            | `categoryEmphasis`                          | Budget hint                                |
+| ------------ | -------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------ |
+| `bug-fix`    | Verify root cause, look for recurrence in sibling code, check test coverage.     | correctness, tests                          | Standard budget.                           |
+| `feature`    | API design, maintainability, docs, interaction with existing surface.            | architecture, code-quality, tests           | Standard budget.                           |
+| `refactor`   | Behavioural equivalence, perf regressions, public-API drift.                     | correctness, architecture                   | Standard budget; recall-leaning.           |
+| `dep-update` | Breaking changes, security advisories, compatibility, lockfile shape.            | security, dependencies                      | Tighter budget; skip style/SOLID entirely. |
+| `docs`       | Link rot, code-snippet correctness, terminology consistency.                     | docs                                        | Much tighter budget (~30 % of default).    |
+| `tests-only` | Assertion strength, coupling to implementation, missing coverage on prior diffs. | tests                                       | Tighter budget.                            |
+| `mixed`      | Fall back to default; include every category.                                    | (all defaults from externalized checklists) | Standard budget.                           |
 
 Done:
 
 - New `src/services/prOverviewBuilder.ts`. One model call. Returns `PROverview`.
-- Output injected into main system prompt as `<pr_overview>` XML block.
+- Output injected into main system prompt as `<pr_overview>` XML block; `prType` and `categoryEmphasis` consumed by the recursive-root prompt to narrow or widen the checklist selection (Quest 7.3).
 - Output written to the shared blackboard (Phase 4) so subagents see it.
-- Failure mode: log and continue with empty overview.
+- `categoryEmphasis` drives which of `resources/checklists/*.md` the main prompt mentions first (Quest 7.3). Categories not in the list are still available on-demand but not foregrounded.
+- `budgetHint` (derived from `prType`) optionally scales `maxIterations` / `maxLLMCalls` from the calibration profile's default (Quest 5.3 budget surfacing shows the scaled numbers, not the raw ones).
+- Failure mode: log and continue with empty overview + `prType: 'mixed'` (behaves identically to the pre-classification pipeline — the feature is strictly additive).
 - Token budget: overview ≤ 600 tokens. For huge PRs: first 8 K tokens of diff + file list + commit messages.
 - Can use a cheaper `overviewModel` per calibration profile (Phase 10.3).
+- Eval: add `expected_pr_type` to Kind-A fixture schema (Quest 8.1) so classification accuracy is measurable; target ≥ 85 % correct on the 5 fixtures before scaling budgets on it.
 
 ### Quest 3.2 — Mandatory PR narrative in final output
 
@@ -618,6 +642,16 @@ Done:
 
 **Matcher** — findings are paired to expected by (path exact) × (line within ±5) × (category match or severity match). Unmatched-expected = missed bug (recall hit), unmatched-produced = false positive (precision hit).
 
+**Per-category FP targets** — a single aggregate FP number hides the fact that "wrong about a SQL injection" and "wrong about a variable name" cost the user very differently. The harness reports precision per category and gates on these tiers (mean across seeds, across all fixtures of the relevant `prType`):
+
+| Category tier                             | Target FP rate | Rationale                                                                                                  |
+| ----------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------- |
+| `security`, `correctness`                 | **< 10 %**     | High-cost to be wrong — author loses trust immediately. Judge (Quest 11.2) should be most aggressive here. |
+| `performance`, `concurrency`              | **< 20 %**     | Medium-cost — often context-dependent, author can disagree without losing trust.                           |
+| `style`, `maintainability`, `readability` | **< 30 %**     | Low-cost individually, but high-volume; cap prevents report noise from drowning the serious findings.      |
+
+Targets are aspirational on the 5-fixture harness (too small for < 10 % to be statistically meaningful — a single miss is 20 % of 5). They become gates only once the fixture count grows past 20 (see the "NOT in v3" rejection of the 50–100-PR dataset as a Wave 11+ milestone). Below that threshold, the harness still reports per-category precision every run and flags any regression > 10 percentage points from the previous recorded run as a wave-level rollback trigger.
+
 Done:
 
 - `scripts/eval/run-eval.ts` iterates `fixtures × models × seeds`, calls the headless runner (Quest 8.3), collects `HeadlessAnalysisResult`s.
@@ -833,12 +867,39 @@ Hints:
 
 Judge sees: PR overview, the finding (claim, evidence, proof receipt), cited files. **Does NOT see** investigator's full conversation (fresh context is the point).
 
+**Prompt-level self-criticism (the part that matters)** — the Judge's prompt must force the model to generate counter-arguments before reaching a verdict, not after. The required structure:
+
+```
+You are the Judge. Classify this finding as keep | downgrade | drop.
+
+Before you answer, produce:
+1. Three concrete reasons this finding might be wrong — missing context,
+   misread code, unwarranted assumption about caller behaviour, confusion
+   between similar symbols, fabricated citation, etc. Be specific; "it
+   might be fine" does not count.
+2. For each reason, check the cited source lines and state whether the
+   reason is supported or refuted by what's actually there.
+3. Only then: keep | downgrade | drop, with a one-sentence rationale.
+
+Severity-specific rules:
+- For security / correctness findings: if ANY of the three reasons
+  survives the source check, downgrade or drop. High bar.
+- For performance / concurrency: downgrade (don't drop) on moderate
+  uncertainty — author can judge context.
+- For style / maintainability: keep unless the finding is factually
+  wrong about the code.
+```
+
+The three-reasons-first structure is the cheap prompt trick Cursor BugBot credits for ~8 pp of the 52→78 % resolution-rate climb (V6 → V8 in their public write-up): forcing the Judge to _commit to_ counter-arguments before verdict-ing stops the model from rubber-stamping the investigator.
+
 Done:
 
 - New `JudgeStage` in post-pipeline (replaces `adversarialVerificationStep` + LLM portion of `evidenceAuditStep`).
-- Called once per finding with a tight prompt. Same model is fine; auxiliary model (Phase 10.3) permissible.
+- Called once per finding with a tight prompt using the three-reasons-first structure above. Same model is fine; auxiliary model (Phase 10.3) permissible.
+- Severity-asymmetric rules baked into the prompt: security/correctness use a high bar (any surviving counter-argument → downgrade/drop); performance/concurrency prefer downgrade over drop; style/maintainability keep unless factually wrong. Matches the per-category FP tiers in Quest 8.1.
+- Judge output schema includes `counterArguments: string[]` and `sourceCheckResult: 'supported' | 'refuted' | 'partial'` per argument, so eval can measure whether the model is actually doing the exercise or phoning it in (if > 40 % of `drop` verdicts have empty `counterArguments`, the prompt has decayed and needs revision).
 - Verdicts annotated on finding; `drop` removes from output, `downgrade` reduces severity by one P-level.
-- Telemetry: judge-keep-rate, judge-drop-rate per profile.
+- Telemetry: judge-keep-rate, judge-drop-rate per profile, per category. Alert on drop-rate < 5 % (rubber-stamping) or > 60 % (investigator quality collapse).
 
 ### Quest 11.3 — Mandatory `sources: [...]` grounding on every finding _(NEW in v3)_
 
