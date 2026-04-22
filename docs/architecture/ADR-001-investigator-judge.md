@@ -160,6 +160,78 @@ These patterns are documented as harmful in our research and are architecturally
 
 ---
 
+## Context Rot and Known Limitations
+
+Option D++ **does not solve context rot** — it manages it. This is a deliberate trade-off, not an oversight.
+
+### What Is Context Rot?
+
+As the Reviewer's ReAct loop accumulates tool calls and reasoning, the conversation trace grows. When it approaches the context window limit, compaction (Quest 6.x) replaces old turns with a lossy summary. The model gradually loses access to:
+
+- Early hypotheses it formed
+- Why it dismissed certain files
+- The full reasoning behind a finding
+- Connections between findings it noticed mid-trace
+
+This is **context rot**: the degradation of the model's working memory as its history is compressed.
+
+### How RLM Solves This (And Why We Don't Use It)
+
+Canonical RLM (Zhang et al.) eliminates context rot by storing the full context in an **external REPL variable** rather than the prompt. The model writes Python to `grep`, `slice`, and `filter` the context on demand. The full data is always reachable; nothing is ever "forgotten."
+
+We do **not** adopt canonical RLM because:
+
+1. **Infrastructure gap:** Lupa runs inside a VS Code extension host with `vscode.lm` API access. There is no Python REPL, no `llm_query()` primitive, and no programmatic context variable. Building true RLM would require re-architecting the extension host boundary.
+2. **No production precedent:** No code-review product (Devin, CodeRabbit, Qodo, Ellipsis) uses canonical RLM. The industry has converged on managed rot via compaction.
+3. **Bounded problem:** A PR diff is finite. The raw code does not grow during analysis — only the reasoning trace does. The Reviewer delegates file reading to Investigators; the blackboard persists findings. The trace is bounded by the iteration cap.
+
+### How D++ Mitigates Context Rot
+
+| Mechanism                                   | What It Preserves                                          | What It Drops                            | When It Triggers                      |
+| ------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------- | ------------------------------------- |
+| **PR Overview** (Quest 3.1)                 | Intent, risk hotspots, review plan, `changeShape` metadata | Full raw diff                            | Before first iteration                |
+| **Blackboard** (Quest 4.1)                  | All findings, notes, files touched                         | Investigator reasoning traces            | Continuous                            |
+| **Model-initiated compaction** (Quest 6.1)  | Hypotheses, examined files, finding IDs, open questions    | Old tool outputs, intermediate reasoning | When model calls `compact_history`    |
+| **System-initiated compaction** (Quest 6.2) | Same as above, automatic                                   | Same as above                            | At 70 % context usage                 |
+| **Compact-and-continue** (Quest 6.3)        | Scaffolding of investigation                               | Deep reasoning                           | At iteration cap (one extension only) |
+| **Multi-pass** (Quest 9.1)                  | Intersection of findings across independent runs           | Per-run reasoning traces                 | Auto-trigger on very large PRs        |
+
+The playbook explicitly acknowledges rot as a constraint:
+
+- Quest 6.3 gives **one** extension, then forces finalization: _"Do NOT start new investigation directions."_
+- Quest 9.1 exists because _"one pass isn't enough for hard PRs."_
+- The blackboard holds **findings**, not reasoning traces. The Reviewer remembers _what_ was found, but may forget _how_ it was concluded.
+
+### When Context Rot Matters
+
+| PR Size                                   | Rot Severity | Primary Mitigation                                                                       |
+| ----------------------------------------- | ------------ | ---------------------------------------------------------------------------------------- |
+| **Small** (3–10 files, <500 lines)        | Negligible   | Reviewer stays within budget without compaction                                          |
+| **Large** (20+ files, 2000+ lines)        | Moderate     | Investigators do deep reading; blackboard holds findings; Reviewer only orchestrates     |
+| **Monster** (50+ files, complex refactor) | Severe       | Multi-pass (Quest 9.1): 2–3 independent Reviewers with fresh context, intersect findings |
+
+### Future Direction: Hybrid Approaches
+
+If eval shows that context rot degrades quality on large PRs beyond acceptable thresholds, we can evolve toward a **hybrid architecture** without abandoning D++:
+
+1. **Structured reasoning graph:** Instead of a flat conversation history, maintain a graph of hypotheses → evidence → findings. The Reviewer queries this graph (not the raw chat) when it needs to recall prior reasoning. This is cheaper than full RLM but more structured than compaction.
+2. **Investigator-as-database:** Investigators write structured outputs (AST paths, symbol references, data-flow chains) to the blackboard in a machine-readable format. The Reviewer can "re-query" this structured data without re-reading files.
+3. **External context index:** For very large PRs, build a lightweight in-memory index (file → symbols → findings) that the Reviewer can query via a tool, similar to how RLM queries a REPL variable but with a much smaller surface area.
+
+These are **not** part of the initial rescue. They are documented here as potential Phase 15+ work if eval warrants it.
+
+### Bottom Line
+
+Option D++ accepts managed context rot as the cost of a simple, debuggable, production-proven architecture. The rescue prioritizes:
+
+1. **Fixing the 18 root causes** (correctness, verification, pipeline collapse)
+2. **Establishing a measurable baseline** (Wave 0 eval)
+3. **Iterating from data** (not from theoretical perfection)
+
+If the baseline shows that context rot is the dominant quality bottleneck, we will design a targeted improvement — potentially hybrid — in a future phase. For now, compaction + multi-pass + blackboard is the right level of complexity.
+
+---
+
 ## References
 
 1. **Cognition, "Don't Build Multi-Agents"** (Walden Yan, June 2025) — Establishes the two principles of context engineering and the single-threaded linear agent as the default. Cited in `rlm-tools-deep-dive.md` §2.
