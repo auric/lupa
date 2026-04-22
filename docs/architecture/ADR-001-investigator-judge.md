@@ -1,8 +1,8 @@
 # ADR-001: Investigator–Judge–Synthesizer Pipeline Architecture
 
-**Status:** Accepted  
-**Date:** 2026-04-22  
-**Decision Maker:** Lupa engineering team  
+**Status:** Accepted
+**Date:** 2026-04-22
+**Decision Maker:** Lupa engineering team
 **Stakeholders:** Implementing agents, eval harness (Quest 8.1/8.2), users of the VS Code extension
 
 ---
@@ -28,19 +28,24 @@ This ADR records the decision and the rationale so that later Quests have a cons
 
 ## What Option D++ Is
 
-| Component                     | Role                             | Key Properties                                                                                                                                                                                            |
-| ----------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Reviewer** (main agent)     | Single-threaded, linear executor | Makes all write decisions (`record_finding`, `submit_review`). Spawns Investigators via `run_subagent_batch`. Owns the ReAct loop.                                                                        |
-| **Investigators** (subagents) | Read-only parallel workers       | Depth-capped at 1 — they **cannot spawn children**. Can only read files, search code, and write to a shared blackboard (`FindingStore`).                                                                  |
-| **Judge**                     | Fresh-context verification stage | Receives findings + evidence **without** the Reviewer's reasoning trace. Verifies grounding, checks for false positives, assigns P0–P3 severity. Not a subagent — does not investigate or spawn children. |
-| **Synthesizer**               | Deterministic post-processor     | Combines, deduplicates, and formats findings from the blackboard. No LLM call — pure code.                                                                                                                |
-| **Compactor**                 | Context manager                  | When the Reviewer's trace grows too long, a compaction pass (potentially model-assisted) distills key decisions and drops investigative noise.                                                            |
+| Component                     | Role                             | Key Properties                                                                                                                                                                                                                |
+| ----------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Reviewer** (main agent)     | Single-threaded, linear executor | Makes all write decisions (`record_finding`, `submit_review`). Spawns Investigators via `run_subagent_batch`. Owns the ReAct loop.                                                                                            |
+| **Investigators** (subagents) | Read-only parallel workers       | Depth-capped at 1 — they **cannot spawn children**. Can only read files, search code, and append **notes** to the shared blackboard. They do **not** call `record_finding` (Quest 12.3) — only the Reviewer records findings. |
+| **Judge**                     | Fresh-context verification stage | Receives findings + evidence **without** the Reviewer's reasoning trace. Verifies grounding, checks for false positives, assigns P0–P3 severity. Not a subagent — does not investigate or spawn children.                     |
+| **Synthesizer**               | Deterministic post-processor     | Combines, deduplicates, and formats findings after the Judge has ruled on each. No LLM call — pure code. Runs **after** the Judge (data dependency), not in parallel.                                                         |
+| **Compactor**                 | Context manager                  | When the Reviewer's trace grows too long, a compaction pass (potentially model-assisted) distills key decisions and drops investigative noise.                                                                                |
 
-The 8-step pipeline collapses to **3 stages**:
+The post-analysis pipeline collapses from **8 steps to 3 stages** (per Quest 12.1). The review as a whole is:
 
 ```
-PreJudgeGate (Reviewer + Investigators) → Judge → Synthesizer
+Investigation (Reviewer + Investigators)
+        │
+        ▼
+PreJudgeGate  →  Judge  →  Synthesizer     ← 3-stage post-analysis pipeline
 ```
+
+`PreJudgeGate` is the programmatic validation stage (schema, grounding, dedup, workflow) that sits between the Reviewer's findings and the Judge — not the investigation phase itself.
 
 ---
 
@@ -71,13 +76,13 @@ Additionally, Option A preserves the current `maxRecursionDepth = 2` behavior, w
 
 Cognition's "Don't Build Multi-Agents" (Walden Yan, June 2025) establishes two principles for reliable long-running agents [§2]:
 
-> **Principle 1:** Share context, and share full agent traces, not just individual messages.  
+> **Principle 1:** Share context, and share full agent traces, not just individual messages.
 > **Principle 2:** Actions carry implicit decisions, and conflicting decisions carry bad results.
 
-Option D++ follows both:
+Option D++ follows both, with one deliberate scoped exception for the Judge:
 
-- **Principle 1:** The Reviewer sees the full trace. Investigators share a blackboard (`FindingStore`) so their work is visible. The Judge receives findings **plus** raw evidence, not just summaries.
-- **Principle 2:** Only the Reviewer takes write actions. Investigators are read-only. The Judge verifies; it does not act. No parallel agent can make a conflicting decision because no parallel agent can make decisions at all.
+- **Principle 1:** The Reviewer sees the full trace. Investigators share a blackboard (notes + findings) so their work is visible. The Judge is an intentional fresh-context exception — it receives findings **plus** raw evidence but **not** the Reviewer's reasoning trace, because confirmation bias from that trace is exactly what the Judge exists to counteract. Cognition uses the same pattern (their fine-tuned compactor sees a distilled context, not the full trace). Principle 1 applies to the Reviewer/Investigator tier where decisions are made; the Judge is a verification stage.
+- **Principle 2:** Only the Reviewer takes write actions. Investigators are read-only (notes only). The Judge verifies; it does not act. No parallel agent can make a conflicting decision because no parallel agent can make decisions at all.
 
 Cognition's own Devin Review uses exactly this pattern: a single-threaded linear agent for all work, with subagents used **only** for read-only Q&A to keep context out of the main trace [§2]. The "compactor" model (a smaller LM that distills long traces) is their escape hatch for long contexts — not nested subagents.
 
@@ -97,15 +102,24 @@ Option D++ provides the architectural substrate for:
 
 Phases 1–10 are **architecture-agnostic** — they improve correctness, thinking, caching, and tooling without depending on the D++ redirect. They ship to all users regardless of this ADR.
 
-Phases 11–12 **realize the D++ redirect** and ship behind a `lupa.pipeline.v2` feature flag so we can revert per-analysis if eval regresses.
+One cross-phase seam worth naming: Quest 8.1 (Wave 0) authors fixtures that speak the P0–P3 severity vocabulary that Quest 11.0 (Wave 7) formally introduces. The playbook handles this with a severity-normalizer compat shim — Waves 0–6 normalize legacy `CRITICAL`/`HIGH`/`MEDIUM`/`LOW` to P0–P3 at the boundary — so the "agnostic" claim holds.
 
-| Phase | Quests                                                        | Architecture Dependency                                                              | Ship Strategy                  |
-| ----- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------ |
-| 1–10  | 1.1–1.4, 2.1–2.3, 3.1–3.3, 4.1–4.4, 5.1–5.3, 6.1–6.3, 7.1–7.3 | None — agnostic                                                                      | Ship to all                    |
-| 11    | 11.0–11.3                                                     | Partial — Judge stage (11.2) can work with old pipeline, but is designed for 3-stage | Behind `lupa.pipeline.v2` flag |
-| 12    | 12.1–12.4                                                     | Full — requires the 3-stage pipeline                                                 | Behind `lupa.pipeline.v2` flag |
+Phases 11–12 **realize the D++ redirect** and ship behind a `lupa.pipeline.v2` feature flag so we can revert per-analysis if eval regresses. Two finer-grained sub-flags are layered under `lupa.pipeline.v2`:
 
-**Current code status:** The existing `maxRecursionDepth = 2` default and `RecursiveStateManager` are scheduled for removal in Quest 12.4. Until then, they remain as legacy code paths.
+- `lupa.findingGrounding.mode ∈ { 'off' | 'warn' | 'enforce' }` (Quest 11.3) — controls the `PreJudgeGate` grounding check only; the `record_finding` schema requirement is always on once 11.3 ships. Default `warn` until 11.2 lands, then `enforce`.
+- `lupa.reviewer.canReadFiles` (Quest 12.2) — one-release safety net that keeps `read_file`/`get_file_diff` on the Reviewer's tool surface during Wave 8 migration. Default `true`; flipped to `false` once eval confirms no regression.
+
+When `lupa.pipeline.v2 = false`, the sub-flags are inert (the legacy pipeline is used end-to-end).
+
+| Phase | Quests                                                        | Architecture Dependency                                                                                                                                                   | Ship Strategy                  |
+| ----- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| 1–10  | 1.1–1.4, 2.1–2.3, 3.1–3.3, 4.1–4.4, 5.1–5.3, 6.1–6.3, 7.1–7.3 | None — agnostic                                                                                                                                                           | Ship to all                    |
+| 11    | 11.0–11.3                                                     | Partial — in Wave 7 `JudgeStage` replaces `adversarialVerificationStep` + LLM part of `evidenceAuditStep`; other six steps keep running. Full 3-stage collapse is Wave 8. | Behind `lupa.pipeline.v2` flag |
+| 12    | 12.1–12.4                                                     | Full — requires the 3-stage pipeline                                                                                                                                      | Behind `lupa.pipeline.v2` flag |
+
+**Intermediate pipeline shape (Wave 7):** `8 steps − 1.5 + Judge`. Wave 8 (Quest 12.1) is the single wave that collapses the remaining steps into `PreJudgeGate → Judge → Synthesizer`.
+
+**Current code status:** The existing `maxRecursionDepth = 2` default (verified in `src/models/workspaceSettingsSchema.ts` and `.vscode/lupa.json`) and `RecursiveStateManager` are scheduled for removal/hard-cap in Quest 12.4. Until then, they remain as legacy code paths.
 
 ---
 
@@ -150,13 +164,13 @@ These patterns are documented as harmful in our research and are architecturally
 
 ## Risks and Mitigations
 
-| Risk                                             | Likelihood | Impact | Mitigation                                                                                            |
-| ------------------------------------------------ | ---------- | ------ | ----------------------------------------------------------------------------------------------------- |
-| Flag toggle causes state corruption mid-analysis | Low        | High   | Flag is read **once** at analysis start and cached in `AnalysisContext`. No mid-flight toggling.      |
-| Judge stage adds latency                         | Medium     | Medium | Judge is a single LLM call, not a full investigation. Can be parallelized with Synthesizer if needed. |
-| Users confused by P0–P3 severity                 | Medium     | Low    | Provide mapping table in UI. Legacy CRITICAL/HIGH/MEDIUM/LOW mapping documented in Quest 11.0.        |
-| Compactor loses critical decisions               | Low        | High   | Compactor preserves all `record_finding` calls and tool results. Only investigative noise is dropped. |
-| Phase 12 refactor is too large                   | Medium     | High   | Split 12.1 into 3 sub-Quests (extract Judge, extract Synthesizer, collapse pipeline).                 |
+| Risk                                             | Likelihood | Impact | Mitigation                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------ | ---------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Flag toggle causes state corruption mid-analysis | Low        | High   | Flag is read **once** at analysis start and cached on `ExecutionContext` (`src/types/executionContext.ts`). No mid-flight toggling.                                                                                                                                               |
+| Judge stage adds latency                         | Medium     | Medium | Judge is a single LLM call per finding, not a full investigation. Judge calls across distinct findings can be batched/parallelized; the Synthesizer cannot — it consumes Judge verdicts and runs strictly after.                                                                  |
+| Users confused by P0–P3 severity                 | Medium     | Low    | Provide mapping table in UI. Legacy CRITICAL/HIGH/MEDIUM/LOW mapping documented in Quest 11.0 with a compat-shim normalizer during Waves 0–6.                                                                                                                                     |
+| Compactor loses critical decisions               | Low        | High   | Compactor preserves all `record_finding` calls, the current plan, the latest ≤ 3 tool results, and a structured summary of hypotheses / examined files / open questions (per Quest 6.2). Older raw tool outputs and intermediate prose reasoning are the only categories dropped. |
+| Phase 12 refactor is too large                   | Medium     | High   | Tracked as a follow-up design task to split Quest 12.1 into three sub-Quests (extract Judge, extract Synthesizer, delete legacy steps). Not pre-committed in the playbook — see "Pending follow-ups" below.                                                                       |
 
 ---
 
@@ -212,13 +226,17 @@ The playbook explicitly acknowledges rot as a constraint:
 
 ### Future Direction: Hybrid Approaches
 
-If eval shows that context rot degrades quality on large PRs beyond acceptable thresholds, we can evolve toward a **hybrid architecture** without abandoning D++:
+The D++ core (Reviewer / read-only Investigators / Judge / Synthesizer / depth-1 cap) is sound. The ideas below are **extensions**, not replacements. They become candidates if Wave 0 eval shows rot as the dominant quality bottleneck — concretely, if `resolutionRate` on the Monster-size fixtures is more than **5 %** below the Large-size fixtures for the same model+seed across N ≥ 3 runs (same numerical bar as the kill-switch criteria, applied per-PR-size band rather than globally).
 
-1. **Structured reasoning graph:** Instead of a flat conversation history, maintain a graph of hypotheses → evidence → findings. The Reviewer queries this graph (not the raw chat) when it needs to recall prior reasoning. This is cheaper than full RLM but more structured than compaction.
-2. **Investigator-as-database:** Investigators write structured outputs (AST paths, symbol references, data-flow chains) to the blackboard in a machine-readable format. The Reviewer can "re-query" this structured data without re-reading files.
-3. **External context index:** For very large PRs, build a lightweight in-memory index (file → symbols → findings) that the Reviewer can query via a tool, similar to how RLM queries a REPL variable but with a much smaller surface area.
+1. **Structured reasoning graph:** Instead of a flat conversation history, maintain a graph of `{hypothesis → evidence-tool-call → assertion}` triples keyed by stable IDs. The Reviewer writes triples via a `record_hypothesis` tool instead of free-form chat. Compaction drops prose; triples persist. Query tool: `query_hypothesis_graph(filter, depth)`.
+2. **Investigator-as-database:** Investigators emit structured outputs (AST paths, symbol references, data-flow chains) to the blackboard in a machine-readable format. Reviewer queries this via `query_blackboard(selector)` instead of re-reading Investigator prose or re-opening files.
+3. **External context index:** For very large PRs, build a lightweight in-memory index (file → symbols → findings → notes) that the Reviewer queries via a tool — conceptually similar to how canonical RLM queries a REPL variable, but with a much smaller, code-review-shaped surface.
+4. **Cheap-compactor model (AsyncReview `sub_lm` pattern / Cognition's fine-tuned compactor).** Route `compact_history` to a dedicated cheaper model, not the main reviewer. The main model keeps its full budget for reasoning; the cheap model handles distillation with a strict output schema. Infra cost is low — `vscode.lm.selectChatModels` already supports picking a second model — but the compactor prompt must be locked down so output drift does not corrupt the main trace. This is the single highest-leverage rot mitigation we have not yet adopted.
+5. **Per-file note index.** Maintain `notesByFile: Map<path, NoteSummary[]>` on the blackboard. On "what did we decide about `foo.ts`?" the Reviewer calls `get_notes_for_file('foo.ts')` rather than re-scanning the trace. Converts O(trace) recall into O(notes_for_file) lookup — most effective on Monster PRs where the trace is long but per-file note volume is small.
+6. **Freeze-frame checkpointing.** After each major decision the Reviewer writes a checkpoint `{iteration, hypotheses, findingIds, openQuestions}` to the blackboard. On compaction the compactor uses the last ~3 checkpoints as its seed rather than distilling the raw trace. Reduces compactor LLM surface roughly 10× and makes compaction idempotent.
+7. **Spec-first Reviewer (bigger redesign — tag as Phase 15+).** Before the ReAct loop, run a one-shot pass that emits a `ReviewPlan` of `{concern, hypothesis, files, investigators}`. The loop then executes the plan as a state machine instead of a free-form conversation. No rot because there is no long rambling dialogue; the Reviewer's state _is_ the plan state. This is the biggest change to D++ and would need its own ADR.
 
-These are **not** part of the initial rescue. They are documented here as potential Phase 15+ work if eval warrants it.
+These are **not** part of the initial rescue. They are documented here as candidates for Phase 15+ work. My prioritization if eval triggers the band: **#4 (cheap compactor) first** — smallest blast radius, highest leverage; then **#5 (per-file note index)**; then **#2 (Investigator-as-database)**; then consider **#7 (spec-first Reviewer)** only if the first three do not close the gap.
 
 ### Bottom Line
 
@@ -229,6 +247,16 @@ Option D++ accepts managed context rot as the cost of a simple, debuggable, prod
 3. **Iterating from data** (not from theoretical perfection)
 
 If the baseline shows that context rot is the dominant quality bottleneck, we will design a targeted improvement — potentially hybrid — in a future phase. For now, compaction + multi-pass + blackboard is the right level of complexity.
+
+---
+
+## Pending Follow-ups
+
+These items are referenced from the Risks table and the body of this ADR but are **not** pre-committed in `lupa-rescue-playbook_v3.md`. They are tracked here so implementers surface them during Wave planning rather than discovering them mid-refactor.
+
+- **Split of Quest 12.1 into sub-Quests.** If Wave 8 scope estimation confirms the refactor is >1 sprint of work, split into: (a) extract `JudgeStage` into its own pipeline step, (b) extract `SynthesisStage` and delete `findingScoringStep` + output assembly, (c) delete the remaining legacy steps (`adversarialVerificationStep`, `zeroFindingChallengeStep`, `selfReflectionStep`, `rewriteStep`, `workflowEnforcementStep`). Decision to split is owned by whoever picks up Wave 8.
+- **Compactor cheap-model wiring.** If Future Direction #4 is pursued, add a `lupa.compactorModelIdentifier` setting wired through `vscode.lm.selectChatModels`, with a strict output schema and a smoke test that compactor output parses deterministically.
+- **Per-PR-size rot escalation threshold in the eval harness.** The "5 % Monster-vs-Large gap" trigger from Future Direction needs explicit support in Quest 8.2's reporting (per-band `resolutionRate`, not just aggregate). Small quest-level addition to 8.2 before Wave 0 closes.
 
 ---
 
@@ -246,16 +274,16 @@ If the baseline shows that context rot is the dominant quality bottleneck, we wi
 
 ## Appendix: Option D++ vs. Option A at a Glance
 
-| Dimension                      | Option A (Current Pipeline)                            | Option D++ (Adopted)                             |
-| ------------------------------ | ------------------------------------------------------ | ------------------------------------------------ |
-| Main agent topology            | Single-threaded, but subagents can recurse (depth = 2) | Single-threaded, depth = 1 cap                   |
-| Pipeline stages                | 8 sequential steps                                     | 3 stages (PreJudgeGate → Judge → Synthesizer)    |
-| Investigation vs. verification | Mixed in same context                                  | Separated: Reviewer investigates, Judge verifies |
-| Subagent role                  | Can spawn children, limited write access               | Read-only, no children, blackboard-only output   |
-| Long-context strategy          | None (hits iteration cap)                              | Compaction + continue                            |
-| Quality lever                  | Heavier prompting                                      | Fresh-context Judge + structured verification    |
-| Eval risk                      | Baseline is current behavior                           | Baseline measured before flag enablement         |
-| Rollback                       | Revert commits                                         | Flip flag off                                    |
+| Dimension                      | Option A (Current Pipeline)                            | Option D++ (Adopted)                                                           |
+| ------------------------------ | ------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| Main agent topology            | Single-threaded, but subagents can recurse (depth = 2) | Single-threaded, depth = 1 cap                                                 |
+| Pipeline stages                | 8 sequential steps                                     | Wave 7: 8 − 1.5 + Judge. Wave 8: 3 stages (PreJudgeGate → Judge → Synthesizer) |
+| Investigation vs. verification | Mixed in same context                                  | Separated: Reviewer investigates, Judge verifies                               |
+| Subagent role                  | Can spawn children, limited write access               | Read-only, no children, notes-only write surface (no `record_finding`)         |
+| Long-context strategy          | None (hits iteration cap)                              | Compaction + continue                                                          |
+| Quality lever                  | Heavier prompting                                      | Fresh-context Judge + structured verification                                  |
+| Eval risk                      | Baseline is current behavior                           | Baseline measured before flag enablement                                       |
+| Rollback                       | Revert commits                                         | Flip flag off                                                                  |
 
 ---
 
