@@ -538,6 +538,7 @@ Done:
 - `TokenValidator.cleanupContext` delegates to (or is replaced by) `compact_history`.
 - Trigger thresholds configurable in `workspaceSettingsSchema.ts`.
 - Older models: 60/80/95 thresholds (more aggressive).
+- **Interaction with model-initiated compaction (Quest 6.1)**: if the model called `compact_history` within the last 3 iterations, the system-initiated threshold check is suppressed for the current iteration (it would double-compact and lose the summary the model just produced). Model-initiated takes precedence; system-initiated is the safety net. Both paths share the same compactor implementation; only the trigger differs. Telemetry records `compaction_trigger: 'model' | 'system' | 'suppressed_due_to_recent_model'`.
 
 ### Quest 6.3 — Compact-and-continue at iteration cap
 
@@ -645,6 +646,13 @@ Done:
 ```
 
 **Copilot nondeterminism** — the API exposes no seed and no temperature control, so single-run numbers are noisy. Every fixture × model combination runs `N = 3` times (configurable via `--seeds N`). Metrics are reported as mean ± stddev; every eval gate evaluates against the mean.
+
+**Severity-vocabulary timing** — Quest 11.0 (Wave 7) is what formally introduces the `P0 | P1 | P2 | P3` vocabulary to the runtime. Wave 0's fixtures land first. Reconciliation:
+
+- Fixtures MAY be authored with P-levels from day one (they're labels in a JSON file, no runtime dependency).
+- Until Quest 11.0 lands, the harness's matcher normalizes produced findings from whatever the runtime emits today (`low | medium | high | critical`) into P-levels using a lookup table (`critical → P0`, `high → P1`, `medium → P2`, `low → P3`).
+- After Quest 11.0 lands, the runtime emits P-levels directly and the normalizer becomes an identity function (kept as a compatibility shim for one release, then removed).
+- Implementing agents authoring fixtures in Wave 0 should just use P-levels — that's the final state and the normalizer makes the intermediate period work.
 
 **Matcher** — findings are paired to expected by (path exact) × (line within ±5) × (category match or severity match). Unmatched-expected = missed bug (recall hit), unmatched-produced = false positive (precision hit).
 
@@ -900,7 +908,7 @@ The three-reasons-first structure is the cheap prompt trick Cursor BugBot credit
 
 Done:
 
-- New `JudgeStage` in post-pipeline (replaces `adversarialVerificationStep` + LLM portion of `evidenceAuditStep`).
+- New `JudgeStage` in post-pipeline. **Integration timing**: in Wave 7 (when this Quest lands) `JudgeStage` slots into the existing 8-step post-analysis pipeline as a direct replacement for `adversarialVerificationStep` and the LLM portion of `evidenceAuditStep` — the other six steps (diff parsing, finding validation, dedup, severity normalization, formatting, receipt assembly) keep running unchanged. Wave 8 (Quest 12.1) is the one that collapses the remaining steps into the Synthesizer; until then the pipeline shape is 8 steps minus 1.5 plus Judge. Implementers of Wave 7 do not need to touch Quest 12.1's scope.
 - Called once per finding with a tight prompt using the three-reasons-first structure above. Same model is fine; auxiliary model (Phase 10.3) permissible.
 - Severity-asymmetric rules baked into the prompt: security/correctness use a high bar (any surviving counter-argument → downgrade/drop); performance/concurrency prefer downgrade over drop; style/maintainability keep unless factually wrong. Matches the per-category FP tiers in Quest 8.1.
 - Judge output schema includes `counterArguments: string[]` and `sourceCheckResult: 'supported' | 'refuted' | 'partial'` per argument, so eval can measure whether the model is actually doing the exercise or phoning it in (if > 40 % of `drop` verdicts have empty `counterArguments`, the prompt has decayed and needs revision).
@@ -967,9 +975,11 @@ Done:
 **I want** the Reviewer, Investigator, Verifier, and Synthesizer to have disjoint tool surfaces and prompts,
 **so that** each role optimizes for a single job and the Investigator can never accidentally post a finding or short-circuit verification.
 
-Topology:
+**Migration note** — this is the **target state** for Wave 8. During Waves 1–7 the main agent is allowed to read files directly (Quest 1.2's `extractFilesTouched` is explicitly built around main-agent tool calls, and Quest 1.4's cache serves both agents). Implementers of Waves 1–7 should **not** pre-emptively strip `read_file` / `get_file_diff` from the main agent's tool surface — doing so would break the recursion heuristic (Quest 5.1) and the PR-overview builder (Quest 3.1), both of which currently run against the main agent. Wave 8 (this Quest + 12.1) is the single point where the file-reading responsibility transfers to Investigators.
 
-- **Reviewer** — sees PR overview + diff metadata. Owns the plan. Calls `decompose_concerns`, spawns Investigators, calls Verifier on candidates, calls Synthesizer at end. Does NOT read source files directly.
+Topology (target state, after Wave 8):
+
+- **Reviewer** — sees PR overview + diff metadata. Owns the plan. Calls `decompose_concerns`, spawns Investigators, calls Verifier on candidates, calls Synthesizer at end. Does NOT read source files directly. (During the Wave 8 migration, the Reviewer keeps `read_file` as a fallback for one release cycle — flag `lupa.reviewer.canReadFiles` default `true`, flipped to `false` only after eval confirms no regression.)
 - **Investigator** — read-only tools (`read_file`, `find_symbol`, `find_usages`, `search_for_pattern`, `sequential_thinking`, `note`, `list_findings`). Depth=1 (cannot spawn). Returns structured `SubagentBatchResult`.
 - **Verifier** — fresh context per finding. Calls `verify_finding`, decides `keep | downgrade | drop`.
 - **Synthesizer** — deterministic. Assembles final review (narrative, findings sorted by P-level, receipts).
