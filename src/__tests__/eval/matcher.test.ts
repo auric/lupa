@@ -1170,6 +1170,56 @@ rename to src/moved/a.ts
         });
     });
 
+    it('requires an exact or uniquely resolvable rename match before treating a finding as rename-only ambiguous', async () => {
+        const judge = vi.fn();
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess(
+                        'R100\tpackages/one/src/a.ts\tpackages/one/src/a-renamed.ts\n' +
+                            'R100\tpackages/two/src/a.ts\tpackages/two/src/a-renamed.ts\n'
+                    );
+                }
+
+                const gitPath = args[3];
+                if (gitPath !== 'src/a.ts') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+index 1234567..89abcde 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -10,1 +10,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'non-unique-rename-suffix',
+                    file: 'src/a.ts',
+                    lineRange: [10, 10],
+                }),
+            ],
+            match: emptyMatch(),
+            judgeClient: { judge },
+        });
+
+        expect(judge).not.toHaveBeenCalled();
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'non-unique-rename-suffix',
+            verdict: 'resolved',
+            method: 'line-range-fallback',
+            path: 'src/a.ts',
+        });
+    });
+
     it('kills a hung per-path git diff when classification times out', async () => {
         vi.useFakeTimers();
         try {

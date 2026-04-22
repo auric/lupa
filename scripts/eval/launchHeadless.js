@@ -46,6 +46,38 @@ const {
 
 const WATCHDOG_OVERHEAD_MS = 60_000;
 const WATCHDOG_SIGTERM_GRACE_MS = 5_000;
+const WATCHDOG_POST_SIGNAL_RETRY_MS = WATCHDOG_SIGTERM_GRACE_MS + 2_000;
+
+function createPostSignalWatchdog(onForceKill) {
+    let activeSignal = 'signal';
+    let timeoutHandle;
+
+    const schedule = () => {
+        timeoutHandle = setTimeout(() => {
+            process.stderr.write(
+                `Post-signal watchdog: VS Code did not exit within ${WATCHDOG_POST_SIGNAL_RETRY_MS}ms after ${activeSignal}; force-killing process tree again.\n`
+            );
+            onForceKill();
+            schedule();
+        }, WATCHDOG_POST_SIGNAL_RETRY_MS);
+        timeoutHandle.unref?.();
+    };
+
+    return {
+        arm(signal) {
+            activeSignal = signal;
+            if (!timeoutHandle) {
+                schedule();
+            }
+        },
+        clear() {
+            if (timeoutHandle) {
+                clearTimeout(timeoutHandle);
+                timeoutHandle = undefined;
+            }
+        },
+    };
+}
 
 async function main() {
     let args;
@@ -151,6 +183,9 @@ async function main() {
     let forwardedSignalExitCode;
     let forwardedSignal = null;
     let watchdog;
+    const postSignalWatchdog = createPostSignalWatchdog(() =>
+        killProcessTree(child)
+    );
 
     // `detached: true` on POSIX puts the child in its own process group, so
     // terminal Ctrl-C no longer reaches it via the TTY foreground pgid — the
@@ -164,7 +199,9 @@ async function main() {
             forwardedSignalExitCode = sig === 'SIGINT' ? 130 : 143;
             if (watchdog) {
                 clearTimeout(watchdog);
+                watchdog = undefined;
             }
+            postSignalWatchdog.arm(sig);
             killProcessTree(child);
         });
     }
@@ -184,7 +221,10 @@ async function main() {
             resolve(1);
         });
     });
-    clearTimeout(watchdog);
+    if (watchdog) {
+        clearTimeout(watchdog);
+    }
+    postSignalWatchdog.clear();
 
     process.exit(
         forwardedSignalExitCode ?? readSentinelExitCode(childExitCode)
@@ -284,6 +324,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+    createPostSignalWatchdog,
     getLauncherWatchdogMs,
+    WATCHDOG_POST_SIGNAL_RETRY_MS,
     WATCHDOG_SIGTERM_GRACE_MS,
 };

@@ -16,6 +16,7 @@ export interface DiffResolveOptions {
 }
 
 const DEFAULT_DIFF_TIMEOUT_MS = 30_000;
+const GIT_POST_KILL_RETRY_MS = 2_000;
 
 /**
  * Resolve a raw unified diff between baseRef and headRef.
@@ -89,18 +90,50 @@ function spawnGit(
         let stdout = '';
         let stderr = '';
         let settled = false;
+        let closed = false;
         let cancellation: vscode.Disposable | undefined;
-        const cleanup = () => {
+        let postKillHandle: NodeJS.Timeout | undefined;
+        const clearSettlingResources = () => {
             clearTimeout(timeoutHandle);
             cancellation?.dispose();
+            cancellation = undefined;
+        };
+        const cleanupAfterClose = () => {
+            closed = true;
+            clearSettlingResources();
+            if (postKillHandle) {
+                clearTimeout(postKillHandle);
+                postKillHandle = undefined;
+            }
+        };
+        const keepKillingUntilClose = () => {
+            if (closed) {
+                return;
+            }
+
+            try {
+                proc.kill('SIGKILL');
+            } catch {
+                // already gone
+            }
+
+            if (postKillHandle) {
+                return;
+            }
+
+            postKillHandle = setTimeout(() => {
+                postKillHandle = undefined;
+                keepKillingUntilClose();
+            }, GIT_POST_KILL_RETRY_MS);
+            postKillHandle.unref?.();
         };
         const timeoutHandle = setTimeout(() => {
             if (settled) {
                 return;
             }
             settled = true;
-            proc.kill('SIGKILL');
-            cleanup();
+            clearSettlingResources();
+            keepKillingUntilClose();
             reject(
                 new Error(
                     `git ${args.join(' ')} timed out after ${timeoutMs}ms`
@@ -113,29 +146,29 @@ function spawnGit(
                 return;
             }
             settled = true;
-            proc.kill('SIGKILL');
-            cleanup();
+            clearSettlingResources();
+            keepKillingUntilClose();
             reject(new vscode.CancellationError());
         });
         proc.stdout.on('data', (d) => (stdout += d.toString()));
         proc.stderr.on('data', (d) => (stderr += d.toString()));
         proc.on('error', (error) => {
+            cleanupAfterClose();
             if (settled) {
                 return;
             }
             settled = true;
-            cleanup();
             reject(error);
         });
         // `git diff` exits 0 when the trees are identical, 1 when there are
         // differences, and anything else on real error. Treat 0 and 1 as
         // success so an empty-diff run doesn't fail the pipeline.
         proc.on('close', (code) => {
+            cleanupAfterClose();
             if (settled) {
                 return;
             }
             settled = true;
-            cleanup();
             if (code === 0 || code === 1) {
                 resolve(stdout);
             } else {

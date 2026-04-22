@@ -226,4 +226,42 @@ describe('resolveDiff', () => {
             vi.useRealTimers();
         }
     });
+
+    it('keeps retrying SIGKILL until a timed-out git child finally closes', async () => {
+        vi.useFakeTimers();
+        try {
+            const proc = new EventEmitter() as unknown as MockChildProcess;
+            proc.stdout = new EventEmitter() as never;
+            proc.stderr = new EventEmitter() as never;
+            const killSpy = vi.fn().mockReturnValue(true);
+            proc.kill = killSpy as never;
+            spawnMock.mockImplementationOnce(() => proc);
+
+            const promise = resolveDiff(
+                {
+                    workspaceRoot: '/w',
+                    baseRef: 'main',
+                    headRef: 'feature',
+                    timeoutMs: 250,
+                },
+                services
+            );
+
+            await vi.advanceTimersByTimeAsync(250);
+
+            await expect(promise).rejects.toThrow(/timed out after 250ms/);
+            expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
+
+            await vi.advanceTimersByTimeAsync(5_000);
+            expect(killSpy.mock.calls.length).toBeGreaterThan(1);
+
+            const callCountAfterRetries = killSpy.mock.calls.length;
+            proc.emit('close', 1);
+
+            await vi.advanceTimersByTimeAsync(5_000);
+            expect(killSpy.mock.calls).toHaveLength(callCountAfterRetries);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });

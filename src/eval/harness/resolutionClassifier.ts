@@ -747,11 +747,7 @@ async function pathHasPureRenameOrMove(
         timeoutMs,
         deadlineAt
     );
-    return renameEntries.some(
-        (entry) =>
-            pathsPossiblyMatch(entry.oldPath, findingPath) ||
-            pathsPossiblyMatch(entry.newPath, findingPath)
-    );
+    return hasResolvableRenameMatch(renameEntries, findingPath);
 }
 
 async function getPureRenameEntries(
@@ -910,13 +906,43 @@ function normalizePosixPath(filePath: string): string {
     return normalized === '.' ? '' : normalized;
 }
 
-function pathsPossiblyMatch(leftPath: string, rightPath: string): boolean {
-    const normalizedLeft = normalizePath(leftPath);
-    const normalizedRight = normalizePath(rightPath);
+function hasResolvableRenameMatch(
+    entries: readonly RenameStatusEntry[],
+    findingPath: string
+): boolean {
+    const normalizedFindingPath = normalizePath(findingPath);
+    if (normalizedFindingPath.length === 0) {
+        return false;
+    }
+
+    const exactMatches = entries.filter(
+        (entry) =>
+            entry.oldPath === normalizedFindingPath ||
+            entry.newPath === normalizedFindingPath
+    );
+    if (exactMatches.length > 0) {
+        return exactMatches.length === 1;
+    }
+
     return (
-        normalizedLeft === normalizedRight ||
-        normalizedLeft.endsWith(`/${normalizedRight}`) ||
-        normalizedRight.endsWith(`/${normalizedLeft}`)
+        entries.filter((entry) =>
+            renameEntryMatchesBySuffix(entry, normalizedFindingPath)
+        ).length === 1
+    );
+}
+
+function renameEntryMatchesBySuffix(
+    entry: RenameStatusEntry,
+    findingPath: string
+): boolean {
+    return [entry.oldPath, entry.newPath].some((candidatePath) =>
+        pathsMatchBySuffix(candidatePath, findingPath)
+    );
+}
+
+function pathsMatchBySuffix(leftPath: string, rightPath: string): boolean {
+    return (
+        leftPath.endsWith(`/${rightPath}`) || rightPath.endsWith(`/${leftPath}`)
     );
 }
 

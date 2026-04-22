@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ModelRequestHandler } from '../models/modelRequestHandler';
 import type { IServiceRegistry } from '../services/serviceManager';
@@ -63,7 +64,10 @@ export async function runHeadlessResolutionJudge(
         {
             messages: [
                 { role: 'system', content: SYSTEM_PROMPT },
-                { role: 'user', content: buildUserPrompt(payload) },
+                {
+                    role: 'user',
+                    content: buildUserPrompt(payload, opts.workspaceRoot),
+                },
             ],
             tools: [],
         },
@@ -103,17 +107,24 @@ function readPayload(payloadPath: string): ResolutionJudgePayload {
     return parsed as ResolutionJudgePayload;
 }
 
-function buildUserPrompt(payload: ResolutionJudgePayload): string {
+function buildUserPrompt(
+    payload: ResolutionJudgePayload,
+    workspaceRoot: string
+): string {
     const finding = payload.finding;
+    const normalizedFindingPath = normalizePromptPath(
+        finding.file,
+        workspaceRoot
+    );
     const findingPayload = JSON.stringify(
         {
             title: finding.title,
             severity: finding.severity,
             category: finding.category,
-            location: `${finding.file}:${finding.lineRange[0]}-${finding.lineRange[1]}`,
+            location: `${normalizedFindingPath}:${finding.lineRange[0]}-${finding.lineRange[1]}`,
             sources:
                 (finding.sources ?? []).map((source) => ({
-                    path: source.path,
+                    path: normalizePromptPath(source.path, workspaceRoot),
                     lineStart: source.lineStart,
                     lineEnd: source.lineEnd,
                 })) || [],
@@ -197,4 +208,37 @@ function isVerdict(
         value === 'disputed' ||
         value === 'noise'
     );
+}
+
+function normalizePromptPath(filePath: string, workspaceRoot: string): string {
+    const trimmed = filePath.trim();
+    if (trimmed.length === 0) {
+        return '';
+    }
+
+    if (isAbsolutePathLike(trimmed)) {
+        const relativePath = path.relative(workspaceRoot, trimmed);
+        if (!isAbsolutePathLike(relativePath)) {
+            return normalizePromptPosixPath(relativePath);
+        }
+
+        return normalizePromptPosixPath(path.basename(trimmed));
+    }
+
+    return normalizePromptPosixPath(trimmed);
+}
+
+function isAbsolutePathLike(filePath: string): boolean {
+    return (
+        path.isAbsolute(filePath) ||
+        /^[a-zA-Z]:[\\/]/.test(filePath) ||
+        filePath.startsWith('\\\\')
+    );
+}
+
+function normalizePromptPosixPath(filePath: string): string {
+    const normalized = path.posix
+        .normalize(filePath.replace(/\\/g, '/'))
+        .replace(/^(?:\.\/)+/, '');
+    return normalized === '.' ? '' : normalized;
 }

@@ -225,6 +225,30 @@ describe('launchHeadless watchdog', () => {
             nowSpy.mockRestore();
         }
     });
+
+    it('keeps a post-signal force-kill watchdog active until it is cleared', async () => {
+        vi.useFakeTimers();
+        try {
+            const { createPostSignalWatchdog, WATCHDOG_POST_SIGNAL_RETRY_MS } =
+                await import('../../scripts/eval/launchHeadless.js');
+            const onForceKill = vi.fn();
+            const watchdog = createPostSignalWatchdog(onForceKill);
+
+            watchdog.arm('SIGINT');
+
+            await vi.advanceTimersByTimeAsync(WATCHDOG_POST_SIGNAL_RETRY_MS);
+            expect(onForceKill).toHaveBeenCalledTimes(1);
+
+            await vi.advanceTimersByTimeAsync(WATCHDOG_POST_SIGNAL_RETRY_MS);
+            expect(onForceKill).toHaveBeenCalledTimes(2);
+
+            watchdog.clear();
+            await vi.advanceTimersByTimeAsync(WATCHDOG_POST_SIGNAL_RETRY_MS);
+            expect(onForceKill).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });
 
 describe('runHeadless', () => {
@@ -465,7 +489,16 @@ describe('runHeadless', () => {
 });
 
 describe('runHeadlessResolutionJudge', () => {
-    function writePayloadFile(): string {
+    function writePayloadFile(
+        overrides?: Partial<{
+            file: string;
+            sources: Array<{
+                path: string;
+                lineStart: number;
+                lineEnd: number;
+            }>;
+        }>
+    ): string {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lupa-judge-'));
         const payloadPath = path.join(tmpDir, 'payload.json');
         fs.writeFileSync(
@@ -478,7 +511,7 @@ describe('runHeadlessResolutionJudge', () => {
                     title: 'Fix timeout handling',
                     severity: 'HIGH',
                     category: 'logic_error',
-                    file: 'src/eval/headlessEntry.ts',
+                    file: overrides?.file ?? 'src/eval/headlessEntry.ts',
                     lineRange: [10, 20],
                     description: 'Timeout budget is drifting.',
                     affectedComponent: 'headless-entry',
@@ -491,7 +524,7 @@ describe('runHeadlessResolutionJudge', () => {
                     },
                     verifiableClaims: [],
                     lspValidation: undefined,
-                    sources: [
+                    sources: overrides?.sources ?? [
                         {
                             path: 'src/eval/headlessEntry.ts',
                             lineStart: 10,
@@ -749,6 +782,68 @@ describe('runHeadlessResolutionJudge', () => {
         expect(request.messages[1]?.content).toContain('```json');
         expect(request.messages[1]?.content).toContain('<followup_diff>');
         expect(request.messages[1]?.content).toContain('```diff');
+    });
+
+    it('normalizes absolute finding and source paths to workspace-relative form in the judge prompt payload', async () => {
+        const payloadPath = writePayloadFile({
+            file: '/tmp/workspace/src/eval/headlessEntry.ts',
+            sources: [
+                {
+                    path: '/tmp/workspace/src/eval/headlessEntry.ts',
+                    lineStart: 10,
+                    lineEnd: 20,
+                },
+                {
+                    path: './src/eval/headlessEntry.ts',
+                    lineStart: 10,
+                    lineEnd: 20,
+                },
+            ],
+        });
+        const tokenSource = new vscode.CancellationTokenSource();
+        const services = makeServices({
+            selectedModel: {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            },
+        });
+        vi.mocked(ModelRequestHandler.sendRequest).mockResolvedValue({
+            content:
+                '{"verdict":"resolved","reason":"Prompt paths were normalized."}',
+        } as never);
+
+        try {
+            await runHeadlessResolutionJudge(
+                {
+                    workspaceRoot: '/tmp/workspace',
+                    modelIdentifier: 'copilot/gpt-5-mini',
+                    timeoutMs: 60_000,
+                    payloadPath,
+                    cancellationToken: tokenSource.token,
+                },
+                services
+            );
+        } finally {
+            fs.rmSync(path.dirname(payloadPath), {
+                recursive: true,
+                force: true,
+            });
+        }
+
+        const [, request] = vi.mocked(ModelRequestHandler.sendRequest).mock
+            .calls[0]!;
+        expect(request.messages[1]?.content).toContain(
+            '"location": "src/eval/headlessEntry.ts:10-20"'
+        );
+        expect(request.messages[1]?.content).toContain(
+            '"path": "src/eval/headlessEntry.ts"'
+        );
+        expect(request.messages[1]?.content).not.toContain(
+            '/tmp/workspace/src/eval/headlessEntry.ts'
+        );
     });
 });
 
