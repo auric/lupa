@@ -32,6 +32,38 @@ v3 also removes v2's duplicated body (v2 accidentally concatenated two drafts; v
 
 ---
 
+## Terminology (read this before any other section)
+
+These terms get conflated in the wider RLM literature. Lupa uses them narrowly:
+
+- **Iteration** — one turn of the main Reviewer's ReAct loop: `observe → think → act → observe`. Governed by `maxIterations` in `ConversationRunner`. This is what RLM calls "the main loop"; runaway iterations are prevented by the budget, not by depth.
+- **Recursion** — the Reviewer spawning read-only Investigator subagents (via `run_subagent_batch`). Capped at `maxRecursionDepth = 1` (Quest 12.4). Quest 5.1's "force recursion on volume" means "force the Reviewer to fan out to Investigators when the diff is dense" — not "allow Investigators to spawn nested children."
+- **Subagent / Investigator** — a read-only parallel worker. Sees the shared blackboard (`list_findings`, `list_notes`), can read code (`read_file`, `find_symbol`, `find_usages`, `search_for_pattern`), can think (`sequential_thinking`), can write shared notes (`note`). **Cannot** `record_finding`, `submit_review`, or spawn further subagents. Enforced by Quest 12.3.
+- **Judge / Verifier** — fresh-context per-finding classifier (`keep | downgrade | drop`). Not a subagent — runs inside the post-analysis pipeline, not during investigation.
+- **Compaction** — summarizing older turns (via `compact_history`) to stay inside the context window without losing hypotheses, examined files, or finding IDs. Compaction is how Lupa handles long traces; it is **not** the same as recursion.
+
+When the documents say "recursion", they always mean subagent spawning. When they say "iteration", they always mean the main loop. Any apparent "recursion vs iteration" ambiguity is a mis-read of the terminology — flag it and fix in place rather than refactoring architecture.
+
+## Component mapping (Lupa ↔ RLM reference architecture)
+
+Use this when reading `rlm-tools-deep-dive.md` or the Cognition / AsyncReview material:
+
+| RLM / reference architecture concept | Lupa component (current)                                                                  |
+| ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Core engine / orchestration loop     | `AnalysisOrchestrator` + `AnalysisEngine`                                                 |
+| LM handler / conversation driver     | `ConversationRunner` + `CopilotModelManager`                                              |
+| Tool execution environment           | `ToolExecutor` + per-tool modules under `src/tools/`                                      |
+| Read-only parallel Q&A subagents     | `SubagentRunner` (spawned via `runSubagentBatchTool`)                                     |
+| Context compactor                    | `TokenValidator.cleanupContext` → Quest 6.1 `compact_history`                             |
+| Evidence ledger / blackboard         | `FindingStore` + notes extension (Quest 4.1)                                              |
+| Deterministic synthesis              | `PostAnalysisPipeline` → Quest 12.1 `SynthesisStage`                                      |
+| Fresh-context critic / judge         | `adversarialVerificationStep` → Quest 11.2 `JudgeStage`                                   |
+| Per-repo memory                      | `conventionFileLoader` (Quest 3.3) — committed `CLAUDE.md` / `AGENTS.md` / `.cursorrules` |
+
+The rescue does not introduce a separate "RLM Core" class — it realigns the existing components around the shapes above.
+
+---
+
 ## Evidence base (what to read before starting any Quest)
 
 Living, on-disk. In recommended reading order:
@@ -990,6 +1022,9 @@ These are deliberately unresolved. The implementing agent should pick an answer 
 - **DSPy adoption.** AsyncReview uses DSPy; we don't need to. The patterns it demonstrates are independently adoptable (see `rlm-tools-deep-dive.md` §5.2).
 - **Unbounded recursion / true leaf-root RLM with stored decompositions.** Explicitly rejected — Cognition's case is strong and Phase 12.4 caps depth at 1.
 - **A separate memory/RAG layer.** Quest 3.3 uses committed project files as per-repo memory; that's enough until eval says otherwise.
+- **Real-time "as-you-type" analysis via VS Code Diagnostic API.** A valid product direction, but out of scope for a rescue. The rescue's job is to fix the existing batch PR-review pipeline; shipping a second product surface on top of a broken pipeline would dilute the fix. Re-open after Wave 11 lands and eval numbers are stable.
+- **Explicit user-feedback / learning loop (thumbs up/down, dismiss-rate pattern mining).** Future work, not rescue work. Without a stable baseline (Wave 0) and a verification moat (Wave 7) there is no signal worth feeding back. Revisit once eval resolution-rate plateaus — Cursor BugBot only turned to learning loops after V7+ of their prompt iteration.
+- **50–100-PR ground-truth dataset.** The sealed 5-fixture set in Quest 8.1 (3 synthetic + 2 real, with `N=3` seeds) is the starting harness. Grow to 20 before trusting per-category FP targets below 15 %; grow to 50 before claiming "< 10 % FP on security." Treat the 50–100 target as a Wave 11-or-later milestone, not a Wave 0 requirement.
 
 ---
 

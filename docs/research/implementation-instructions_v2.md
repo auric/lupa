@@ -170,7 +170,7 @@ Before opening the PR:
 - [ ] Re-read `rlm-tools-deep-dive.md` sections cited by the Quest.
 - [ ] For any file hint: `view` it and confirm the referenced symbol/path still exists.
 - [ ] For design trade-offs: spawn a subagent with explicit instructions to use sequential thinking.
-- [ ] Implementation lives behind a feature flag if the Quest is in Wave 7 or later (pipeline-affecting).
+- [ ] Implementation lives behind a feature flag if the Quest touches prompt surface, pipeline shape, or tool registration (in practice: Wave 2 onwards). The kill-switch is the wave-level rollback — see `Decision gates and rollback` below.
 - [ ] `npm run check-types` passes.
 - [ ] Affected tests updated (never create new test files unless the playbook Quest names one).
 - [ ] Eval harness (once Wave 0 is in) run against fixtures — results attached to PR description.
