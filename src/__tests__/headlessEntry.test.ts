@@ -535,6 +535,42 @@ describe('runHeadlessFromEnv', () => {
         expect((sentinel.error as string).length).toBeGreaterThan(0);
     });
 
+    it('fails fast on malformed slash-form model identifiers before initialization or model discovery starts', async () => {
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify({
+            workspace: '/ws',
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/',
+            seed: 42,
+            timeoutMs: 60_000,
+            out: outPath,
+            silent: true,
+        });
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        vi.mocked(vscode.lm.selectChatModels).mockReset();
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        const { runHeadlessFromEnv } = await import('../eval/headlessEntry');
+        await runHeadlessFromEnv(coordinator as never);
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain(
+            "Malformed model identifier 'copilot/'"
+        );
+        expect(coordinator.waitForInitialization).not.toHaveBeenCalled();
+        expect(vscode.lm.selectChatModels).not.toHaveBeenCalled();
+    });
+
     it('uses only the remaining timeout budget while waiting for models after initialization completes', async () => {
         vi.useFakeTimers();
         const args = {

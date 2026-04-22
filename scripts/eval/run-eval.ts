@@ -85,9 +85,9 @@ interface ParsedArgs {
 }
 
 const execFileAsync = promisify(execFile);
+const MIN_HEADLESS_RUN_TIMEOUT_MS = 10_000;
 const MIN_AUXILIARY_JUDGE_TIMEOUT_MS = 10_000;
 const MAX_AUXILIARY_JUDGE_TIMEOUT_MS = 120_000;
-const MIN_EVAL_TIMEOUT_MS = MIN_AUXILIARY_JUDGE_TIMEOUT_MS * 2;
 
 interface AuxiliaryJudgeBudget {
     timeoutMs: number;
@@ -217,9 +217,9 @@ function parsePositiveInt(raw: string | undefined, flag: string): number {
     if (!Number.isInteger(n) || n <= 0) {
         throw new CliError(`${flag} must be a positive integer (got '${v}')`);
     }
-    if (flag === '--timeout' && n < MIN_EVAL_TIMEOUT_MS) {
+    if (flag === '--timeout' && n < MIN_HEADLESS_RUN_TIMEOUT_MS) {
         throw new CliError(
-            `${flag} must be at least ${MIN_EVAL_TIMEOUT_MS}ms (got '${v}')`
+            `${flag} must be at least ${MIN_HEADLESS_RUN_TIMEOUT_MS}ms (got '${v}')`
         );
     }
     return n;

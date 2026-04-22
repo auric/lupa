@@ -48,6 +48,7 @@ interface RenameStatusEntry {
 interface ResolvedDiffTarget {
     cachePath: string;
     gitPath: string | undefined;
+    matchedPath: boolean;
 }
 
 interface ComparableSources {
@@ -692,6 +693,11 @@ async function getDiffForPath(
         return cached;
     }
 
+    if (!diffTarget.matchedPath) {
+        cache.set(cacheKey, '');
+        return '';
+    }
+
     const diffText = await runGitDiffForPath(
         fixture.workspaceRoot,
         fixture.headRef,
@@ -716,7 +722,11 @@ async function resolveDiffTarget(
 ): Promise<ResolvedDiffTarget> {
     const gitPath = normalizePath(normalizedPath);
     if (!fixture.mergeRef || gitPath.length === 0) {
-        return { cachePath: gitPath, gitPath };
+        return {
+            cachePath: gitPath,
+            gitPath,
+            matchedPath: gitPath.length > 0,
+        };
     }
 
     const changedPaths = await getChangedPaths(
@@ -729,6 +739,7 @@ async function resolveDiffTarget(
         return {
             cachePath: gitPath,
             gitPath,
+            matchedPath: true,
         };
     }
 
@@ -739,12 +750,14 @@ async function resolveDiffTarget(
         return {
             cachePath: suffixMatches[0]!,
             gitPath: suffixMatches[0]!,
+            matchedPath: true,
         };
     }
 
     return {
-        cachePath: '*',
+        cachePath: `unmatched:${gitPath}`,
         gitPath: undefined,
+        matchedPath: false,
     };
 }
 

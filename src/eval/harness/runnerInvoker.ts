@@ -82,8 +82,7 @@ export async function invokeHeadless(
                 opts.timeoutMs,
                 opts.deadlineAt,
                 'before pre-launch checkout'
-            ),
-            opts.timeoutMs
+            )
         );
 
         requireRemainingHeadlessBudgetMs(
@@ -230,8 +229,7 @@ function getHeadlessWatchdogMs(
 async function ensureHeadCheckout(
     workspaceRoot: string,
     headRef: string,
-    checkoutTimeoutMs: number,
-    timeoutLabelMs: number
+    checkoutTimeoutMs: number
 ): Promise<void> {
     if (!headRef.startsWith('sha:')) {
         return;
@@ -257,7 +255,7 @@ async function ensureHeadCheckout(
             reject(
                 new Error(
                     formatHeadlessTimeoutMessage(
-                        timeoutLabelMs,
+                        checkoutTimeoutMs,
                         'during pre-launch checkout'
                     )
                 )

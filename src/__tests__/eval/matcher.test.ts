@@ -910,7 +910,7 @@ index 1234567..89abcde 100644
         ).toBe(true);
     });
 
-    it('keeps suffix-only diff fallback ambiguous when more than one candidate matches', async () => {
+    it('treats unmatched suffix-only paths as untouched when more than one candidate matches', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
                 if (args.includes('--name-only')) {
@@ -921,30 +921,10 @@ index 1234567..89abcde 100644
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess('');
                 }
-                return createMockGitDiffProcess(`diff --git a/packages/one/src/a.ts b/packages/one/src/a.ts
-index 1234567..89abcde 100644
---- a/packages/one/src/a.ts
-+++ b/packages/one/src/a.ts
-@@ -10,1 +10,2 @@
--dangerous();
-+safeOne();
-+return;
-diff --git a/packages/two/src/a.ts b/packages/two/src/a.ts
-index 1234567..89abcde 100644
---- a/packages/two/src/a.ts
-+++ b/packages/two/src/a.ts
-@@ -10,1 +10,2 @@
--dangerous();
-+safeTwo();
-+return;
-`);
+
+                throw new Error(`Unexpected git invocation: ${args.join(' ')}`);
             }
         );
-        const judge = vi.fn().mockResolvedValue({
-            verdict: 'disputed',
-            reason: 'Multiple suffix-only path candidates make the proxy ambiguous.',
-            modelId: 'copilot/gpt-5-mini',
-        });
 
         const summary = await classifyResolution({
             fixture: makeRealFixture(),
@@ -956,15 +936,27 @@ index 1234567..89abcde 100644
                 }),
             ],
             match: emptyMatch(),
-            judgeClient: { judge },
         });
 
-        expect(judge).toHaveBeenCalledTimes(1);
         expect(summary.findings[0]).toMatchObject({
             findingId: 'ambiguous-suffix-fallback',
-            verdict: 'disputed',
-            method: 'judge',
+            verdict: 'unresolved',
+            method: 'source-overlap',
+            path: 'a.ts',
         });
+        expect(summary.findings[0]).toMatchObject({
+            reason: expect.stringContaining(
+                'No changes touched the cited path between headSha and mergeSha.'
+            ),
+        });
+        expect(
+            mockedSpawn.mock.calls.some(
+                (call) =>
+                    call[1]?.[0] === 'diff' &&
+                    !call[1]?.includes('--name-only') &&
+                    !call[1]?.includes('--name-status')
+            )
+        ).toBe(false);
     });
 
     it('preserves earlier classified findings and marks the remainder invalid when classification aborts mid-run', async () => {
@@ -1540,7 +1532,9 @@ index 1234567..89abcde 100644
                     'Expected invokeHeadless to return a failure result'
                 );
             }
-            expect(result.error).toContain('during pre-launch checkout');
+            expect(result.error).toContain(
+                'Headless run exceeded timeout (500ms) during pre-launch checkout.'
+            );
             expect(mockedSpawn).toHaveBeenCalledTimes(1);
         } finally {
             vi.useRealTimers();

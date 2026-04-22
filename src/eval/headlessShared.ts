@@ -1,5 +1,9 @@
 export function normalizeModelIdentifier(identifier: string): string {
     const trimmed = identifier.trim();
+    if (trimmed.length === 0) {
+        throw new Error('Model identifier must be a non-empty string.');
+    }
+
     const slashIndex = trimmed.indexOf('/');
     if (slashIndex === -1) {
         return `copilot/${trimmed}`;
@@ -8,7 +12,9 @@ export function normalizeModelIdentifier(identifier: string): string {
     const vendor = trimmed.slice(0, slashIndex).trim().toLowerCase();
     const id = trimmed.slice(slashIndex + 1).trim();
     if (vendor.length === 0 || id.length === 0) {
-        return trimmed;
+        throw new Error(
+            `Malformed model identifier '${trimmed}'. Use '<model-id>' or '<vendor>/<model-id>' with non-empty vendor and model segments.`
+        );
     }
 
     return `${vendor}/${id}`;
