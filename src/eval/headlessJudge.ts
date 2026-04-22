@@ -22,8 +22,8 @@ export interface HeadlessResolutionJudgeOptions {
 
 const SYSTEM_PROMPT =
     'You are classifying whether a code-review finding was actually resolved by a later patch. ' +
-    'Return exactly one JSON object: {"verdict":"resolved|disputed|noise","reason":"short explanation"}. ' +
-    'Use resolved only when the diff likely fixes the finding. Use disputed when the diff touches related code but the fix is unclear. Use noise when the finding appears unsupported or irrelevant to the diff. Never output markdown.';
+    'Return exactly one JSON object: {"verdict":"resolved|unresolved|disputed|noise","reason":"short explanation"}. ' +
+    'Use resolved only when the diff likely fixes the finding. Use unresolved when the diff touches related code but still does not appear to fix the finding. Use disputed when the evidence is mixed or too incomplete to decide confidently. Use noise when the finding appears unsupported or irrelevant to the diff. Never output markdown.';
 
 export async function runHeadlessResolutionJudge(
     opts: HeadlessResolutionJudgeOptions,
@@ -161,5 +161,10 @@ function unwrapCodeFence(content: string): string {
 function isVerdict(
     value: string | undefined
 ): value is ResolutionJudgeResult['verdict'] {
-    return value === 'resolved' || value === 'disputed' || value === 'noise';
+    return (
+        value === 'resolved' ||
+        value === 'unresolved' ||
+        value === 'disputed' ||
+        value === 'noise'
+    );
 }

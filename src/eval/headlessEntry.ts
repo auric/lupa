@@ -48,6 +48,7 @@ interface HeadlessArgs {
     workspace: string;
     model: string;
     timeoutMs: number;
+    deadlineAt?: number;
     out: string | null;
     silent: boolean;
     base?: string;
@@ -106,6 +107,17 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
             `${LUPA_HEADLESS_ARGS_ENV}.out must be a string, null, or undefined`
         );
     }
+    const deadlineAtRaw = o.deadlineAt;
+    if (
+        deadlineAtRaw !== undefined &&
+        (typeof deadlineAtRaw !== 'number' ||
+            !Number.isFinite(deadlineAtRaw) ||
+            deadlineAtRaw <= 0)
+    ) {
+        throw new Error(
+            `${LUPA_HEADLESS_ARGS_ENV}.deadlineAt must be a finite positive number or undefined`
+        );
+    }
     const silentRaw = o.silent;
     if (silentRaw !== undefined && typeof silentRaw !== 'boolean') {
         throw new Error(
@@ -125,6 +137,8 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
             model: requireString('model'),
             payload,
             timeoutMs: requirePositiveNumber('timeoutMs'),
+            deadlineAt:
+                typeof deadlineAtRaw === 'number' ? deadlineAtRaw : undefined,
             out: typeof outRaw === 'string' ? outRaw : null,
             silent: silentRaw === true,
         };
@@ -138,6 +152,8 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
         model: requireString('model'),
         seed: typeof seedRaw === 'number' ? seedRaw : 0,
         timeoutMs: requirePositiveNumber('timeoutMs'),
+        deadlineAt:
+            typeof deadlineAtRaw === 'number' ? deadlineAtRaw : undefined,
         out: typeof outRaw === 'string' ? outRaw : null,
         silent: silentRaw === true,
     };
@@ -328,7 +344,8 @@ export async function runHeadlessFromEnv(
         }
         const args = validateHeadlessArgs(JSON.parse(rawArgs));
         const requestedIdentifier = normalizeModelIdentifier(args.model);
-        const deadlineAt = createHeadlessDeadline(args.timeoutMs);
+        const deadlineAt =
+            args.deadlineAt ?? createHeadlessDeadline(args.timeoutMs);
 
         const cts = new vscode.CancellationTokenSource();
         const timeoutHandle =

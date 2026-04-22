@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import * as fs from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { mockedSpawn } = vi.hoisted(() => ({ mockedSpawn: vi.fn() }));
 
@@ -8,6 +9,7 @@ vi.mock('node:child_process', () => ({
 
 import { matchFindings } from '../../eval/harness/matcher';
 import { classifyResolutionForRun } from '../../eval/harness/resolutionClassifier';
+import { invokeResolutionJudge } from '../../eval/harness/runnerInvoker';
 import type { ExpectedFinding, MatchResult } from '../../eval/harness/types';
 import type { RecordedFinding } from '../../types/findingTypes';
 
@@ -283,6 +285,47 @@ describe('classifyResolutionForRun', () => {
         mockedSpawn.mockReset();
     });
 
+    it('forwards the absolute deadline to the resolution-judge launcher', async () => {
+        const deadlineAt = Date.now() + 123_456;
+        let spawnedArgs: readonly string[] = [];
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                spawnedArgs = args;
+                const outIndex = args.indexOf('--out');
+                const outPath = args[outIndex + 1];
+                fs.writeFileSync(
+                    outPath,
+                    JSON.stringify({
+                        verdict: 'unresolved',
+                        reason: 'Touched code still leaves the finding unresolved.',
+                        modelId: 'gpt-5-mini',
+                    })
+                );
+                return createMockLauncherProcess(0);
+            }
+        );
+
+        const result = await invokeResolutionJudge({
+            workspaceRoot: '/tmp/workspace',
+            model: 'copilot/gpt-5-mini',
+            payload: {
+                finding: makeProduced(),
+                diffText: 'diff --git a/src/a.ts b/src/a.ts',
+            },
+            timeoutMs: 60_000,
+            deadlineAt,
+        });
+
+        expect(result.result).toMatchObject({
+            verdict: 'unresolved',
+            modelId: 'gpt-5-mini',
+        });
+        expect(spawnedArgs).toContain('--deadline-at');
+        expect(spawnedArgs[spawnedArgs.indexOf('--deadline-at') + 1]).toBe(
+            String(deadlineAt)
+        );
+    });
+
     it('treats matched synthetic findings as resolved by default and respects overrides', async () => {
         const resolvedFinding = makeProduced({ id: 'resolved' });
         const overriddenFinding = makeProduced({
@@ -418,7 +461,7 @@ index 1234567..89abcde 100644
         });
     });
 
-    it('surfaces ambiguous real-fixture judge failures as run-level resolution failures', async () => {
+    it('skips ambiguous real-fixture findings when the auxiliary judge is unavailable', async () => {
         mockedSpawn.mockImplementation(() =>
             createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
 index 1234567..89abcde 100644
@@ -430,20 +473,93 @@ index 1234567..89abcde 100644
 `)
         );
 
-        await expect(
-            classifyResolutionForRun({
-                fixture: makeRealFixture(),
-                produced: [makeProduced({ id: 'judge-failure' })],
-                match: emptyMatch(),
-                judgeClient: {
-                    judge: vi
-                        .fn()
-                        .mockRejectedValue(new Error('judge unavailable')),
-                },
-            })
-        ).rejects.toThrow(
-            /Auxiliary judge failed for finding 'judge-failure': judge unavailable/
+        const summary = await classifyResolutionForRun({
+            fixture: makeRealFixture(),
+            produced: [makeProduced({ id: 'judge-unavailable' })],
+            match: emptyMatch(),
+        });
+
+        expect(summary.total).toBe(0);
+        expect(summary.attempted).toBe(1);
+        expect(summary.skipped).toBe(1);
+        expect(summary.findings).toEqual([]);
+        expect(summary.warnings).toEqual([
+            expect.objectContaining({
+                findingId: 'judge-unavailable',
+                kind: 'judge-unavailable',
+                path: 'src/a.ts',
+            }),
+        ]);
+        expect(Number.isNaN(summary.resolutionRate)).toBe(true);
+    });
+
+    it('preserves classified findings when one ambiguous judge call fails', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                const gitPath = args[3];
+                if (gitPath === 'src/resolved.ts') {
+                    return createMockGitDiffProcess(`diff --git a/src/resolved.ts b/src/resolved.ts
+index 1234567..89abcde 100644
+--- a/src/resolved.ts
++++ b/src/resolved.ts
+@@ -10,1 +10,2 @@
+-dangerous();
++safe();
++return;
+`);
+                }
+
+                return createMockGitDiffProcess(`diff --git a/src/ambiguous.ts b/src/ambiguous.ts
+index 1234567..89abcde 100644
+--- a/src/ambiguous.ts
++++ b/src/ambiguous.ts
+@@ -29,0 +30,2 @@
++if (!value) {
++}
+`);
+            }
         );
+
+        const summary = await classifyResolutionForRun({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'resolved',
+                    file: 'src/resolved.ts',
+                    lineRange: [10, 10],
+                }),
+                makeProduced({
+                    id: 'judge-failure',
+                    file: 'src/ambiguous.ts',
+                    lineRange: [30, 30],
+                }),
+            ],
+            match: emptyMatch(),
+            judgeClient: {
+                judge: vi
+                    .fn()
+                    .mockRejectedValue(new Error('judge unavailable')),
+            },
+        });
+
+        expect(summary.attempted).toBe(2);
+        expect(summary.total).toBe(1);
+        expect(summary.resolved).toBe(1);
+        expect(summary.skipped).toBe(1);
+        expect(summary.findings).toEqual([
+            expect.objectContaining({
+                findingId: 'resolved',
+                verdict: 'resolved',
+                method: 'line-range-fallback',
+            }),
+        ]);
+        expect(summary.warnings).toEqual([
+            expect.objectContaining({
+                findingId: 'judge-failure',
+                kind: 'judge-failed',
+            }),
+        ]);
+        expect(summary.resolutionRate).toBeCloseTo(1, 3);
     });
 
     it('clears the git diff timeout once the child process settles', async () => {
@@ -525,6 +641,19 @@ function createMockGitDiffProcess(stdoutText: string) {
             proc.stdout.emit('data', Buffer.from(stdoutText));
         }
         proc.emit('close', 0);
+    });
+    return proc;
+}
+
+function createMockLauncherProcess(exitCode: number) {
+    const proc = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+    };
+    proc.stdout = new EventEmitter();
+    proc.stderr = new EventEmitter();
+    queueMicrotask(() => {
+        proc.emit('exit', exitCode);
     });
     return proc;
 }

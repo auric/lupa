@@ -88,6 +88,11 @@ const MIN_EVAL_TIMEOUT_MS = 10_000;
 const MIN_AUXILIARY_JUDGE_TIMEOUT_MS = 10_000;
 const MAX_AUXILIARY_JUDGE_TIMEOUT_MS = 120_000;
 
+interface AuxiliaryJudgeBudget {
+    timeoutMs: number;
+    deadlineAt: number;
+}
+
 function parseArgs(argv: readonly string[]): ParsedArgs {
     const out: ParsedArgs = {
         models: [...DEFAULT_MODELS],
@@ -418,8 +423,8 @@ async function main(): Promise<number> {
                             match: single.match,
                             judgeClient: {
                                 judge: async (payload) => {
-                                    const remainingTimeoutMs =
-                                        getRemainingAuxiliaryJudgeTimeoutMs(
+                                    const judgeBudget =
+                                        createAuxiliaryJudgeBudget(
                                             cellStartedAt,
                                             args.timeoutMs
                                         );
@@ -427,12 +432,22 @@ async function main(): Promise<number> {
                                         workspaceRoot: fixture.workspaceRoot,
                                         model: args.auxModel,
                                         payload,
-                                        timeoutMs: remainingTimeoutMs,
+                                        timeoutMs: judgeBudget.timeoutMs,
+                                        deadlineAt: judgeBudget.deadlineAt,
                                     });
                                     return judged.result;
                                 },
                             },
                         });
+                        if (
+                            single.resolution.warnings.length > 0 &&
+                            !args.silent
+                        ) {
+                            process.stderr.write(
+                                `[eval] warn  ${progress} — resolution proxy skipped ` +
+                                    `${single.resolution.skipped}/${single.resolution.attempted} findings due to auxiliary judge infrastructure\n`
+                            );
+                        }
                     } catch (error) {
                         const message =
                             error instanceof Error
@@ -488,18 +503,26 @@ async function main(): Promise<number> {
     return 0;
 }
 
-function getRemainingAuxiliaryJudgeTimeoutMs(
+function createAuxiliaryJudgeBudget(
     cellStartedAt: number,
     totalTimeoutMs: number
-): number {
-    const elapsedMs = Date.now() - cellStartedAt;
-    const remainingMs = totalTimeoutMs - elapsedMs;
+): AuxiliaryJudgeBudget {
+    const now = Date.now();
+    const cellDeadlineAt = cellStartedAt + totalTimeoutMs;
+    const judgeDeadlineAt = Math.min(
+        cellDeadlineAt,
+        now + MAX_AUXILIARY_JUDGE_TIMEOUT_MS
+    );
+    const remainingMs = judgeDeadlineAt - now;
     if (remainingMs < MIN_AUXILIARY_JUDGE_TIMEOUT_MS) {
         throw new Error(
             `Remaining eval timeout budget (${remainingMs}ms) is below the auxiliary judge minimum of ${MIN_AUXILIARY_JUDGE_TIMEOUT_MS}ms`
         );
     }
-    return Math.min(remainingMs, MAX_AUXILIARY_JUDGE_TIMEOUT_MS);
+    return {
+        timeoutMs: remainingMs,
+        deadlineAt: judgeDeadlineAt,
+    };
 }
 
 main()

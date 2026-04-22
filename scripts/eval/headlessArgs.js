@@ -16,7 +16,7 @@ const USAGE =
     'Usage: --workspace <path> --model <vendor/id> ' +
     '[--mode analysis --base <ref> --head <ref> --seed <n>] ' +
     '[--mode resolution-judge --payload <jsonPath>] ' +
-    '[--timeout <ms>] [--out <jsonPath>] [--silent]';
+    '[--timeout <ms>] [--deadline-at <unixMs>] [--out <jsonPath>] [--silent]';
 
 /**
  * Parse argv tokens into a typed options object.
@@ -24,7 +24,7 @@ const USAGE =
  * @param {string[]} argv Raw argument tokens (excluding node/script).
  * @returns {{mode:'analysis'|'resolution-judge', workspace:string, model:string,
  *   base?:string, head?:string, seed?:number, payload?:string,
- *   timeoutMs:number, out:string|null, silent:boolean}}
+ *   timeoutMs:number, deadlineAt:number|null, out:string|null, silent:boolean}}
  */
 function parseHeadlessArgs(argv) {
     const opts = {
@@ -36,6 +36,7 @@ function parseHeadlessArgs(argv) {
         seed: DEFAULT_SEED,
         payload: null,
         timeoutMs: DEFAULT_TIMEOUT_MS,
+        deadlineAt: null,
         out: null,
         silent: false,
     };
@@ -66,6 +67,12 @@ function parseHeadlessArgs(argv) {
                 break;
             case '--timeout':
                 opts.timeoutMs = parseIntFlag(
+                    requireValue(argv, ++i, token),
+                    token
+                );
+                break;
+            case '--deadline-at':
+                opts.deadlineAt = parseIntFlag(
                     requireValue(argv, ++i, token),
                     token
                 );

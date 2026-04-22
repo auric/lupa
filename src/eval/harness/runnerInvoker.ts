@@ -36,6 +36,7 @@ export interface InvokeResolutionJudgeOptions {
     model: string;
     payload: ResolutionJudgePayload;
     timeoutMs: number;
+    deadlineAt?: number;
 }
 
 export interface InvokeResolutionJudgeResult {
@@ -264,6 +265,9 @@ export async function invokeResolutionJudge(
             payloadPath,
             '--timeout',
             String(opts.timeoutMs),
+            ...(opts.deadlineAt !== undefined
+                ? ['--deadline-at', String(opts.deadlineAt)]
+                : []),
             '--out',
             outPath,
             '--silent',
@@ -275,8 +279,11 @@ export async function invokeResolutionJudge(
         child.stdout?.on('data', (d) => (stdout += d.toString()));
         child.stderr?.on('data', (d) => (stderr += d.toString()));
 
-        const watchdogMs =
-            opts.timeoutMs + LAUNCHER_HEADROOM_MS + HARNESS_HEADROOM_MS;
+        const watchdogMs = getResolutionJudgeWatchdogMs(
+            opts.timeoutMs,
+            opts.deadlineAt,
+            startedAt
+        );
         let watchdogFired = false;
         watchdog = setTimeout(() => {
             watchdogFired = true;
@@ -328,6 +335,24 @@ export async function invokeResolutionJudge(
             );
         });
     }
+}
+
+function getResolutionJudgeWatchdogMs(
+    timeoutMs: number,
+    deadlineAt: number | undefined,
+    startedAt: number
+): number {
+    if (deadlineAt !== undefined) {
+        const remainingMs = deadlineAt - startedAt;
+        if (remainingMs <= 0) {
+            throw new Error(
+                'Resolution judge deadline elapsed before the launcher started.'
+            );
+        }
+        return remainingMs;
+    }
+
+    return timeoutMs + LAUNCHER_HEADROOM_MS + HARNESS_HEADROOM_MS;
 }
 
 function tailStderr(stderr: string, stdout: string): string {

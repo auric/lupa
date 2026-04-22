@@ -12,6 +12,7 @@ import type {
     ResolutionJudgeResult,
     ResolutionMethod,
     ResolutionSummary,
+    ResolutionWarning,
 } from './types';
 
 const GIT_DIFF_TIMEOUT_MS = 15_000;
@@ -35,6 +36,10 @@ interface LineCheckResult {
     path: string;
 }
 
+type ClassificationOutcome =
+    | { kind: 'classified'; resolution: FindingResolution }
+    | { kind: 'warning'; warning: ResolutionWarning };
+
 export async function classifyResolutionForRun(
     opts: ClassifyResolutionOptions
 ): Promise<ResolutionSummary> {
@@ -45,6 +50,7 @@ export async function classifyResolutionForRun(
 
     const pathDiffCache = new Map<string, string>();
     const findingResolutions: FindingResolution[] = [];
+    const warnings: ResolutionWarning[] = [];
     for (const finding of opts.produced) {
         const matchedExpected = matchedExpectedByFindingId.get(finding.id);
         if (opts.fixture.kind === 'synthetic') {
@@ -54,18 +60,25 @@ export async function classifyResolutionForRun(
             continue;
         }
 
-        findingResolutions.push(
-            await classifyRealFinding(
-                opts.fixture,
-                finding,
-                matchedExpected,
-                pathDiffCache,
-                opts.judgeClient
-            )
+        const outcome = await classifyRealFinding(
+            opts.fixture,
+            finding,
+            matchedExpected,
+            pathDiffCache,
+            opts.judgeClient
         );
+        if (outcome.kind === 'classified') {
+            findingResolutions.push(outcome.resolution);
+        } else {
+            warnings.push(outcome.warning);
+        }
     }
 
-    return summarizeResolution(findingResolutions);
+    return summarizeResolution(
+        findingResolutions,
+        opts.produced.length,
+        warnings
+    );
 }
 
 function classifySyntheticFinding(
@@ -108,18 +121,21 @@ async function classifyRealFinding(
     matchedExpected: ExpectedFinding | undefined,
     pathDiffCache: Map<string, string>,
     judgeClient: ResolutionJudgeClient | undefined
-): Promise<FindingResolution> {
+): Promise<ClassificationOutcome> {
     if (matchedExpected?.resolvedByDefault !== undefined) {
         return {
-            findingId: finding.id,
-            severity: finding.severity,
-            verdict: matchedExpected.resolvedByDefault
-                ? 'resolved'
-                : 'unresolved',
-            method: 'label-override',
-            path: normalizePath(finding.file),
-            matchedLabelPath: normalizePath(matchedExpected.path),
-            reason: `Fixture label override forced verdict=${matchedExpected.resolvedByDefault ? 'resolved' : 'unresolved'}.`,
+            kind: 'classified',
+            resolution: {
+                findingId: finding.id,
+                severity: finding.severity,
+                verdict: matchedExpected.resolvedByDefault
+                    ? 'resolved'
+                    : 'unresolved',
+                method: 'label-override',
+                path: normalizePath(finding.file),
+                matchedLabelPath: normalizePath(matchedExpected.path),
+                reason: `Fixture label override forced verdict=${matchedExpected.resolvedByDefault ? 'resolved' : 'unresolved'}.`,
+            },
         };
     }
 
@@ -138,31 +154,31 @@ async function classifyRealFinding(
         lineCheck.verdict === 'unresolved'
     ) {
         return {
-            findingId: finding.id,
-            severity: finding.severity,
-            verdict: lineCheck.verdict,
-            method: lineCheck.method,
-            path: lineCheck.path,
-            matchedLabelPath: matchedExpected
-                ? normalizePath(matchedExpected.path)
-                : undefined,
-            reason: lineCheck.reason,
+            kind: 'classified',
+            resolution: {
+                findingId: finding.id,
+                severity: finding.severity,
+                verdict: lineCheck.verdict,
+                method: lineCheck.method,
+                path: lineCheck.path,
+                matchedLabelPath: matchedExpected
+                    ? normalizePath(matchedExpected.path)
+                    : undefined,
+                reason: lineCheck.reason,
+            },
         };
     }
 
     if (!judgeClient) {
         return {
-            findingId: finding.id,
-            severity: finding.severity,
-            verdict: 'disputed',
-            method: 'judge-unavailable',
-            path: lineCheck.path,
-            matchedLabelPath: matchedExpected
-                ? normalizePath(matchedExpected.path)
-                : undefined,
-            reason:
+            kind: 'warning',
+            warning: createResolutionWarning(
+                finding,
+                lineCheck.path,
+                'judge-unavailable',
                 lineCheck.reason +
-                ' Auxiliary judge unavailable, conservatively marking disputed.',
+                    ' Auxiliary judge unavailable, excluding this finding from semantic resolution metrics.'
+            ),
         };
     }
 
@@ -172,23 +188,47 @@ async function classifyRealFinding(
             diffText: lineCheck.diffText,
         });
         return {
-            findingId: finding.id,
-            severity: finding.severity,
-            verdict: judged.verdict,
-            method: 'judge',
-            path: lineCheck.path,
-            matchedLabelPath: matchedExpected
-                ? normalizePath(matchedExpected.path)
-                : undefined,
-            judgeModelId: judged.modelId,
-            reason: judged.reason,
+            kind: 'classified',
+            resolution: {
+                findingId: finding.id,
+                severity: finding.severity,
+                verdict: judged.verdict,
+                method: 'judge',
+                path: lineCheck.path,
+                matchedLabelPath: matchedExpected
+                    ? normalizePath(matchedExpected.path)
+                    : undefined,
+                judgeModelId: judged.modelId,
+                reason: judged.reason,
+            },
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(
-            `${lineCheck.reason} Auxiliary judge failed for finding '${finding.id}': ${message}.`
-        );
+        return {
+            kind: 'warning',
+            warning: createResolutionWarning(
+                finding,
+                lineCheck.path,
+                'judge-failed',
+                `${lineCheck.reason} Auxiliary judge failed for finding '${finding.id}': ${message}. Excluding this finding from semantic resolution metrics.`
+            ),
+        };
     }
+}
+
+function createResolutionWarning(
+    finding: RecordedFinding,
+    path: string,
+    kind: ResolutionWarning['kind'],
+    message: string
+): ResolutionWarning {
+    return {
+        findingId: finding.id,
+        severity: finding.severity,
+        kind,
+        path,
+        message,
+    };
 }
 
 async function checkRealFindingPaths(
@@ -667,7 +707,9 @@ function findMatchingDiffFile(
 }
 
 function summarizeResolution(
-    findings: readonly FindingResolution[]
+    findings: readonly FindingResolution[],
+    attempted: number,
+    warnings: readonly ResolutionWarning[]
 ): ResolutionSummary {
     const bySeverity: ResolutionSummary['bySeverity'] = {};
     let resolved = 0;
@@ -702,6 +744,8 @@ function summarizeResolution(
 
     const total = findings.length;
     return {
+        attempted,
+        skipped: warnings.length,
         total,
         resolved,
         unresolved,
@@ -710,6 +754,7 @@ function summarizeResolution(
         resolutionRate: total === 0 ? Number.NaN : resolved / total,
         bySeverity,
         findings: [...findings],
+        warnings: [...warnings],
     };
 }
 

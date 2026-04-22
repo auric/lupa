@@ -270,12 +270,14 @@ describe('runHeadlessFromEnv', () => {
     });
 
     it('runs resolution-judge mode and writes a successful result JSON', async () => {
+        const deadlineAt = Date.now() + 54_321;
         const args = {
             mode: 'resolution-judge',
             workspace: '/ws',
             model: 'copilot/gpt-5-mini',
             payload: path.join(tmpDir, 'payload.json'),
             timeoutMs: 60_000,
+            deadlineAt,
             out: outPath,
             silent: true,
         };
@@ -322,6 +324,13 @@ describe('runHeadlessFromEnv', () => {
             modelId: 'gpt-5-mini',
         });
         expect(runHeadlessResolutionJudge).toHaveBeenCalledTimes(1);
+        expect(runHeadlessResolutionJudge).toHaveBeenCalledWith(
+            expect.objectContaining({
+                deadlineAt,
+                payloadPath: args.payload,
+            }),
+            expect.anything()
+        );
     });
 
     it('writes a failing sentinel when resolution-judge mode throws', async () => {

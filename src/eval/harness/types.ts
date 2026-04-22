@@ -66,6 +66,14 @@ export interface FindingResolution {
     judgeModelId?: string;
 }
 
+export interface ResolutionWarning {
+    findingId: string;
+    severity: FindingSeverity;
+    kind: 'judge-unavailable' | 'judge-failed';
+    path: string;
+    message: string;
+}
+
 export interface ResolutionBucket {
     total: number;
     resolved: number;
@@ -76,8 +84,11 @@ export interface ResolutionBucket {
 }
 
 export interface ResolutionSummary extends ResolutionBucket {
+    attempted: number;
+    skipped: number;
     bySeverity: Partial<Record<FindingSeverity, ResolutionBucket>>;
     findings: FindingResolution[];
+    warnings: ResolutionWarning[];
 }
 
 export interface ResolutionJudgePayload {
@@ -85,7 +96,11 @@ export interface ResolutionJudgePayload {
     diffText: string;
 }
 
-export type ResolutionJudgeVerdict = 'resolved' | 'disputed' | 'noise';
+export type ResolutionJudgeVerdict =
+    | 'resolved'
+    | 'unresolved'
+    | 'disputed'
+    | 'noise';
 
 export interface ResolutionJudgeResult {
     verdict: ResolutionJudgeVerdict;

@@ -18,7 +18,7 @@
  *     --workspace <path> --model <vendor/id> \
  *     [--mode analysis --base <ref> --head <ref> --seed <n>] \
  *     [--mode resolution-judge --payload <jsonPath>] \
- *     [--timeout <ms>] [--out <jsonPath>] [--silent]
+ *     [--timeout <ms>] [--deadline-at <unixMs>] [--out <jsonPath>] [--silent]
  *
  * First-time setup: run `npm run headless:setup` to provision the profile
  * and sign in to Copilot. On the first real run, an "Allow Lupa to use
@@ -158,7 +158,7 @@ async function main() {
         });
     }
 
-    const watchdogMs = args.timeoutMs + WATCHDOG_OVERHEAD_MS;
+    const watchdogMs = getLauncherWatchdogMs(args);
     const watchdog = setTimeout(() => {
         process.stderr.write(
             `Watchdog: VS Code did not exit within ${watchdogMs}ms; killing process tree.\n`
@@ -176,6 +176,14 @@ async function main() {
     clearTimeout(watchdog);
 
     process.exit(readSentinelExitCode(childExitCode));
+}
+
+function getLauncherWatchdogMs(args) {
+    if (typeof args.deadlineAt === 'number') {
+        return Math.max(0, args.deadlineAt - Date.now());
+    }
+
+    return args.timeoutMs + WATCHDOG_OVERHEAD_MS;
 }
 
 /**

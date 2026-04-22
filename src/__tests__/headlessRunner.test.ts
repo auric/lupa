@@ -116,12 +116,15 @@ describe('parseHeadlessArgs', () => {
             'copilot/gpt-5-mini',
             '--payload',
             '/tmp/payload.json',
+            '--deadline-at',
+            '123456',
         ]);
         expect(args).toMatchObject({
             mode: 'resolution-judge',
             workspace: '/w',
             model: 'copilot/gpt-5-mini',
             payload: '/tmp/payload.json',
+            deadlineAt: 123456,
         });
         expect(args).not.toHaveProperty('base', '/w');
     });
@@ -506,7 +509,7 @@ describe('runHeadlessResolutionJudge', () => {
         );
     });
 
-    it('returns an informative reason when the auxiliary judge emits only a bare verdict', async () => {
+    it('returns an informative reason when the auxiliary judge emits only a bare unresolved verdict', async () => {
         const payloadPath = writePayloadFile();
         const tokenSource = new vscode.CancellationTokenSource();
         const services = makeServices({
@@ -519,7 +522,7 @@ describe('runHeadlessResolutionJudge', () => {
             },
         });
         vi.mocked(ModelRequestHandler.sendRequest).mockResolvedValue({
-            content: 'resolved',
+            content: 'unresolved',
         } as never);
 
         try {
@@ -534,7 +537,8 @@ describe('runHeadlessResolutionJudge', () => {
                 services
             );
 
-            expect(result.reason).toContain("bare verdict 'resolved'");
+            expect(result.verdict).toBe('unresolved');
+            expect(result.reason).toContain("bare verdict 'unresolved'");
         } finally {
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,

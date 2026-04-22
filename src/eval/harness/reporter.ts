@@ -85,7 +85,10 @@ function renderMarkdown(stamp: string, report: HarnessReport): string {
         '_Severity-specific rows include only runs that produced at least one finding in that severity._'
     );
     lines.push(
-        '_Runs where resolution classification failed are excluded from resolution-proxy aggregates and listed in the “Resolution proxy warnings” section below._'
+        '_Ambiguous findings skipped because auxiliary judging was unavailable or failed are excluded from resolution-proxy aggregates and listed in the “Resolution proxy warnings” section below._'
+    );
+    lines.push(
+        '_Runs where resolution classification failed before producing any summary are also excluded from resolution-proxy aggregates and listed in the same warnings section._'
     );
     lines.push('');
     lines.push('## Resolution proxy by severity (all fixtures)');
@@ -140,19 +143,34 @@ function renderMarkdown(stamp: string, report: HarnessReport): string {
     lines.push('');
     lines.push('## Resolution proxy warnings');
     lines.push('');
-    const resolutionWarnings = report.rawRuns.filter(
+    const runLevelResolutionWarnings = report.rawRuns.filter(
         (r) => r.ok && r.resolution === null && Boolean(r.errorMessage)
     );
-    if (resolutionWarnings.length === 0) {
+    const partialResolutionWarnings = report.rawRuns.flatMap((run) =>
+        run.ok && run.resolution
+            ? run.resolution.warnings.map((warning) => ({ run, warning }))
+            : []
+    );
+    if (
+        runLevelResolutionWarnings.length === 0 &&
+        partialResolutionWarnings.length === 0
+    ) {
         lines.push('(none)');
     } else {
-        for (const warning of resolutionWarnings) {
+        for (const warning of runLevelResolutionWarnings) {
             const msg = (warning.errorMessage ?? '').slice(
                 0,
                 ERROR_MESSAGE_TRUNCATE
             );
             lines.push(
                 `- ${warning.kind}/${warning.fixture} × ${warning.model} × seed=${warning.seed}: ${msg}`
+            );
+        }
+        for (const { run, warning } of partialResolutionWarnings) {
+            const msg = warning.message.slice(0, ERROR_MESSAGE_TRUNCATE);
+            lines.push(
+                `- ${run.kind}/${run.fixture} × ${run.model} × seed=${run.seed}: ` +
+                    `skipped finding ${warning.findingId} (${warning.kind}, ${warning.path}) — ${msg}`
             );
         }
     }
