@@ -1272,6 +1272,53 @@ index 1234567..89abcde 100644
         expect(Number.isNaN(summary.resolutionRate)).toBe(true);
     });
 
+    it('treats mixed valid and invalid sources as inconclusive when the valid ranges do not overlap a touched hunk', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+index 1234567..89abcde 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -30,1 +30,1 @@
+-legacy();
++replacement();
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'mixed-invalid-sources',
+                    sources: [
+                        { path: 'src/a.ts', lineStart: 10, lineEnd: 10 },
+                        { path: 'src/a.ts', lineStart: 0, lineEnd: 0 },
+                    ],
+                }),
+            ],
+            match: emptyMatch(),
+        });
+
+        expect(summary.total).toBe(0);
+        expect(summary.skipped).toBe(1);
+        expect(summary.warnings).toEqual([
+            expect.objectContaining({
+                findingId: 'mixed-invalid-sources',
+                kind: 'judge-unavailable',
+                message: expect.stringContaining(
+                    'At least one cited source range was invalid'
+                ),
+            }),
+        ]);
+    });
+
     it('preserves classified findings when one ambiguous judge call fails', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
@@ -1352,21 +1399,24 @@ index 1234567..89abcde 100644
         ).toBe(true);
     });
 
-    it('marks a deletion-only overlap as ambiguous only when a pure rename/move is detected', async () => {
+    it('marks an old-path deletion-only diff as ambiguous only when a pure rename/move is detected for that diff target', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
                 if (args.includes('--name-only')) {
-                    return createMockGitDiffProcess('src/a.ts\n');
+                    return createMockGitDiffProcess('src/moved/a.ts\n');
                 }
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess(
                         'R100\tsrc/a.ts\tsrc/moved/a.ts\n'
                     );
                 }
-                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/moved/a.ts
-similarity index 100%
-rename from src/a.ts
-rename to src/moved/a.ts
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+deleted file mode 100644
+index 1234567..0000000
+--- a/src/a.ts
++++ /dev/null
+@@ -10,1 +0,0 @@
+-dangerous();
 `);
             }
         );
@@ -1391,12 +1441,14 @@ rename to src/moved/a.ts
         });
     });
 
-    it('requires an exact or uniquely resolvable rename match before treating a finding as rename-only ambiguous', async () => {
+    it('uses the actual resolved diff target path for rename-only ambiguity detection', async () => {
         const judge = vi.fn();
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
                 if (args.includes('--name-only')) {
-                    return createMockGitDiffProcess('src/a.ts\n');
+                    return createMockGitDiffProcess(
+                        'packages/feature/src/a.ts\n'
+                    );
                 }
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess(
@@ -1406,14 +1458,14 @@ rename to src/moved/a.ts
                 }
 
                 const gitPath = args[3];
-                if (gitPath !== 'src/a.ts') {
+                if (gitPath !== 'packages/feature/src/a.ts') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }
 
-                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+                return createMockGitDiffProcess(`diff --git a/packages/feature/src/a.ts b/packages/feature/src/a.ts
 index 1234567..89abcde 100644
---- a/src/a.ts
-+++ b/src/a.ts
+--- a/packages/feature/src/a.ts
++++ b/packages/feature/src/a.ts
 @@ -10,1 +10,2 @@
 -dangerous();
 +safe();
@@ -1426,7 +1478,7 @@ index 1234567..89abcde 100644
             fixture: makeRealFixture(),
             produced: [
                 makeProduced({
-                    id: 'non-unique-rename-suffix',
+                    id: 'resolved-diff-target-rename-check',
                     file: 'src/a.ts',
                     lineRange: [10, 10],
                 }),
@@ -1437,7 +1489,7 @@ index 1234567..89abcde 100644
 
         expect(judge).not.toHaveBeenCalled();
         expect(summary.findings[0]).toMatchObject({
-            findingId: 'non-unique-rename-suffix',
+            findingId: 'resolved-diff-target-rename-check',
             verdict: 'resolved',
             method: 'line-range-fallback',
             path: 'src/a.ts',

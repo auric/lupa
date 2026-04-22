@@ -54,6 +54,12 @@ interface ResolvedDiffTarget {
 interface ComparableSources {
     sources: FindingSource[];
     usedFallback: boolean;
+    hadInvalidSources: boolean;
+}
+
+interface DiffLookupResult {
+    diffText: string;
+    renameCheckPath: string | undefined;
 }
 
 type ClassificationOutcome =
@@ -194,6 +200,7 @@ async function classifyRealFinding(
         fixture,
         comparable.sources,
         comparable.usedFallback,
+        comparable.hadInvalidSources,
         pathDiffCache,
         renameStatusCache,
         changedPathsCache,
@@ -326,6 +333,7 @@ async function checkRealFindingPaths(
     fixture: LoadedFixture,
     sources: readonly FindingSource[],
     usedFallback: boolean,
+    hadInvalidSources: boolean,
     cache: Map<string, string>,
     renameStatusCache: Map<string, readonly RenameStatusEntry[]>,
     changedPathsCache: Map<string, readonly string[]>,
@@ -338,7 +346,7 @@ async function checkRealFindingPaths(
     const touchedWithoutOverlap: string[] = [];
 
     for (const [findingPath, pathSources] of sourcesByPath.entries()) {
-        const diffText = await getDiffForPath(
+        const diffLookup = await getDiffForPath(
             fixture,
             findingPath,
             cache,
@@ -349,7 +357,7 @@ async function checkRealFindingPaths(
         if (
             await pathHasPureRenameOrMove(
                 fixture,
-                findingPath,
+                diffLookup.renameCheckPath,
                 renameStatusCache,
                 timeoutMs,
                 deadlineAt
@@ -360,7 +368,7 @@ async function checkRealFindingPaths(
                 method: usedFallback ? 'line-range-fallback' : 'source-overlap',
                 path: findingPath,
                 reason: `The follow-up change for ${findingPath} appears to be a pure rename or move without a semantic edit, so the proxy is ambiguous.`,
-                diffText,
+                diffText: diffLookup.diffText,
             });
             continue;
         }
@@ -368,7 +376,8 @@ async function checkRealFindingPaths(
             findingPath,
             pathSources,
             usedFallback,
-            diffText
+            diffLookup.diffText,
+            hadInvalidSources
         );
         if (lineCheck.verdict === 'resolved') {
             return lineCheck;
@@ -377,7 +386,7 @@ async function checkRealFindingPaths(
             ambiguousResults.push(lineCheck);
             continue;
         }
-        if (diffText.trim()) {
+        if (diffLookup.diffText.trim()) {
             touchedWithoutOverlap.push(findingPath);
         }
     }
@@ -433,10 +442,14 @@ function getComparableSources(
             lineEnd: source.lineEnd,
         }))
         .filter(isComparableSource);
+    const hadInvalidSources =
+        (finding.sources?.length ?? 0) > normalizedSources.length &&
+        normalizedSources.length > 0;
     if (normalizedSources.length > 0) {
         return {
             sources: normalizedSources,
             usedFallback: false,
+            hadInvalidSources,
         };
     }
 
@@ -449,6 +462,7 @@ function getComparableSources(
             },
         ],
         usedFallback: true,
+        hadInvalidSources: false,
     };
 }
 
@@ -484,7 +498,8 @@ function checkLineOverlap(
     findingPath: string,
     sources: readonly FindingSource[],
     usedFallback: boolean,
-    diffText: string
+    diffText: string,
+    hadInvalidSources: boolean
 ): LineCheckResult {
     if (!diffText.trim()) {
         return {
@@ -508,7 +523,7 @@ function checkLineOverlap(
         };
     }
 
-    let hadInvalidSource = false;
+    let hadInvalidSource = hadInvalidSources;
     const validSources = sources.filter((source) => {
         if (isValidSource(source)) {
             return true;
@@ -690,11 +705,14 @@ async function getDiffForPath(
     changedPathsCache: Map<string, readonly string[]>,
     timeoutMs: number,
     deadlineAt: number | undefined
-): Promise<string> {
+): Promise<DiffLookupResult> {
     if (!fixture.mergeRef) {
         const cacheKey = `${fixture.headRef}::${fixture.mergeRef ?? 'none'}::${normalizedPath}`;
         cache.set(cacheKey, '');
-        return '';
+        return {
+            diffText: '',
+            renameCheckPath: undefined,
+        };
     }
 
     const diffTarget = await resolveDiffTarget(
@@ -707,7 +725,10 @@ async function getDiffForPath(
     const cacheKey = `${fixture.headRef}::${fixture.mergeRef ?? 'none'}::${diffTarget.cachePath}`;
     const cached = cache.get(cacheKey);
     if (cached !== undefined) {
-        return cached;
+        return {
+            diffText: cached,
+            renameCheckPath: diffTarget.gitPath,
+        };
     }
 
     if (!diffTarget.matchedPath) {
@@ -719,11 +740,17 @@ async function getDiffForPath(
             deadlineAt
         );
         if (fallbackDiff.trim().length > 0) {
-            return fallbackDiff;
+            return {
+                diffText: fallbackDiff,
+                renameCheckPath: normalizePath(normalizedPath),
+            };
         }
 
         cache.set(cacheKey, '');
-        return '';
+        return {
+            diffText: '',
+            renameCheckPath: undefined,
+        };
     }
 
     const diffText = await runGitDiffForPath(
@@ -738,7 +765,10 @@ async function getDiffForPath(
         )
     );
     cache.set(cacheKey, diffText);
-    return diffText;
+    return {
+        diffText,
+        renameCheckPath: diffTarget.gitPath,
+    };
 }
 
 async function getDiffForOriginalPath(
@@ -986,12 +1016,12 @@ function runGitDiffNameOnly(
 
 async function pathHasPureRenameOrMove(
     fixture: LoadedFixture,
-    findingPath: string,
+    diffTargetPath: string | undefined,
     cache: Map<string, readonly RenameStatusEntry[]>,
     timeoutMs: number,
     deadlineAt: number | undefined
 ): Promise<boolean> {
-    if (!fixture.mergeRef) {
+    if (!fixture.mergeRef || !diffTargetPath) {
         return false;
     }
 
@@ -1001,7 +1031,7 @@ async function pathHasPureRenameOrMove(
         timeoutMs,
         deadlineAt
     );
-    return hasResolvableRenameMatch(renameEntries, findingPath);
+    return hasResolvableRenameMatch(renameEntries, diffTargetPath);
 }
 
 async function getPureRenameEntries(
