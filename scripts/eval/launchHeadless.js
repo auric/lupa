@@ -180,7 +180,7 @@ async function main() {
 
 function getLauncherWatchdogMs(args) {
     if (typeof args.deadlineAt === 'number') {
-        return Math.max(0, args.deadlineAt - Date.now());
+        return Math.max(0, args.deadlineAt - Date.now()) + WATCHDOG_OVERHEAD_MS;
     }
 
     return args.timeoutMs + WATCHDOG_OVERHEAD_MS;
@@ -262,8 +262,14 @@ function readSentinelExitCode(childExitCode) {
     return typeof parsed.exitCode === 'number' ? parsed.exitCode : 1;
 }
 
-main().catch((err) => {
-    const msg = err && err.message ? err.message : String(err);
-    process.stderr.write(`Headless launcher crashed: ${msg}\n`);
-    process.exit(1);
-});
+if (require.main === module) {
+    main().catch((err) => {
+        const msg = err && err.message ? err.message : String(err);
+        process.stderr.write(`Headless launcher crashed: ${msg}\n`);
+        process.exit(1);
+    });
+}
+
+module.exports = {
+    getLauncherWatchdogMs,
+};

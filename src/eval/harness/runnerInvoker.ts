@@ -114,7 +114,7 @@ export async function invokeHeadless(
         const durationMs = Date.now() - startedAt;
         const parsed = await tryReadResult(outPath);
 
-        if (exitCode === 0 && parsed.ok) {
+        if (parsed.ok && !watchdogFired) {
             return { ok: true, result: parsed.result, durationMs };
         }
 
@@ -337,7 +337,7 @@ export async function invokeResolutionJudge(
     }
 }
 
-function getResolutionJudgeWatchdogMs(
+export function getResolutionJudgeWatchdogMs(
     timeoutMs: number,
     deadlineAt: number | undefined,
     startedAt: number
@@ -349,7 +349,7 @@ function getResolutionJudgeWatchdogMs(
                 'Resolution judge deadline elapsed before the launcher started.'
             );
         }
-        return remainingMs;
+        return remainingMs + LAUNCHER_HEADROOM_MS + HARNESS_HEADROOM_MS;
     }
 
     return timeoutMs + LAUNCHER_HEADROOM_MS + HARNESS_HEADROOM_MS;

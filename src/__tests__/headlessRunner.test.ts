@@ -100,6 +100,7 @@ describe('parseHeadlessArgs', () => {
             head: 'dev',
             model: 'copilot/gpt-4.1',
             seed: 0,
+            deadlineAt: null,
             silent: false,
             out: null,
         });
@@ -186,6 +187,26 @@ describe('parseHeadlessArgs', () => {
                 '0',
             ])
         ).toThrow(/positive integer/);
+    });
+});
+
+describe('launchHeadless watchdog', () => {
+    it('keeps launcher watchdog headroom beyond an explicit deadline for teardown', async () => {
+        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+
+        try {
+            const { getLauncherWatchdogMs } =
+                await import('../../scripts/eval/launchHeadless.js');
+
+            expect(
+                getLauncherWatchdogMs({
+                    timeoutMs: 60_000,
+                    deadlineAt: 12_500,
+                })
+            ).toBe(62_500);
+        } finally {
+            nowSpy.mockRestore();
+        }
     });
 });
 

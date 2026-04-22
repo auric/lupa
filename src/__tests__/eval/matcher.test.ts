@@ -5,11 +5,16 @@ const { mockedSpawn } = vi.hoisted(() => ({ mockedSpawn: vi.fn() }));
 
 vi.mock('node:child_process', () => ({
     spawn: mockedSpawn,
+    execSync: vi.fn(),
 }));
 
 import { matchFindings } from '../../eval/harness/matcher';
 import { classifyResolutionForRun } from '../../eval/harness/resolutionClassifier';
-import { invokeResolutionJudge } from '../../eval/harness/runnerInvoker';
+import {
+    getResolutionJudgeWatchdogMs,
+    invokeHeadless,
+    invokeResolutionJudge,
+} from '../../eval/harness/runnerInvoker';
 import type { ExpectedFinding, MatchResult } from '../../eval/harness/types';
 import type { RecordedFinding } from '../../types/findingTypes';
 
@@ -326,6 +331,60 @@ describe('classifyResolutionForRun', () => {
         );
     });
 
+    it('gives the resolution-judge harness watchdog cleanup headroom beyond the child deadline', () => {
+        expect(getResolutionJudgeWatchdogMs(60_000, 12_500, 10_000)).toBe(
+            122_500
+        );
+    });
+
+    it('keeps a parsed analysis result when the launcher exits non-zero during teardown', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                const outIndex = args.indexOf('--out');
+                const outPath = args[outIndex + 1];
+                fs.writeFileSync(
+                    outPath,
+                    JSON.stringify({
+                        findings: [],
+                        narrative: 'usable result',
+                        telemetry: {
+                            iterations: 1,
+                            toolCalls: 0,
+                            promptTokens: 0,
+                            completionTokens: 0,
+                            durationMs: 25,
+                            compactionsUsed: 0,
+                        },
+                        rawToolCallLog: [],
+                        modelId: 'gpt-5-mini',
+                        seed: 7,
+                        completed: true,
+                    })
+                );
+                return createMockLauncherProcess(1);
+            }
+        );
+
+        const result = await invokeHeadless({
+            workspaceRoot: '/tmp/workspace',
+            baseRef: 'main',
+            headRef: 'feature/x',
+            model: 'copilot/gpt-5-mini',
+            seed: 7,
+            timeoutMs: 60_000,
+            bailOnError: false,
+        });
+
+        expect(result).toMatchObject({
+            ok: true,
+            result: {
+                narrative: 'usable result',
+                modelId: 'gpt-5-mini',
+                completed: true,
+            },
+        });
+    });
+
     it('treats matched synthetic findings as resolved by default and respects overrides', async () => {
         const resolvedFinding = makeProduced({ id: 'resolved' });
         const overriddenFinding = makeProduced({
@@ -457,6 +516,39 @@ index 1234567..89abcde 100644
         expect(summary.findings[0]).toMatchObject({
             findingId: 'insertion-fix',
             verdict: 'resolved',
+            method: 'judge',
+        });
+    });
+
+    it('treats an overlapping deletion-only hunk as ambiguous even when another hunk in the file adds lines elsewhere', async () => {
+        mockedSpawn.mockImplementation(() =>
+            createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+index 1234567..89abcde 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -10,1 +10,0 @@
+-dangerous();
+@@ -100,0 +100,1 @@
++const unrelated = true;
+`)
+        );
+        const judge = vi.fn().mockResolvedValue({
+            verdict: 'unresolved',
+            reason: 'Only the overlapping hunk removed code; the unrelated addition does not prove a fix.',
+            modelId: 'gpt-5-mini',
+        });
+
+        const summary = await classifyResolutionForRun({
+            fixture: makeRealFixture(),
+            produced: [makeProduced({ id: 'deletion-only-overlap' })],
+            match: emptyMatch(),
+            judgeClient: { judge },
+        });
+
+        expect(judge).toHaveBeenCalledTimes(1);
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'deletion-only-overlap',
+            verdict: 'unresolved',
             method: 'judge',
         });
     });
@@ -645,15 +737,21 @@ function createMockGitDiffProcess(stdoutText: string) {
     return proc;
 }
 
-function createMockLauncherProcess(exitCode: number) {
+function createMockLauncherProcess(exitCode: number, exitDelayMs: number = 0) {
     const proc = new EventEmitter() as EventEmitter & {
         stdout: EventEmitter;
         stderr: EventEmitter;
     };
     proc.stdout = new EventEmitter();
     proc.stderr = new EventEmitter();
-    queueMicrotask(() => {
-        proc.emit('exit', exitCode);
-    });
+    if (exitDelayMs > 0) {
+        setTimeout(() => {
+            proc.emit('exit', exitCode);
+        }, exitDelayMs);
+    } else {
+        queueMicrotask(() => {
+            proc.emit('exit', exitCode);
+        });
+    }
     return proc;
 }

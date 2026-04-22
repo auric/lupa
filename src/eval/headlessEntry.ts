@@ -110,12 +110,13 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
     const deadlineAtRaw = o.deadlineAt;
     if (
         deadlineAtRaw !== undefined &&
+        deadlineAtRaw !== null &&
         (typeof deadlineAtRaw !== 'number' ||
             !Number.isFinite(deadlineAtRaw) ||
             deadlineAtRaw <= 0)
     ) {
         throw new Error(
-            `${LUPA_HEADLESS_ARGS_ENV}.deadlineAt must be a finite positive number or undefined`
+            `${LUPA_HEADLESS_ARGS_ENV}.deadlineAt must be a finite positive number, null, or undefined`
         );
     }
     const silentRaw = o.silent;

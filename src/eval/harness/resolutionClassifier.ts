@@ -363,38 +363,35 @@ function checkLineOverlap(
     }
 
     let hadInvalidSource = false;
-    for (const source of sources) {
-        if (!isValidSource(source)) {
-            hadInvalidSource = true;
-            continue;
+    const validSources = sources.filter((source) => {
+        if (isValidSource(source)) {
+            return true;
         }
-        const overlaps = matchingFile.hunks.some((hunk) =>
+        hadInvalidSource = true;
+        return false;
+    });
+    const overlappingHunks = matchingFile.hunks.filter((hunk) =>
+        validSources.some((source) =>
             sourceOverlapsChangedOldLines(source, hunk)
-        );
-        if (overlaps) {
-            if (
-                matchingFile.hunks.every(
-                    (hunk) => !hunkContainsAnyAdditions(hunk)
-                )
-            ) {
-                return {
-                    verdict: 'ambiguous',
-                    method: usedFallback
-                        ? 'line-range-fallback'
-                        : 'source-overlap',
-                    path: findingPath,
-                    reason: `Cited lines overlapped only deletion-style hunks in ${findingPath}; this can indicate a pure move/rename or a removal-only fix, so the proxy is ambiguous.`,
-                    diffText,
-                };
-            }
+        )
+    );
+    if (overlappingHunks.length > 0) {
+        if (overlappingHunks.every((hunk) => !hunkContainsAnyAdditions(hunk))) {
             return {
-                verdict: 'resolved',
+                verdict: 'ambiguous',
                 method: usedFallback ? 'line-range-fallback' : 'source-overlap',
                 path: findingPath,
-                reason: `Cited lines overlapped a changed hunk in ${findingPath}.`,
+                reason: `Cited lines overlapped only deletion-style hunks in ${findingPath}; this can indicate a pure move/rename or a removal-only fix, so the proxy is ambiguous.`,
                 diffText,
             };
         }
+        return {
+            verdict: 'resolved',
+            method: usedFallback ? 'line-range-fallback' : 'source-overlap',
+            path: findingPath,
+            reason: `Cited lines overlapped a changed hunk in ${findingPath}.`,
+            diffText,
+        };
     }
 
     if (hadInvalidSource) {
@@ -411,7 +408,7 @@ function checkLineOverlap(
         matchingFile.hunks.some(
             (hunk) =>
                 hunkContainsAnyAdditions(hunk) &&
-                sources.some((source) =>
+                validSources.some((source) =>
                     sourceIsNearInsertionHunk(
                         source,
                         hunk.oldStart,

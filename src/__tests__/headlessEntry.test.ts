@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import * as headlessArgs from '../../scripts/eval/headlessArgs';
 
 // Hoisted mocks. __mocks__/vscode.js supplies the default vscode shape;
 // runHeadless is mocked so the incomplete-exit branch can be exercised
@@ -377,6 +378,84 @@ describe('runHeadlessFromEnv', () => {
         const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
         expect(sentinel.exitCode).toBe(1);
         expect(sentinel.error).toContain('judge boom');
+    });
+
+    it('accepts parser-produced args when --deadline-at is omitted', async () => {
+        const args = headlessArgs.parseHeadlessArgs([
+            '--workspace',
+            '/ws',
+            '--base',
+            'main',
+            '--head',
+            'feature/x',
+            '--model',
+            'copilot/gpt-4.1',
+            '--timeout',
+            '60000',
+            '--out',
+            outPath,
+            '--silent',
+        ]);
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        const { runHeadless } = await import('../eval/headlessRunner');
+
+        vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
+            {
+                id: 'gpt-4.1',
+                name: 'GPT-4.1',
+                family: 'gpt-4',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            } as unknown as import('vscode').LanguageModelChat,
+        ]);
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+        vi.mocked(runHeadless).mockResolvedValue({
+            findings: [],
+            narrative: 'complete narrative',
+            telemetry: {
+                iterations: 1,
+                toolCalls: 2,
+                promptTokens: 0,
+                completionTokens: 0,
+                durationMs: 123,
+                compactionsUsed: 0,
+            },
+            rawToolCallLog: [],
+            modelId: 'gpt-4.1',
+            seed: 0,
+            completed: true,
+        } as never);
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        const { runHeadlessFromEnv } = await import('../eval/headlessEntry');
+        await runHeadlessFromEnv(coordinator as never);
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(args.deadlineAt).toBeNull();
+        expect(sentinel.exitCode).toBe(0);
+        expect(sentinel.error).toBeNull();
+        expect(runHeadless).toHaveBeenCalledWith(
+            expect.objectContaining({
+                timeoutMs: 60_000,
+                deadlineAt: expect.any(Number),
+            }),
+            expect.anything()
+        );
+
+        const outJson = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+        expect(outJson).toMatchObject({
+            completed: true,
+            narrative: 'complete narrative',
+        });
     });
 
     async function runWithRawArgs(rawArgs: string): Promise<{
