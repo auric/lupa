@@ -175,9 +175,9 @@ describe('resolveDiff', () => {
         ]);
     });
 
-    it('normalizes add-only no-index headers that point at /dev/null on the base side', async () => {
+    it('normalizes real add-only no-index headers that repeat the head path on both sides', async () => {
         const raw =
-            'diff --git a/dev/null b/head/src/new.ts\n' +
+            'diff --git a/head/src/new.ts b/head/src/new.ts\n' +
             'new file mode 100644\n' +
             '--- /dev/null\n' +
             '+++ b/head/src/new.ts\n' +
@@ -200,9 +200,9 @@ describe('resolveDiff', () => {
         expect(diff).not.toContain('head/');
     });
 
-    it('normalizes delete-only no-index headers that point at /dev/null on the head side', async () => {
+    it('normalizes real delete-only no-index headers that repeat the base path on both sides', async () => {
         const raw =
-            'diff --git a/base/src/old.ts b/dev/null\n' +
+            'diff --git a/base/src/old.ts b/base/src/old.ts\n' +
             'deleted file mode 100644\n' +
             '--- a/base/src/old.ts\n' +
             '+++ /dev/null\n' +
