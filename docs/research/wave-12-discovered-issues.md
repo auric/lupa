@@ -73,6 +73,49 @@ Items are promoted to full quests only when they block a wave, corrupt eval resu
 
 ---
 
+### ALIGN-001: Quest 6.2 Compactor Retention Policy
+
+**Description:** The ADR references "recent tool results" as what the compactor preserves, but Quest 6.2 is vague on the exact retention policy (count-based, token-based, or heuristic).
+**Why it matters:** If the ADR and Quest disagree, implementers won't know whether to preserve "latest 3" or "last 10K tokens" or something else.
+**Status:** Backlog. Update Quest 6.2 when Wave 6 begins.
+**Action:** Define exact retention policy in Quest 6.2 acceptance criteria.
+
+---
+
+### ALIGN-002: Quest 8.2 Per-PR-Size Band Reporting
+
+**Description:** The ADR defines a 5% Monster-vs-Large resolution rate gap as the trigger for context rot mitigation. Quest 8.2 currently reports aggregate `resolutionRate` only.
+**Why it matters:** The eval harness must produce per-band (Small / Large / Monster) resolution rates for the ADR trigger to be actionable.
+**Status:** Backlog. Small quest-level addition to 8.2 before Wave 0 closes.
+**Action:** Add per-band reporting to `metrics.ts` and `reporter.ts`.
+
+---
+
+### ALIGN-003: Quest 11.3 PreJudgeGate Grounding Check
+
+**Description:** The ADR defines `PreJudgeGate` as a programmatic validation stage. Quest 11.3 mentions `PreJudgeGate` in the playbook overview but the Quest body focuses on `sources` schema enforcement. The grounding check (`lupa.findingGrounding.mode`) should be explicitly described in the Quest.
+**Why it matters:** Implementers need to know exactly what PreJudgeGate validates and how the flag behaves.
+**Status:** Backlog. Update Quest 11.3 when Wave 7 begins.
+
+---
+
+### ALIGN-004: Quest 12.1 PreJudgeGate Composition
+
+**Description:** The ADR says PreJudgeGate is "schema, grounding, dedup, workflow." The playbook says it combines `evidenceAuditStep` (programmatic part) + `findingValidationStep` + `workflowEnforcementStep`. The Quest body should resolve this precisely.
+**Why it matters:** Quest 12.1 is the pipeline collapse. Ambiguity about what PreJudgeGate contains will cause incorrect step deletion.
+**Status:** Backlog. Update Quest 12.1 when Wave 8 begins.
+**Action:** Define exact step mapping in Quest 12.1 body.
+
+---
+
+### ALIGN-005: Quest 12.1 Split Decision
+
+**Description:** The ADR suggests splitting Quest 12.1 into 3 sub-Quests if scope exceeds one sprint. This is not in the playbook.
+**Why it matters:** Wave 8 scope estimation should happen before implementation starts.
+**Status:** Backlog. Evaluate during Wave 8 planning.
+
+---
+
 ## Promoted Items (moved to full quests)
 
 _None yet._

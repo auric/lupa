@@ -164,13 +164,13 @@ These patterns are documented as harmful in our research and are architecturally
 
 ## Risks and Mitigations
 
-| Risk                                             | Likelihood | Impact | Mitigation                                                                                                                                                                                                                                                                        |
-| ------------------------------------------------ | ---------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Flag toggle causes state corruption mid-analysis | Low        | High   | Flag is read **once** at analysis start and cached on `ExecutionContext` (`src/types/executionContext.ts`). No mid-flight toggling.                                                                                                                                               |
-| Judge stage adds latency                         | Medium     | Medium | Judge is a single LLM call per finding, not a full investigation. Judge calls across distinct findings can be batched/parallelized; the Synthesizer cannot — it consumes Judge verdicts and runs strictly after.                                                                  |
-| Users confused by P0–P3 severity                 | Medium     | Low    | Provide mapping table in UI. Legacy CRITICAL/HIGH/MEDIUM/LOW mapping documented in Quest 11.0 with a compat-shim normalizer during Waves 0–6.                                                                                                                                     |
-| Compactor loses critical decisions               | Low        | High   | Compactor preserves all `record_finding` calls, the current plan, the latest ≤ 3 tool results, and a structured summary of hypotheses / examined files / open questions (per Quest 6.2). Older raw tool outputs and intermediate prose reasoning are the only categories dropped. |
-| Phase 12 refactor is too large                   | Medium     | High   | Tracked as a follow-up design task to split Quest 12.1 into three sub-Quests (extract Judge, extract Synthesizer, delete legacy steps). Not pre-committed in the playbook — see "Pending follow-ups" below.                                                                       |
+| Risk                                             | Likelihood | Impact | Mitigation                                                                                                                                                                                                                                                                |
+| ------------------------------------------------ | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Flag toggle causes state corruption mid-analysis | Low        | High   | Flag is read **once** at analysis start and cached on `ExecutionContext` (`src/types/executionContext.ts`). No mid-flight toggling.                                                                                                                                       |
+| Judge stage adds latency                         | Medium     | Medium | Judge is a single LLM call per finding, not a full investigation. Judge calls across distinct findings can be batched/parallelized; the Synthesizer cannot — it consumes Judge verdicts and runs strictly after.                                                          |
+| Users confused by P0–P3 severity                 | Medium     | Low    | Provide mapping table in UI. Legacy CRITICAL/HIGH/MEDIUM/LOW mapping documented in Quest 11.0 with a compat-shim normalizer during Waves 0–6.                                                                                                                             |
+| Compactor loses critical decisions               | Low        | High   | Compactor preserves all `record_finding` calls, the current plan, recent tool results, and a structured summary of hypotheses / examined files / open questions (per Quest 6.2). Older raw tool outputs and intermediate prose reasoning are the only categories dropped. |
+| Phase 12 refactor is too large                   | Medium     | High   | Tracked as a follow-up design task to split Quest 12.1 into three sub-Quests (extract Judge, extract Synthesizer, delete legacy steps). Not pre-committed in the playbook — see "Pending follow-ups" below.                                                               |
 
 ---
 
@@ -252,11 +252,15 @@ If the baseline shows that context rot is the dominant quality bottleneck, we wi
 
 ## Pending Follow-ups
 
-These items are referenced from the Risks table and the body of this ADR but are **not** pre-committed in `lupa-rescue-playbook_v3.md`. They are tracked here so implementers surface them during Wave planning rather than discovering them mid-refactor.
+These items are referenced from the Risks table and the body of this ADR. They should be promoted to the playbook or to the Wave 12 backlog when the relevant Wave begins, so implementers surface them during planning rather than discovering them mid-refactor.
 
 - **Split of Quest 12.1 into sub-Quests.** If Wave 8 scope estimation confirms the refactor is >1 sprint of work, split into: (a) extract `JudgeStage` into its own pipeline step, (b) extract `SynthesisStage` and delete `findingScoringStep` + output assembly, (c) delete the remaining legacy steps (`adversarialVerificationStep`, `zeroFindingChallengeStep`, `selfReflectionStep`, `rewriteStep`, `workflowEnforcementStep`). Decision to split is owned by whoever picks up Wave 8.
 - **Compactor cheap-model wiring.** If Future Direction #4 is pursued, add a `lupa.compactorModelIdentifier` setting wired through `vscode.lm.selectChatModels`, with a strict output schema and a smoke test that compactor output parses deterministically.
 - **Per-PR-size rot escalation threshold in the eval harness.** The "5 % Monster-vs-Large gap" trigger from Future Direction needs explicit support in Quest 8.2's reporting (per-band `resolutionRate`, not just aggregate). Small quest-level addition to 8.2 before Wave 0 closes.
+
+### ADR ↔ Playbook Relationship
+
+This ADR is authoritative for **architectural direction** (why we chose Option D++, what the stages are, what principles we follow). The rescue playbook (`lupa-rescue-playbook_v3.md`) is authoritative for **implementation specifics** (exact thresholds, tool schemas, file names, acceptance criteria). Where the two differ on implementation details, the Quest prevails; where they differ on architectural intent, this ADR prevails. The ADR should be revisited if eval data contradicts its core assumptions.
 
 ---
 
