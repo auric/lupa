@@ -378,12 +378,18 @@ Also support user-defined custom glob patterns via workspace settings (mirrors D
 
 Done:
 
-- New `src/services/conventionFileLoader.ts`. Walks the workspace once at analysis start, hashes each matching file, returns `Array<{relativePath, content, category}>`.
-- Total ingest capped at 20 KB (truncate longest files first, surface truncation in an appended notice).
+- New `src/services/conventionFileLoader.ts`. Walks the workspace once at analysis start, hashes each matching file, returns `Array<{workspaceFolderName, relativePath, content, category}>`.
+- **Multi-root workspace handling**: VS Code workspaces can have N folders (`vscode.workspace.workspaceFolders`). The loader iterates each folder independently — each folder's conventions apply to files in that folder. Dedup key is `(workspaceFolderName, relativePath)`, so a `CLAUDE.md` at the root of two different folders produces two entries (they're different files). The `<convention>` wrappers include the folder name when more than one folder is present: `<convention folder="backend" path="CLAUDE.md">`.
+- Total ingest capped at 20 KB across all folders combined. **Truncation algorithm**:
+    1. Collect all matches into a flat list with `{folder, path, category, sizeBytes}`.
+    2. Sort by `category` priority (repo-root `CLAUDE.md`/`AGENTS.md` > `.cursor/rules/**` > `CONTRIBUTING.md` > everything else), then by size ascending (prefer small files in full over big files truncated).
+    3. Accumulate files in order until the next file would push total over 20 480 bytes.
+    4. For the first file that would exceed, include it truncated to exactly `20 480 - runningTotal` bytes (truncate at a line boundary, not mid-line). Append `... [truncated: N bytes omitted from <path>]`.
+    5. Remaining files dropped with a single aggregated notice: `[N additional convention files omitted: <comma-separated paths>]`.
 - Injected into the system prompt as a `<project_conventions>` XML block, with per-file `<convention path="...">` wrappers.
 - PR-author content (PR title/body/commit messages) stays separately marked (Quest 14.3 trust-boundary tags).
 - Analysis log records which files were ingested for reproducibility.
-- Unit test: verifies matching is case-insensitive and that a 100 KB `CLAUDE.md` is truncated, not dropped.
+- Unit tests: (a) matching is case-insensitive; (b) a 100 KB `CLAUDE.md` is truncated, not dropped; (c) total ingest across all files is ≤ 20 480 bytes, even when individual files would fit but their sum wouldn't; (d) multi-root workspace with two folders each containing `CLAUDE.md` produces two distinct entries with folder-qualified wrappers.
 
 This Quest directly answers the user's "memory per repo" question: convention files committed by the team **are** the per-repo memory.
 
@@ -872,6 +878,14 @@ Hints:
 - `RipgrepSearchService` already exists.
 - `ast-grep` may require a binary or JS port — consider Phase 11.5 or defer.
 - LSP proofs reuse `findUsagesTool` / `findSymbolTool` infrastructure.
+
+**ast-grep availability fallback** — until `ast-grep` is actually bundled, `verify_finding` must degrade gracefully rather than throw. Resolution order when `proof.kind === 'ast-grep'`:
+
+1. If an `ast-grep` binary is resolvable on `PATH` (or via an explicit `lupa.astGrepPath` setting), run it normally.
+2. Else, if the supplied `query` can be expressed as a textual pattern (heuristic: no AST-node selectors like `$$`, `$A`, `kind:`), attempt a ripgrep fallback using `RipgrepSearchService` with the query as a literal or regex; attach a `fallbackUsed: 'ripgrep-text'` flag on the receipt so the Judge knows precision is lower.
+3. Else, return a skipped-verification receipt (`verified: null`, `skipReason: 'ast-grep-unavailable'`). The finding is neither verified nor dropped; the Judge (Quest 11.2) treats `verified: null` as "no proof either way" and falls back to pure source-check reasoning.
+
+The pipeline MUST NOT drop a finding solely because `ast-grep` is unavailable — that would let a missing dependency silently erase true-positive findings. Telemetry records the fallback counters (`astgrep_native`, `astgrep_ripgrep_fallback`, `astgrep_skipped`) so we can decide when bundling `ast-grep` becomes worth the binary-size cost.
 
 ### Quest 11.2 — Verifier role (Judge stage)
 
