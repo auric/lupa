@@ -185,19 +185,9 @@ async function classifyRealFinding(
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        return {
-            findingId: finding.id,
-            severity: finding.severity,
-            verdict: 'disputed',
-            method: 'judge-unavailable',
-            path: lineCheck.path,
-            matchedLabelPath: matchedExpected
-                ? normalizePath(matchedExpected.path)
-                : undefined,
-            reason:
-                `${lineCheck.reason} Auxiliary judge failed for finding '${finding.id}': ${message}. ` +
-                'Conservatively marking disputed rather than discarding the run.',
-        };
+        throw new Error(
+            `${lineCheck.reason} Auxiliary judge failed for finding '${finding.id}': ${message}.`
+        );
     }
 }
 
@@ -571,7 +561,12 @@ function runGitDiffForPath(
         );
         let stdout = '';
         let stderr = '';
+        let settled = false;
         const timeoutHandle = setTimeout(() => {
+            if (settled) {
+                return;
+            }
+            settled = true;
             proc.kill('SIGKILL');
             reject(
                 new Error(
@@ -585,8 +580,19 @@ function runGitDiffForPath(
         proc.stderr.on('data', (chunk) => {
             stderr += chunk.toString();
         });
-        proc.on('error', reject);
+        proc.on('error', (error) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timeoutHandle);
+            reject(error);
+        });
         proc.on('close', (code) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
             clearTimeout(timeoutHandle);
             if (code === 0 || code === 1) {
                 resolve(stdout);

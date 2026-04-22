@@ -85,6 +85,8 @@ interface ParsedArgs {
 
 const execFileAsync = promisify(execFile);
 const MIN_EVAL_TIMEOUT_MS = 10_000;
+const MIN_AUXILIARY_JUDGE_TIMEOUT_MS = 10_000;
+const MAX_AUXILIARY_JUDGE_TIMEOUT_MS = 120_000;
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
     const out: ParsedArgs = {
@@ -364,6 +366,7 @@ async function main(): Promise<number> {
         for (const model of args.models) {
             for (let seed = 0; seed < args.seeds; seed++) {
                 const progress = `${fixture.name} × ${model} × seed=${seed}`;
+                const cellStartedAt = Date.now();
                 if (!args.silent) {
                     process.stderr.write(`[eval] start ${progress}\n`);
                 }
@@ -415,14 +418,16 @@ async function main(): Promise<number> {
                             match: single.match,
                             judgeClient: {
                                 judge: async (payload) => {
+                                    const remainingTimeoutMs =
+                                        getRemainingAuxiliaryJudgeTimeoutMs(
+                                            cellStartedAt,
+                                            args.timeoutMs
+                                        );
                                     const judged = await invokeResolutionJudge({
                                         workspaceRoot: fixture.workspaceRoot,
                                         model: args.auxModel,
                                         payload,
-                                        timeoutMs: Math.min(
-                                            args.timeoutMs,
-                                            120_000
-                                        ),
+                                        timeoutMs: remainingTimeoutMs,
                                     });
                                     return judged.result;
                                 },
@@ -442,6 +447,7 @@ async function main(): Promise<number> {
                         }
                     }
                 }
+                single.durationMs = Date.now() - cellStartedAt;
                 runs.push(single);
                 if (!args.silent) {
                     if (single.ok && single.match) {
@@ -480,6 +486,20 @@ async function main(): Promise<number> {
     process.stdout.write(`${markdownPath}\n`);
     process.stdout.write(`${jsonPath}\n`);
     return 0;
+}
+
+function getRemainingAuxiliaryJudgeTimeoutMs(
+    cellStartedAt: number,
+    totalTimeoutMs: number
+): number {
+    const elapsedMs = Date.now() - cellStartedAt;
+    const remainingMs = totalTimeoutMs - elapsedMs;
+    if (remainingMs < MIN_AUXILIARY_JUDGE_TIMEOUT_MS) {
+        throw new Error(
+            `Remaining eval timeout budget (${remainingMs}ms) is below the auxiliary judge minimum of ${MIN_AUXILIARY_JUDGE_TIMEOUT_MS}ms`
+        );
+    }
+    return Math.min(remainingMs, MAX_AUXILIARY_JUDGE_TIMEOUT_MS);
 }
 
 main()

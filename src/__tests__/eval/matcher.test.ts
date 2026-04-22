@@ -418,7 +418,7 @@ index 1234567..89abcde 100644
         });
     });
 
-    it('marks an ambiguous real-fixture finding as disputed when the judge fails', async () => {
+    it('surfaces ambiguous real-fixture judge failures as run-level resolution failures', async () => {
         mockedSpawn.mockImplementation(() =>
             createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
 index 1234567..89abcde 100644
@@ -430,22 +430,58 @@ index 1234567..89abcde 100644
 `)
         );
 
-        const summary = await classifyResolutionForRun({
-            fixture: makeRealFixture(),
-            produced: [makeProduced({ id: 'judge-failure' })],
-            match: emptyMatch(),
-            judgeClient: {
-                judge: vi
-                    .fn()
-                    .mockRejectedValue(new Error('judge unavailable')),
-            },
-        });
+        await expect(
+            classifyResolutionForRun({
+                fixture: makeRealFixture(),
+                produced: [makeProduced({ id: 'judge-failure' })],
+                match: emptyMatch(),
+                judgeClient: {
+                    judge: vi
+                        .fn()
+                        .mockRejectedValue(new Error('judge unavailable')),
+                },
+            })
+        ).rejects.toThrow(
+            /Auxiliary judge failed for finding 'judge-failure': judge unavailable/
+        );
+    });
 
-        expect(summary.findings[0]).toMatchObject({
-            findingId: 'judge-failure',
-            verdict: 'disputed',
-            method: 'judge-unavailable',
-        });
+    it('clears the git diff timeout once the child process settles', async () => {
+        vi.useFakeTimers();
+        try {
+            const kill = vi.fn();
+            mockedSpawn.mockImplementation(() => {
+                const proc = new EventEmitter() as EventEmitter & {
+                    stdout: EventEmitter;
+                    stderr: EventEmitter;
+                    kill: typeof kill;
+                };
+                proc.stdout = new EventEmitter();
+                proc.stderr = new EventEmitter();
+                proc.kill = kill;
+
+                queueMicrotask(() => {
+                    proc.emit('close', 0);
+                });
+
+                return proc;
+            });
+
+            const summaryPromise = classifyResolutionForRun({
+                fixture: makeRealFixture(),
+                produced: [makeProduced({ id: 'timeout-cleanup' })],
+                match: emptyMatch(),
+            });
+
+            await expect(summaryPromise).resolves.toMatchObject({
+                unresolved: 1,
+            });
+
+            vi.advanceTimersByTime(15_001);
+            expect(kill).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
 
