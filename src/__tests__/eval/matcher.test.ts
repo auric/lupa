@@ -1801,12 +1801,12 @@ index 1234567..89abcde 100644
         });
     });
 
-    it('preserves earlier classified findings and marks the remainder invalid when classification aborts mid-run', async () => {
+    it('converts a per-path git diff error into a warning and continues classifying remaining findings', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
                 if (args.includes('--name-only')) {
                     return createMockGitDiffProcess(
-                        'src/resolved.ts\nsrc/broken.ts\n'
+                        'src/resolved.ts\nsrc/broken.ts\nsrc/skipped.ts\n'
                     );
                 }
                 if (args.includes('--name-status')) {
@@ -1839,6 +1839,10 @@ index 1234567..89abcde 100644
                     return proc;
                 }
 
+                if (gitPath === 'src/skipped.ts') {
+                    return createMockGitDiffProcess('');
+                }
+
                 throw new Error(`Unexpected git path: ${gitPath}`);
             }
         );
@@ -1857,7 +1861,7 @@ index 1234567..89abcde 100644
                     lineRange: [30, 30],
                 }),
                 makeProduced({
-                    id: 'never-attempted',
+                    id: 'processed-after-error',
                     file: 'src/skipped.ts',
                     lineRange: [40, 40],
                 }),
@@ -1865,27 +1869,28 @@ index 1234567..89abcde 100644
             match: emptyMatch(),
         });
 
-        expect(summary.total).toBe(3);
+        expect(summary.total).toBe(2);
         expect(summary.resolved).toBe(1);
-        expect(summary.unresolved).toBe(2);
-        expect(summary.skipped).toBe(0);
-        expect(summary.metricStatus).toBe('valid');
+        expect(summary.unresolved).toBe(1);
+        expect(summary.skipped).toBe(1);
+        expect(summary.metricStatus).toBe('invalid-skipped');
         expect(summary.findings).toEqual([
             expect.objectContaining({
                 findingId: 'resolved-before-error',
                 verdict: 'resolved',
             }),
             expect.objectContaining({
-                findingId: 'failed-during-error',
-                verdict: 'unresolved',
-            }),
-            expect.objectContaining({
-                findingId: 'never-attempted',
+                findingId: 'processed-after-error',
                 verdict: 'unresolved',
             }),
         ]);
-        expect(summary.warnings).toEqual([]);
-        expect(summary.resolutionRate).toBeCloseTo(1 / 3, 3);
+        expect(summary.warnings).toEqual([
+            expect.objectContaining({
+                findingId: 'failed-during-error',
+                kind: 'classification-failed',
+            }),
+        ]);
+        expect(summary.resolutionRate).toBeNaN();
     });
 
     it('treats insertion-only follow-up patches as ambiguous and escalates to the judge', async () => {
@@ -2465,13 +2470,13 @@ index 1234567..89abcde 100644
             await vi.advanceTimersByTimeAsync(500);
 
             await expect(summaryPromise).resolves.toMatchObject({
-                metricStatus: 'valid',
-                unresolved: 1,
-                skipped: 0,
-                findings: [
+                metricStatus: 'invalid-skipped',
+                skipped: 1,
+                findings: [],
+                warnings: [
                     expect.objectContaining({
                         findingId: 'git-timeout',
-                        verdict: 'unresolved',
+                        kind: 'classification-failed',
                     }),
                 ],
             });
