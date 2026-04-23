@@ -373,6 +373,7 @@ describe('classifyResolutionForRun', () => {
     beforeEach(() => {
         mockedSpawn.mockReset();
         mockedExecSync.mockReset();
+        mockedExecFileSync.mockReset();
     });
 
     it('forwards the absolute deadline to the analysis launcher', async () => {

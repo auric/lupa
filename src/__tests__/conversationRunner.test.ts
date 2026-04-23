@@ -3639,7 +3639,7 @@ describe('ConversationRunner.sleepWithCancellation', () => {
             setTimeout(() => tokenSource.cancel(), 10);
 
             await vi.advanceTimersByTimeAsync(10);
-            await sleep;
+            await expect(sleep).resolves.toBeUndefined();
             // Should resolve cleanly without throwing or hanging
         } finally {
             vi.useRealTimers();
@@ -3656,6 +3656,23 @@ describe('ConversationRunner.sleepWithCancellation', () => {
             );
 
             vi.advanceTimersByTime(50);
+            await expect(sleep).resolves.toBeUndefined();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('resolves early when cancelled mid-flight', async () => {
+        vi.useFakeTimers();
+        try {
+            const tokenSource = new vscode.CancellationTokenSource();
+            const sleep = (runner as any).sleepWithCancellation(
+                50,
+                tokenSource.token
+            );
+
+            vi.advanceTimersByTime(5);
+            tokenSource.cancel();
             await expect(sleep).resolves.toBeUndefined();
         } finally {
             vi.useRealTimers();

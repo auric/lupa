@@ -44,9 +44,8 @@ describe('runHeadlessFromEnv', () => {
     afterEach(() => {
         try {
             fs.rmSync(tmpDir, { recursive: true, force: true });
-        } catch (e) {
+        } catch {
             // best-effort cleanup; tmp files are harmless if left behind
-            console.error('cleanup failed', e);
         }
         for (const key of ENV_KEYS) {
             const prior = originalEnv[key];
@@ -1574,6 +1573,51 @@ describe('runHeadlessFromEnv', () => {
         );
         expect(sentinel.exitCode).toBe(1);
         expect(sentinel.error).toContain('base');
+        expect(sentinel.error).toContain('invalid SHA format');
+    });
+
+    it('rejects base refs containing .. range operator', async () => {
+        const sentinel = await runWithRawArgs(
+            JSON.stringify({
+                workspace: '/ws',
+                base: 'foo..bar',
+                head: 'feature/x',
+                model: 'copilot/gpt-4.1',
+                timeoutMs: 60_000,
+            })
+        );
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain('base');
+        expect(sentinel.error).toContain("contains '..' range operator");
+    });
+
+    it('rejects head refs containing .. range operator', async () => {
+        const sentinel = await runWithRawArgs(
+            JSON.stringify({
+                workspace: '/ws',
+                base: 'main',
+                head: 'foo..bar',
+                model: 'copilot/gpt-4.1',
+                timeoutMs: 60_000,
+            })
+        );
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain('head');
+        expect(sentinel.error).toContain("contains '..' range operator");
+    });
+
+    it('allows sha: refs containing ..', async () => {
+        const sentinel = await runWithRawArgs(
+            JSON.stringify({
+                workspace: '/ws',
+                base: 'sha:abc..def',
+                head: 'feature/x',
+                model: 'copilot/gpt-4.1',
+                timeoutMs: 60_000,
+            })
+        );
+        // sha:abc..def is allowed because the .. check only applies to plain refs
+        expect(sentinel.exitCode).toBe(1);
         expect(sentinel.error).toContain('invalid SHA format');
     });
 });
