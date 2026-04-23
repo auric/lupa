@@ -527,6 +527,7 @@ export interface SingleRun {
     model: string;
     seed: number;
     durationMs: number;
+    cellDurationMs: number;
     ok: boolean;
     errorMessage: string | null;
     resolutionWarning: string | null;

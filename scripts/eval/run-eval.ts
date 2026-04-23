@@ -114,7 +114,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i]!;
         if (a === '--') {
-            continue;
+            break;
         }
         if (a === '-h' || a === '--help') {
             out.help = true;
@@ -442,6 +442,7 @@ export async function main(
                               model,
                               seed,
                               durationMs: r.durationMs,
+                              cellDurationMs: 0,
                               ok: true,
                               errorMessage: null,
                               resolutionWarning: null,
@@ -456,6 +457,7 @@ export async function main(
                           model,
                           seed,
                           durationMs: r.durationMs,
+                          cellDurationMs: 0,
                           ok: false,
                           errorMessage: r.error,
                           resolutionWarning: null,
@@ -514,7 +516,7 @@ export async function main(
                         }
                     }
                 }
-                single.durationMs = Date.now() - cellStartedAt;
+                single.cellDurationMs = Date.now() - cellStartedAt;
                 runs.push(single);
                 if (!args.silent) {
                     if (single.ok && single.match) {
