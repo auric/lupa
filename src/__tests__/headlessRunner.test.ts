@@ -385,41 +385,62 @@ describe('launchHeadless watchdog', () => {
     });
 
     it('re-forwards repeated termination signals without exiting early while cleanup is still in progress', async () => {
-        const { forwardTerminationSignal } =
-            await import('../../scripts/eval/launchHeadless.js');
-        const postSignalWatchdog = {
-            arm: vi.fn(),
-        };
-        const state = {
-            forwardedSignal: null,
-            forwardedSignalExitCode: undefined,
-            watchdog: setTimeout(() => {}, 60_000),
-        };
-        const child = {
-            pid: 12345,
-            kill: vi.fn(),
-        };
+        vi.useFakeTimers();
+        const platformSpy = vi
+            .spyOn(process, 'platform', 'get')
+            .mockReturnValue('linux');
+        const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
+            throw Object.assign(new Error('mock'), { code: 'EPERM' });
+        });
+        try {
+            const { forwardTerminationSignal } =
+                await import('../../scripts/eval/launchHeadless.js');
+            const postSignalWatchdog = {
+                arm: vi.fn(),
+            };
+            const state = {
+                forwardedSignal: null,
+                forwardedSignalExitCode: undefined,
+                watchdog: setTimeout(() => {}, 60_000),
+            };
+            const child = {
+                pid: 12345,
+                kill: vi.fn(),
+                on: vi.fn(),
+            };
 
-        forwardTerminationSignal(
-            'SIGINT',
-            state,
-            child as never,
-            postSignalWatchdog as never
-        );
-        expect(state.forwardedSignal).toBe('SIGINT');
-        expect(state.forwardedSignalExitCode).toBe(130);
-        expect(state.watchdog).toBeUndefined();
-        expect(postSignalWatchdog.arm).toHaveBeenCalledWith('SIGINT');
+            forwardTerminationSignal(
+                'SIGINT',
+                state,
+                child as never,
+                postSignalWatchdog as never
+            );
+            expect(state.forwardedSignal).toBe('SIGINT');
+            expect(state.forwardedSignalExitCode).toBe(130);
+            expect(state.watchdog).toBeUndefined();
+            expect(postSignalWatchdog.arm).toHaveBeenCalledWith('SIGINT');
+            expect(child.kill).toHaveBeenCalledWith('SIGTERM');
 
-        forwardTerminationSignal(
-            'SIGTERM',
-            state,
-            child as never,
-            postSignalWatchdog as never
-        );
-        expect(state.forwardedSignal).toBe('SIGTERM');
-        expect(state.forwardedSignalExitCode).toBe(143);
-        expect(postSignalWatchdog.arm).toHaveBeenNthCalledWith(2, 'SIGTERM');
+            forwardTerminationSignal(
+                'SIGTERM',
+                state,
+                child as never,
+                postSignalWatchdog as never
+            );
+            expect(state.forwardedSignal).toBe('SIGTERM');
+            expect(state.forwardedSignalExitCode).toBe(143);
+            expect(postSignalWatchdog.arm).toHaveBeenNthCalledWith(
+                2,
+                'SIGTERM'
+            );
+
+            await vi.advanceTimersByTimeAsync(5000);
+            expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+        } finally {
+            killSpy.mockRestore();
+            platformSpy.mockRestore();
+            vi.useRealTimers();
+        }
     });
 });
 
