@@ -1361,6 +1361,9 @@ describe('runHeadlessResolutionJudge', () => {
             });
         }
 
+        expect(
+            vi.mocked(ModelRequestHandler.sendRequest).mock.calls.length
+        ).toBeGreaterThan(0);
         const [, request] = vi
             .mocked(ModelRequestHandler.sendRequest)
             .mock.calls.at(-1)!;

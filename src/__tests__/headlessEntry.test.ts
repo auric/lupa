@@ -585,7 +585,7 @@ describe('runHeadlessFromEnv', () => {
                 parseArgs(['--models', 'copilot/,copilot/gpt-5'])
             )
         ).toThrow(/--models: Malformed model identifier 'copilot\/'/);
-    }, 15_000);
+    });
 
     it('reports malformed eval --aux-model identifiers as CliError during CLI setup', async () => {
         const { CliError, normalizeCliModelIdentifiers, parseArgs } =
@@ -597,7 +597,7 @@ describe('runHeadlessFromEnv', () => {
         expect(() =>
             normalizeCliModelIdentifiers(parseArgs(['--aux-model', 'copilot/']))
         ).toThrow(/--aux-model: Malformed model identifier 'copilot\/'/);
-    }, 15_000);
+    });
 
     it('returns null when the remaining auxiliary judge budget is below the minimum threshold', async () => {
         const { createAuxiliaryJudgeBudget } =
@@ -609,7 +609,7 @@ describe('runHeadlessFromEnv', () => {
         } finally {
             nowSpy.mockRestore();
         }
-    }, 15_000);
+    });
 
     it('returns the minimum auxiliary judge budget when the remaining budget exactly matches the threshold', async () => {
         const { createAuxiliaryJudgeBudget, MIN_AUXILIARY_JUDGE_TIMEOUT_MS } =
@@ -628,7 +628,7 @@ describe('runHeadlessFromEnv', () => {
         } finally {
             nowSpy.mockRestore();
         }
-    }, 15_000);
+    });
 
     it('clamps the auxiliary judge budget to the configured maximum', async () => {
         const { createAuxiliaryJudgeBudget, MAX_AUXILIARY_JUDGE_TIMEOUT_MS } =
@@ -643,7 +643,7 @@ describe('runHeadlessFromEnv', () => {
         } finally {
             nowSpy.mockRestore();
         }
-    }, 15_000);
+    });
 
     it('detects the documented vite-node argv shape as direct CLI execution without treating test imports as direct runs', async () => {
         const { getCliArgs, isDirectExecution } =
@@ -685,7 +685,7 @@ describe('runHeadlessFromEnv', () => {
                 path.resolve('src/__tests__/headlessEntry.test.ts'),
             ])
         ).toBe(false);
-    }, 15_000);
+    });
 
     it('caps exact-model preflight at the dedicated max even when more run budget remains', async () => {
         const {
@@ -1650,11 +1650,11 @@ describe('ServiceManager foundation init — headless persistence guard', () => 
         process.env.LUPA_HEADLESS_MODE = '1';
         const { initSpy } = await runFoundationPhase();
         expect(initSpy).toHaveBeenCalledWith({ persist: false });
-    }, 15_000);
+    });
 
     it('passes { persist: true } when LUPA_HEADLESS_MODE is not set', async () => {
         delete process.env.LUPA_HEADLESS_MODE;
         const { initSpy } = await runFoundationPhase();
         expect(initSpy).toHaveBeenCalledWith({ persist: true });
-    }, 15_000);
+    });
 });

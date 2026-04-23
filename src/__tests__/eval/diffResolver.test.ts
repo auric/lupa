@@ -51,7 +51,26 @@ function mockGitRun({ stdout, stderr = '', exitCode }: FakeGitRun): void {
     );
 }
 
-const services = {} as IServiceRegistry;
+const services = {
+    workspaceSettings: {} as any,
+    logging: {} as any,
+    statusBar: {} as any,
+    copilotModelManager: {} as any,
+    promptGenerator: {} as any,
+    uiManager: {} as any,
+    gitOperations: {} as any,
+    toolTestingWebview: {} as any,
+    chatParticipantService: {} as any,
+    symbolExtractor: {} as any,
+    lspValidation: {} as any,
+    diffEnricher: {} as any,
+    findingValidator: {} as any,
+    toolRegistry: {} as any,
+    toolExecutor: {} as any,
+    conversationManager: {} as any,
+    analysisEngine: {} as any,
+    languageModelToolProvider: {} as any,
+} as unknown as IServiceRegistry;
 
 describe('resolveDiff', () => {
     beforeEach(() => {

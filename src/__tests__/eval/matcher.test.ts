@@ -14,7 +14,7 @@ vi.mock('node:child_process', () => ({
 import { matchFindings } from '../../eval/harness/matcher';
 import {
     classifyResolutionForRun,
-    sanitizeFindingForJudge,
+    reorderSourcesForJudge,
 } from '../../eval/harness/resolutionClassifier';
 import { aggregate } from '../../eval/harness/metrics';
 import { renderMarkdown } from '../../eval/harness/reporter';
@@ -1720,7 +1720,7 @@ index 1234567..89abcde 100644
     });
 
     it('chooses the canonicalized matching source for the judge payload when another source appears first', () => {
-        const sanitized = sanitizeFindingForJudge(
+        const sanitized = reorderSourcesForJudge(
             makeProduced({
                 id: 'canonical-judge-primary-source',
                 file: 'a.ts',
@@ -1756,7 +1756,7 @@ index 1234567..89abcde 100644
     });
 
     it('prefers an exact canonical source match over an earlier weaker suffix match for judge payloads', () => {
-        const sanitized = sanitizeFindingForJudge(
+        const sanitized = reorderSourcesForJudge(
             makeProduced({
                 id: 'canonical-exact-source-preferred',
                 file: 'a.ts',
@@ -2133,9 +2133,9 @@ index 1234567..89abcde 100644
                 judge: vi
                     .fn()
                     .mockRejectedValue(
-                        new Error(
-                            'Auxiliary judge unavailable: deadline budget too small.'
-                        )
+                        Object.assign(new Error('deadline budget too small.'), {
+                            code: 'JUDGE_UNAVAILABLE',
+                        })
                     ),
             },
         });
@@ -2521,7 +2521,7 @@ index 1234567..89abcde 100644
                 unresolved: 1,
             });
 
-            vi.advanceTimersByTime(15_001);
+            await vi.advanceTimersByTimeAsync(15_001);
             expect(kill).not.toHaveBeenCalled();
         } finally {
             vi.useRealTimers();
