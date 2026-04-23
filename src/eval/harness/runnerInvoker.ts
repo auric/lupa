@@ -329,6 +329,11 @@ export function validateRef(ref: string, fieldName: string): void {
     if (typeof ref !== 'string' || ref.length === 0) {
         throw new Error(`${fieldName}: must be a non-empty string`);
     }
+    if (ref.startsWith('-')) {
+        throw new Error(
+            `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
+        );
+    }
     const hasScheme = ref.startsWith('dir:') || ref.startsWith('sha:');
     if (hasScheme) {
         const body = ref.slice(ref.indexOf(':') + 1);
@@ -616,7 +621,7 @@ function handleInvokeHeadlessError(
 ): InvokeHeadlessResult {
     const message = error instanceof Error ? error.message : String(error);
     if (opts.bailOnError) {
-        throw error instanceof Error ? error : new Error(message);
+        throw new Error(message, { cause: error });
     }
     return {
         ok: false,

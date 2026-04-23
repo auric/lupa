@@ -207,18 +207,32 @@ async function classifyRealFinding(
     const sourceFallbackContext = comparable.allSourcesInvalid
         ? `All cited source ranges for finding '${finding.id}' were invalid, so resolution fell back to the finding's top-level file and lineRange. `
         : '';
-    const lineCheck = await checkRealFindingPaths(
-        fixture,
-        comparable.sources,
-        comparable.usedFallback,
-        comparable.hadInvalidSources && !comparable.allSourcesInvalid,
-        pathDiffCache,
-        renameStatusCache,
-        changedPathsCache,
-        timeoutMs,
-        deadlineAt,
-        normalizedPath
-    );
+    let lineCheck: LineCheckResult;
+    try {
+        lineCheck = await checkRealFindingPaths(
+            fixture,
+            comparable.sources,
+            comparable.usedFallback,
+            comparable.hadInvalidSources && !comparable.allSourcesInvalid,
+            pathDiffCache,
+            renameStatusCache,
+            changedPathsCache,
+            timeoutMs,
+            deadlineAt,
+            normalizedPath
+        );
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+            kind: 'warning',
+            warning: createResolutionWarning(
+                finding,
+                normalizedPath,
+                'classification-failed',
+                `${sourceFallbackContext}Resolution classification failed for finding '${finding.id}': ${message}. Excluding this finding from resolution metrics.`
+            ),
+        };
+    }
     if (
         lineCheck.verdict === 'resolved' ||
         lineCheck.verdict === 'unresolved'
@@ -400,6 +414,12 @@ async function checkRealFindingPaths(
         )
     );
     const settledDiffs = await Promise.allSettled(diffPromises);
+    const firstRejection = settledDiffs.find(
+        (s): s is PromiseRejectedResult => s.status === 'rejected'
+    );
+    if (firstRejection) {
+        throw firstRejection.reason;
+    }
 
     for (let i = 0; i < pathEntries.length; i++) {
         const entry = pathEntries[i];
