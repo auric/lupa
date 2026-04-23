@@ -177,7 +177,7 @@ function aggregateResolutionRateBySeverity(
         for (const run of runs) {
             if (run.resolutionWarning) {
                 if (
-                    !run.result ||
+                    run.result != null &&
                     run.result.findings.some(
                         (finding) => finding.severity === severity
                     )

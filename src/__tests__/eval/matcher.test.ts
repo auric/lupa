@@ -26,8 +26,8 @@ import {
     getResolutionJudgeWatchdogMs,
     invokeHeadless,
     invokeResolutionJudge,
-    validateRef,
 } from '../../eval/harness/runnerInvoker';
+import { validateRef } from '../../eval/headlessShared';
 import type {
     ExpectedFinding,
     HarnessReport,
@@ -2886,6 +2886,34 @@ index 1234567..89abcde 100644
             'Resolution proxy unavailable: remaining budget exhausted'
         );
         expect(markdown).toContain('## Failures\n\n(none)');
+    });
+
+    it('treats a resolution warning with null result as no-findings for all severities', () => {
+        const nullResultWarningRun: SingleRun = {
+            fixture: 'fixture-null-warning',
+            kind: 'real',
+            model: 'copilot/gpt-5-mini',
+            seed: 2,
+            durationMs: 100,
+            ok: true,
+            errorMessage: null,
+            resolutionWarning: 'Resolution proxy unavailable: null result',
+            result: null,
+            match: emptyMatch(),
+            resolution: null,
+        };
+
+        const runs = [nullResultWarningRun];
+        const { perModel } = aggregate(runs);
+
+        for (const severity of ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const) {
+            expect(
+                perModel[0]?.resolutionRateBySeverity[severity]
+            ).toMatchObject({
+                invalidCount: 0,
+                noFindingsCount: 1,
+            });
+        }
     });
 
     it('keeps the harness POSIX SIGKILL grace longer than the launcher grace it depends on', async () => {
