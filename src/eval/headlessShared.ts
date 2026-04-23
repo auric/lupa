@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 export function normalizeModelIdentifier(identifier: string): string {
@@ -20,6 +21,29 @@ export function normalizeModelIdentifier(identifier: string): string {
     }
 
     return `${vendor}/${id}`;
+}
+
+export function normalizeWorkspaceRelativePath(
+    filePath: string,
+    workspaceRoot: string | undefined
+): string {
+    const trimmed = filePath.trim();
+    if (trimmed.length === 0) {
+        return '';
+    }
+
+    if (workspaceRoot && isAbsolutePathLike(trimmed)) {
+        const relativePath = path.relative(workspaceRoot, trimmed);
+        if (
+            relativePath.length > 0 &&
+            !isAbsolutePathLike(relativePath) &&
+            !relativePath.startsWith('..')
+        ) {
+            return normalizePosixPath(relativePath);
+        }
+    }
+
+    return normalizePosixPath(trimmed);
 }
 
 export function createHeadlessDeadline(timeoutMs: number): number {
@@ -131,4 +155,19 @@ export async function awaitWithinHeadlessBudget<T>(
         }
         cancellationDisposable?.dispose();
     }
+}
+
+function isAbsolutePathLike(filePath: string): boolean {
+    return (
+        path.isAbsolute(filePath) ||
+        /^[a-zA-Z]:[\\/]/.test(filePath) ||
+        filePath.startsWith('\\\\')
+    );
+}
+
+function normalizePosixPath(filePath: string): string {
+    const normalized = path.posix
+        .normalize(filePath.replace(/\\/g, '/'))
+        .replace(/^(?:\.\/)+/, '');
+    return normalized === '.' ? '' : normalized;
 }

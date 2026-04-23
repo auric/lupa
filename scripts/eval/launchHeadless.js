@@ -122,19 +122,38 @@ function requireLauncherDeadlineRemaining(args, phase, now = Date.now()) {
     return remainingMs;
 }
 
+function createLauncherDeadlineError(phase) {
+    return new Error(`Headless launcher deadline elapsed ${phase}.`);
+}
+
+function throwIfLauncherDeadlineAborted(signal, phase) {
+    if (!signal?.aborted) {
+        return;
+    }
+
+    if (signal.reason instanceof Error) {
+        throw signal.reason;
+    }
+
+    throw createLauncherDeadlineError(phase);
+}
+
 async function runWithinLauncherDeadline(args, phase, work) {
     const remainingMs = requireLauncherDeadlineRemaining(args, phase);
+    const deadlineError = createLauncherDeadlineError(phase);
+    const abortController = new AbortController();
     let timeoutHandle;
     const deadlineExceeded = new Promise((_, reject) => {
         timeoutHandle = setTimeout(() => {
-            reject(new Error(`Headless launcher deadline elapsed ${phase}.`));
+            abortController.abort(deadlineError);
+            reject(deadlineError);
         }, remainingMs);
         timeoutHandle.unref?.();
     });
 
     try {
         return await Promise.race([
-            Promise.resolve().then(work),
+            Promise.resolve().then(() => work(abortController.signal)),
             deadlineExceeded,
         ]);
     } finally {
@@ -142,6 +161,24 @@ async function runWithinLauncherDeadline(args, phase, work) {
             clearTimeout(timeoutHandle);
         }
     }
+}
+
+async function removeFileIfPresent(filePath) {
+    try {
+        await fs.promises.unlink(filePath);
+    } catch (err) {
+        if (!err || err.code !== 'ENOENT') {
+            throw err;
+        }
+    }
+}
+
+async function cleanupSentinelFiles(signal, phase) {
+    throwIfLauncherDeadlineAborted(signal, phase);
+    await removeFileIfPresent(SENTINEL_PATH);
+    throwIfLauncherDeadlineAborted(signal, phase);
+    await removeFileIfPresent(SENTINEL_PATH + '.tmp');
+    throwIfLauncherDeadlineAborted(signal, phase);
 }
 
 function forwardTerminationSignal(sig, state, child, postSignalWatchdog) {
@@ -203,35 +240,33 @@ async function main() {
     const executablePath = await runWithinLauncherDeadline(
         args,
         'during VS Code download and headless profile setup',
-        async () => {
+        async (signal) => {
             const downloadedExecutablePath = await downloadAndUnzipVSCode({
                 version: 'stable',
                 cachePath: VSCODE_CACHE_DIR,
             });
+            throwIfLauncherDeadlineAborted(
+                signal,
+                'during VS Code download and headless profile setup'
+            );
 
             // Merge the baseline non-interactive settings into the profile on
             // every launch so existing profiles pick up new suppressions
             // automatically.
             ensureProfileSettings();
+            throwIfLauncherDeadlineAborted(
+                signal,
+                'during VS Code download and headless profile setup'
+            );
+
+            await cleanupSentinelFiles(
+                signal,
+                'during VS Code download and headless profile setup'
+            );
 
             return downloadedExecutablePath;
         }
     );
-
-    try {
-        fs.unlinkSync(SENTINEL_PATH);
-    } catch (err) {
-        if (err && err.code !== 'ENOENT') {
-            throw err;
-        }
-    }
-    try {
-        fs.unlinkSync(SENTINEL_PATH + '.tmp');
-    } catch (err) {
-        if (err && err.code !== 'ENOENT') {
-            throw err;
-        }
-    }
 
     const launchArgs = [
         '--user-data-dir=' + USER_DATA_DIR,

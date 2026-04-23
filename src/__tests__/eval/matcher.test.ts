@@ -16,6 +16,7 @@ import { classifyResolutionForRun } from '../../eval/harness/resolutionClassifie
 import { aggregate } from '../../eval/harness/metrics';
 import { renderMarkdown } from '../../eval/harness/reporter';
 import {
+    getCheckoutPostKillWaitMs,
     getHarnessSigtermGraceMs,
     getResolutionJudgeWatchdogMs,
     invokeHeadless,
@@ -958,7 +959,7 @@ index 1234567..89abcde 100644
         ).toBe(true);
     });
 
-    it('treats unmatched suffix-only paths as untouched when more than one candidate matches', async () => {
+    it('preserves unmatched multi-suffix paths as ambiguous when the direct diff is empty', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
                 if (args.includes('--name-only')) {
@@ -991,17 +992,18 @@ index 1234567..89abcde 100644
             match: emptyMatch(),
         });
 
-        expect(summary.findings[0]).toMatchObject({
-            findingId: 'ambiguous-suffix-fallback',
-            verdict: 'unresolved',
-            method: 'source-overlap',
-            path: 'a.ts',
-        });
-        expect(summary.findings[0]).toMatchObject({
-            reason: expect.stringContaining(
-                'No changes touched the cited path between headSha and mergeSha.'
-            ),
-        });
+        expect(summary.total).toBe(0);
+        expect(summary.skipped).toBe(1);
+        expect(summary.warnings).toEqual([
+            expect.objectContaining({
+                findingId: 'ambiguous-suffix-fallback',
+                kind: 'judge-unavailable',
+                path: 'a.ts',
+                message: expect.stringContaining(
+                    "Multiple changed paths matched the cited suffix 'a.ts'"
+                ),
+            }),
+        ]);
         expect(
             mockedSpawn.mock.calls.some(
                 (call) =>
@@ -1668,6 +1670,14 @@ index 1234567..89abcde 100644
                       .mockImplementation(() => true as never);
         try {
             const kill = vi.fn();
+            let checkoutProc:
+                | (EventEmitter & {
+                      stdout: EventEmitter;
+                      stderr: EventEmitter;
+                      kill: typeof kill;
+                      pid: number;
+                  })
+                | undefined;
             mockedSpawn.mockImplementation((cmd: string) => {
                 if (cmd !== 'git') {
                     throw new Error(`Unexpected command: ${cmd}`);
@@ -1683,6 +1693,7 @@ index 1234567..89abcde 100644
                 proc.stderr = new EventEmitter();
                 proc.kill = kill;
                 proc.pid = 123;
+                checkoutProc = proc;
                 return proc;
             });
 
@@ -1696,8 +1707,16 @@ index 1234567..89abcde 100644
                 deadlineAt: Date.now() + 500,
                 bailOnError: false,
             });
+            let settled = false;
+            resultPromise.finally(() => {
+                settled = true;
+            });
 
             await vi.advanceTimersByTimeAsync(500);
+
+            expect(settled).toBe(false);
+
+            checkoutProc?.emit('close', 1);
 
             const result = await resultPromise;
             expect(result).toMatchObject({
@@ -1741,6 +1760,73 @@ index 1234567..89abcde 100644
         }
     });
 
+    it('returns checkout-timeout failure after a bounded post-kill wait when the checkout process never exits', async () => {
+        vi.useFakeTimers();
+        const processKillSpy =
+            process.platform === 'win32'
+                ? undefined
+                : vi
+                      .spyOn(process, 'kill')
+                      .mockImplementation(() => true as never);
+
+        try {
+            const kill = vi.fn();
+            mockedSpawn.mockImplementation((cmd: string) => {
+                if (cmd !== 'git') {
+                    throw new Error(`Unexpected command: ${cmd}`);
+                }
+
+                const proc = new EventEmitter() as EventEmitter & {
+                    stdout: EventEmitter;
+                    stderr: EventEmitter;
+                    kill: typeof kill;
+                    pid: number;
+                };
+                proc.stdout = new EventEmitter();
+                proc.stderr = new EventEmitter();
+                proc.kill = kill;
+                proc.pid = 456;
+                return proc;
+            });
+
+            const resultPromise = invokeHeadless({
+                workspaceRoot: '/tmp/workspace',
+                baseRef: 'main',
+                headRef: 'sha:deadbeef',
+                model: 'copilot/gpt-5-mini',
+                seed: 7,
+                timeoutMs: 60_000,
+                deadlineAt: Date.now() + 500,
+                bailOnError: false,
+            });
+            let settled = false;
+            resultPromise.finally(() => {
+                settled = true;
+            });
+
+            await vi.advanceTimersByTimeAsync(500);
+            await vi.advanceTimersByTimeAsync(getCheckoutPostKillWaitMs() - 1);
+            expect(settled).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(1);
+            await vi.runOnlyPendingTimersAsync();
+
+            const result = await resultPromise;
+            expect(result.ok).toBe(false);
+            if (result.ok) {
+                throw new Error(
+                    'Expected invokeHeadless to return a failure result'
+                );
+            }
+            expect(result.error).toContain(
+                `Git checkout did not exit within ${getCheckoutPostKillWaitMs()}ms after termination was requested.`
+            );
+        } finally {
+            processKillSpy?.mockRestore();
+            vi.useRealTimers();
+        }
+    }, 15_000);
+
     it('falls back to killing the launcher pid when POSIX process-group cleanup returns ESRCH', async () => {
         vi.useFakeTimers();
         const originalPlatform = process.platform;
@@ -1759,6 +1845,14 @@ index 1234567..89abcde 100644
 
         try {
             const childKill = vi.fn();
+            let checkoutProc:
+                | (EventEmitter & {
+                      stdout: EventEmitter;
+                      stderr: EventEmitter;
+                      kill: typeof childKill;
+                      pid: number;
+                  })
+                | undefined;
             mockedSpawn.mockImplementation((cmd: string) => {
                 if (cmd !== 'git') {
                     throw new Error(`Unexpected command: ${cmd}`);
@@ -1774,6 +1868,7 @@ index 1234567..89abcde 100644
                 proc.stderr = new EventEmitter();
                 proc.kill = childKill;
                 proc.pid = 321;
+                checkoutProc = proc;
                 return proc;
             });
 
@@ -1789,6 +1884,8 @@ index 1234567..89abcde 100644
             });
 
             await vi.advanceTimersByTimeAsync(500);
+
+            checkoutProc?.emit('close', 1);
 
             const result = await resultPromise;
             expect(result).toMatchObject({

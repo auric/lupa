@@ -19,6 +19,7 @@ const LAUNCHER_HEADROOM_MS = 60_000;
 const HARNESS_HEADROOM_MS = 60_000;
 const LAUNCHER_POSIX_SIGTERM_GRACE_MS = 5_000;
 const SIGTERM_GRACE_MS = LAUNCHER_POSIX_SIGTERM_GRACE_MS + 1_000;
+const CHECKOUT_POST_KILL_WAIT_MS = SIGTERM_GRACE_MS + 2_000;
 const STDERR_TAIL_CHARS = 2_000;
 
 export interface InvokeHeadlessOptions {
@@ -243,21 +244,25 @@ async function ensureHeadCheckout(
         });
         let stderr = '';
         let settled = false;
+        let timedOut = false;
+        let postKillTimeoutHandle: NodeJS.Timeout | undefined;
         const timeoutHandle = setTimeout(() => {
             if (settled) {
                 return;
             }
-            settled = true;
+            timedOut = true;
             killTree(proc);
-            reject(
-                new Error(
-                    formatHeadlessTimeoutMessage(
-                        checkoutTimeoutMs,
-                        'during pre-launch checkout'
-                    )
-                )
-            );
+            postKillTimeoutHandle = setTimeout(() => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(timeoutHandle);
+                reject(createCheckoutTimeoutError(checkoutTimeoutMs, false));
+            }, CHECKOUT_POST_KILL_WAIT_MS);
+            postKillTimeoutHandle.unref?.();
         }, checkoutTimeoutMs);
+        timeoutHandle.unref?.();
         proc.stderr?.on('data', (d) => (stderr += d.toString()));
         proc.on('error', (error) => {
             if (settled) {
@@ -265,7 +270,14 @@ async function ensureHeadCheckout(
             }
             settled = true;
             clearTimeout(timeoutHandle);
-            reject(error);
+            if (postKillTimeoutHandle !== undefined) {
+                clearTimeout(postKillTimeoutHandle);
+            }
+            reject(
+                timedOut
+                    ? createCheckoutTimeoutError(checkoutTimeoutMs, true)
+                    : error
+            );
         });
         proc.on('close', (code) => {
             if (settled) {
@@ -273,6 +285,13 @@ async function ensureHeadCheckout(
             }
             settled = true;
             clearTimeout(timeoutHandle);
+            if (postKillTimeoutHandle !== undefined) {
+                clearTimeout(postKillTimeoutHandle);
+            }
+            if (timedOut) {
+                reject(createCheckoutTimeoutError(checkoutTimeoutMs, true));
+                return;
+            }
             if (code === 0) {
                 resolve();
                 return;
@@ -284,6 +303,20 @@ async function ensureHeadCheckout(
             );
         });
     });
+}
+
+function createCheckoutTimeoutError(
+    checkoutTimeoutMs: number,
+    exitedAfterKill: boolean
+): Error {
+    return new Error(
+        exitedAfterKill
+            ? formatHeadlessTimeoutMessage(
+                  checkoutTimeoutMs,
+                  'during pre-launch checkout'
+              )
+            : `${formatHeadlessTimeoutMessage(checkoutTimeoutMs, 'during pre-launch checkout')} Git checkout did not exit within ${CHECKOUT_POST_KILL_WAIT_MS}ms after termination was requested.`
+    );
 }
 
 function validateRef(ref: string, fieldName: string): void {
@@ -472,6 +505,10 @@ export function getResolutionJudgeWatchdogMs(
 
 export function getHarnessSigtermGraceMs(): number {
     return SIGTERM_GRACE_MS;
+}
+
+export function getCheckoutPostKillWaitMs(): number {
+    return CHECKOUT_POST_KILL_WAIT_MS;
 }
 
 function tailStderr(stderr: string, stdout: string): string {

@@ -1,5 +1,4 @@
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ModelRequestHandler } from '../models/modelRequestHandler';
 import type { IServiceRegistry } from '../services/serviceManager';
@@ -11,6 +10,7 @@ import {
 import {
     awaitWithinHeadlessBudget,
     normalizeModelIdentifier,
+    normalizeWorkspaceRelativePath,
     requireRemainingHeadlessBudgetMs,
 } from './headlessShared';
 
@@ -214,34 +214,5 @@ function isVerdict(
 }
 
 function normalizePromptPath(filePath: string, workspaceRoot: string): string {
-    const trimmed = filePath.trim();
-    if (trimmed.length === 0) {
-        return '';
-    }
-
-    if (isAbsolutePathLike(trimmed)) {
-        const relativePath = path.relative(workspaceRoot, trimmed);
-        if (!isAbsolutePathLike(relativePath)) {
-            return normalizePromptPosixPath(relativePath);
-        }
-
-        return normalizePromptPosixPath(path.basename(trimmed));
-    }
-
-    return normalizePromptPosixPath(trimmed);
-}
-
-function isAbsolutePathLike(filePath: string): boolean {
-    return (
-        path.isAbsolute(filePath) ||
-        /^[a-zA-Z]:[\\/]/.test(filePath) ||
-        filePath.startsWith('\\\\')
-    );
-}
-
-function normalizePromptPosixPath(filePath: string): string {
-    const normalized = path.posix
-        .normalize(filePath.replace(/\\/g, '/'))
-        .replace(/^(?:\.\/)+/, '');
-    return normalized === '.' ? '' : normalized;
+    return normalizeWorkspaceRelativePath(filePath, workspaceRoot);
 }

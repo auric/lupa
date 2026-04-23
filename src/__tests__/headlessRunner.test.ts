@@ -320,6 +320,7 @@ describe('launchHeadless watchdog', () => {
         try {
             const { runWithinLauncherDeadline } =
                 await import('../../scripts/eval/launchHeadless.js');
+            let cleanupReached = false;
 
             const budgetPromise = runWithinLauncherDeadline(
                 {
@@ -327,7 +328,14 @@ describe('launchHeadless watchdog', () => {
                     deadlineAt: Date.now() + 500,
                 },
                 'during VS Code download and headless profile setup',
-                () => new Promise(() => {})
+                async (signal: AbortSignal) => {
+                    await new Promise((resolve) => setTimeout(resolve, 750));
+                    if (signal.aborted) {
+                        return 'aborted-before-cleanup';
+                    }
+                    cleanupReached = true;
+                    return 'cleanup-ran';
+                }
             );
 
             await vi.advanceTimersByTimeAsync(500);
@@ -335,6 +343,9 @@ describe('launchHeadless watchdog', () => {
             await expect(budgetPromise).rejects.toThrow(
                 /Headless launcher deadline elapsed during VS Code download and headless profile setup\./
             );
+
+            await vi.advanceTimersByTimeAsync(250);
+            expect(cleanupReached).toBe(false);
         } finally {
             vi.useRealTimers();
         }
@@ -1056,6 +1067,67 @@ describe('runHeadlessResolutionJudge', () => {
         );
         expect(request.messages[1]?.content).not.toContain(
             '/tmp/workspace/src/eval/headlessEntry.ts'
+        );
+    });
+
+    it('preserves normalized absolute paths outside the workspace instead of inventing relative or basename-only prompt paths', async () => {
+        const payloadPath = writePayloadFile({
+            file: '/outside/root/src/eval/headlessEntry.ts',
+            sources: [
+                {
+                    path: '/outside/root/src/eval/headlessEntry.ts',
+                    lineStart: 10,
+                    lineEnd: 20,
+                },
+            ],
+        });
+        const tokenSource = new vscode.CancellationTokenSource();
+        const services = makeServices({
+            selectedModel: {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            },
+        });
+        vi.mocked(ModelRequestHandler.sendRequest).mockResolvedValue({
+            content:
+                '{"verdict":"resolved","reason":"Outside-workspace path stayed intact."}',
+        } as never);
+
+        try {
+            await runHeadlessResolutionJudge(
+                {
+                    workspaceRoot: '/tmp/workspace',
+                    modelIdentifier: 'copilot/gpt-5-mini',
+                    timeoutMs: 60_000,
+                    payloadPath,
+                    cancellationToken: tokenSource.token,
+                },
+                services
+            );
+        } finally {
+            fs.rmSync(path.dirname(payloadPath), {
+                recursive: true,
+                force: true,
+            });
+        }
+
+        const [, request] = vi
+            .mocked(ModelRequestHandler.sendRequest)
+            .mock.calls.at(-1)!;
+        expect(request.messages[1]?.content).toContain(
+            '"location": "/outside/root/src/eval/headlessEntry.ts:10-20"'
+        );
+        expect(request.messages[1]?.content).toContain(
+            '"path": "/outside/root/src/eval/headlessEntry.ts"'
+        );
+        expect(request.messages[1]?.content).not.toContain(
+            '../src/eval/headlessEntry.ts'
+        );
+        expect(request.messages[1]?.content).not.toContain(
+            '"path": "headlessEntry.ts"'
         );
     });
 

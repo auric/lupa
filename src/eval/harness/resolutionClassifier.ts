@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { FindingSource, RecordedFinding } from '../../types/findingTypes';
 import { DiffUtils } from '../../utils/diffUtils';
@@ -15,7 +14,10 @@ import type {
     ResolutionSummary,
     ResolutionWarning,
 } from './types';
-import { requireRemainingHeadlessBudgetMs } from '../headlessShared';
+import {
+    normalizeWorkspaceRelativePath,
+    requireRemainingHeadlessBudgetMs,
+} from '../headlessShared';
 
 const GIT_DIFF_TIMEOUT_MS = 15_000;
 
@@ -49,6 +51,7 @@ interface ResolvedDiffTarget {
     cachePath: string;
     gitPath: string | undefined;
     matchedPath: boolean;
+    ambiguousSuffixMatches?: readonly string[];
 }
 
 interface ComparableSources {
@@ -60,6 +63,7 @@ interface ComparableSources {
 interface DiffLookupResult {
     diffText: string;
     renameCheckPath: string | undefined;
+    ambiguityReason?: string;
 }
 
 type ClassificationOutcome =
@@ -354,6 +358,16 @@ async function checkRealFindingPaths(
             timeoutMs,
             deadlineAt
         );
+        if (diffLookup.ambiguityReason) {
+            ambiguousResults.push({
+                verdict: 'ambiguous',
+                method: usedFallback ? 'line-range-fallback' : 'source-overlap',
+                path: findingPath,
+                reason: diffLookup.ambiguityReason,
+                diffText: diffLookup.diffText,
+            });
+            continue;
+        }
         if (
             await pathHasPureRenameOrMove(
                 fixture,
@@ -750,6 +764,11 @@ async function getDiffForPath(
         return {
             diffText: '',
             renameCheckPath: undefined,
+            ambiguityReason:
+                diffTarget.ambiguousSuffixMatches &&
+                diffTarget.ambiguousSuffixMatches.length > 0
+                    ? `Multiple changed paths matched the cited suffix '${normalizedPath}': ${diffTarget.ambiguousSuffixMatches.join(', ')}. The direct diff for '${normalizedPath}' was empty, so the proxy is ambiguous.`
+                    : undefined,
         };
     }
 
@@ -842,6 +861,15 @@ async function resolveDiffTarget(
             cachePath: suffixMatches[0]!,
             gitPath: suffixMatches[0]!,
             matchedPath: true,
+        };
+    }
+
+    if (suffixMatches.length > 1) {
+        return {
+            cachePath: `ambiguous:${gitPath}`,
+            gitPath: undefined,
+            matchedPath: false,
+            ambiguousSuffixMatches: suffixMatches,
         };
     }
 
@@ -1156,38 +1184,7 @@ function normalizePath(
     workspaceRoot: string | undefined
 ): string;
 function normalizePath(filePath: string, workspaceRoot?: string): string {
-    const trimmed = filePath.trim();
-    if (trimmed.length === 0) {
-        return '';
-    }
-
-    if (workspaceRoot && isAbsolutePathLike(trimmed)) {
-        const relativePath = path.relative(workspaceRoot, trimmed);
-        if (
-            relativePath.length > 0 &&
-            !isAbsolutePathLike(relativePath) &&
-            !relativePath.startsWith('..')
-        ) {
-            return normalizePosixPath(relativePath);
-        }
-    }
-
-    return normalizePosixPath(trimmed);
-}
-
-function isAbsolutePathLike(filePath: string): boolean {
-    return (
-        path.isAbsolute(filePath) ||
-        /^[a-zA-Z]:[\\/]/.test(filePath) ||
-        filePath.startsWith('\\\\')
-    );
-}
-
-function normalizePosixPath(filePath: string): string {
-    const normalized = path.posix
-        .normalize(filePath.replace(/\\/g, '/'))
-        .replace(/^(?:\.\/)+/, '');
-    return normalized === '.' ? '' : normalized;
+    return normalizeWorkspaceRelativePath(filePath, workspaceRoot);
 }
 
 function hasResolvableRenameMatch(
