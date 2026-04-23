@@ -338,11 +338,12 @@ describe('launchHeadless watchdog', () => {
                 }
             );
 
-            await vi.advanceTimersByTimeAsync(500);
-
-            await expect(budgetPromise).rejects.toThrow(
+            const rejectionAssertion = expect(budgetPromise).rejects.toThrow(
                 /Headless launcher deadline elapsed during VS Code download and headless profile setup\./
             );
+
+            await vi.advanceTimersByTimeAsync(500);
+            await rejectionAssertion;
 
             await vi.advanceTimersByTimeAsync(250);
             expect(cleanupReached).toBe(false);
@@ -372,11 +373,12 @@ describe('launchHeadless watchdog', () => {
 
             expect(args.deadlineAt).toBe(now.getTime() + 500);
 
-            await vi.advanceTimersByTimeAsync(500);
-
-            await expect(budgetPromise).rejects.toThrow(
+            const rejectionAssertion = expect(budgetPromise).rejects.toThrow(
                 /Headless launcher deadline elapsed during VS Code download and headless profile setup\./
             );
+
+            await vi.advanceTimersByTimeAsync(500);
+            await rejectionAssertion;
         } finally {
             vi.useRealTimers();
         }
@@ -708,11 +710,12 @@ describe('runHeadless', () => {
                 services
             );
 
-            await vi.advanceTimersByTimeAsync(500);
-
-            await expect(resultPromise).rejects.toThrow(
+            const rejectionAssertion = expect(resultPromise).rejects.toThrow(
                 'Headless run exceeded timeout (60000ms) during model selection.'
             );
+
+            await vi.advanceTimersByTimeAsync(500);
+            await rejectionAssertion;
             expect(analyzeSpy).not.toHaveBeenCalled();
         } finally {
             vi.useRealTimers();
@@ -742,11 +745,12 @@ describe('runHeadless', () => {
                 services
             );
 
-            await vi.advanceTimersByTimeAsync(500);
-
-            await expect(resultPromise).rejects.toThrow(
+            const rejectionAssertion = expect(resultPromise).rejects.toThrow(
                 'Headless run exceeded timeout (60000ms) during analysis.'
             );
+
+            await vi.advanceTimersByTimeAsync(500);
+            await rejectionAssertion;
             expect(analyzeSpy).toHaveBeenCalledTimes(1);
             expect(analysisToken?.isCancellationRequested).toBe(true);
         } finally {
@@ -1384,11 +1388,12 @@ describe('runHeadlessResolutionJudge', () => {
                 services
             );
 
-            await vi.advanceTimersByTimeAsync(500);
-
-            await expect(resultPromise).rejects.toThrow(
+            const rejectionAssertion = expect(resultPromise).rejects.toThrow(
                 'Headless run exceeded timeout (60000ms) during model selection for resolution judging.'
             );
+
+            await vi.advanceTimersByTimeAsync(500);
+            await rejectionAssertion;
             expect(ModelRequestHandler.sendRequest).not.toHaveBeenCalled();
         } finally {
             fs.rmSync(path.dirname(payloadPath), {
