@@ -1074,16 +1074,23 @@ export class ConversationRunner {
             return Promise.resolve();
         }
         return new Promise((resolve) => {
-            const timer = setTimeout(resolve, ms);
-            let cleanupTimer: NodeJS.Timeout | undefined;
+            let resolved = false;
+
+            const timer = setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    resolve();
+                }
+            }, ms);
+
             const disposable = token.onCancellationRequested(() => {
                 clearTimeout(timer);
-                clearTimeout(cleanupTimer);
+                if (!resolved) {
+                    resolved = true;
+                    resolve();
+                }
                 disposable.dispose();
-                resolve();
             });
-            // Clean up listener when timer fires normally
-            cleanupTimer = setTimeout(() => disposable.dispose(), ms + 1);
         });
     }
 

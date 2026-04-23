@@ -3604,3 +3604,65 @@ describe('ConversationRunner', () => {
         });
     });
 });
+
+describe('ConversationRunner.sleepWithCancellation', () => {
+    let runner: ConversationRunner;
+
+    beforeEach(() => {
+        runner = new ConversationRunner(
+            createMockModelManager([]) as unknown as CopilotModelManager,
+            createMockToolExecutor() as unknown as ToolExecutor
+        );
+    });
+
+    it('resolves immediately when token is already cancelled', async () => {
+        const tokenSource = new vscode.CancellationTokenSource();
+        tokenSource.cancel();
+
+        const sleep = (runner as any).sleepWithCancellation(
+            1000,
+            tokenSource.token
+        );
+        await expect(sleep).resolves.toBeUndefined();
+    });
+
+    it('resolves exactly once when cancellation races with timer expiry', async () => {
+        vi.useFakeTimers();
+        try {
+            const tokenSource = new vscode.CancellationTokenSource();
+            const sleep = (runner as any).sleepWithCancellation(
+                10,
+                tokenSource.token
+            );
+
+            // Cancel at exactly the 10ms boundary to race with the timer
+            setTimeout(() => tokenSource.cancel(), 10);
+
+            await vi.advanceTimersByTimeAsync(10);
+            await sleep;
+            // Should resolve cleanly without throwing or hanging
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('resolves via timer when cancellation never fires', async () => {
+        vi.useFakeTimers();
+        try {
+            const tokenSource = new vscode.CancellationTokenSource();
+            const sleep = (runner as any).sleepWithCancellation(
+                50,
+                tokenSource.token
+            );
+
+            const resolved = vi.fn();
+            sleep.then(resolved, resolved);
+
+            vi.advanceTimersByTime(50);
+            await sleep;
+            expect(resolved).toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
