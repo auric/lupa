@@ -268,9 +268,11 @@ describe('resolveDiff', () => {
                 services
             );
 
+            const rejectionAssertion = expect(promise).rejects.toThrow(
+                /timed out after 250ms/
+            );
             await vi.advanceTimersByTimeAsync(250);
-
-            await expect(promise).rejects.toThrow(/timed out after 250ms/);
+            await rejectionAssertion;
             expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
         } finally {
             vi.useRealTimers();
@@ -297,9 +299,11 @@ describe('resolveDiff', () => {
                 services
             );
 
+            const rejectionAssertion = expect(promise).rejects.toThrow(
+                /timed out after 250ms/
+            );
             await vi.advanceTimersByTimeAsync(250);
-
-            await expect(promise).rejects.toThrow(/timed out after 250ms/);
+            await rejectionAssertion;
             expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
 
             await vi.advanceTimersByTimeAsync(5_000);
