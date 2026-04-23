@@ -144,6 +144,11 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
             `${LUPA_HEADLESS_ARGS_ENV}.workspace must be an absolute path`
         );
     }
+    if (workspace.split(/[\\/]/).includes('..')) {
+        throw new Error(
+            `${LUPA_HEADLESS_ARGS_ENV}.workspace must not contain '..' segments`
+        );
+    }
     const seedRaw = o.seed;
     if (
         seedRaw !== undefined &&

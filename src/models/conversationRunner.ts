@@ -1077,16 +1077,22 @@ export class ConversationRunner {
             let resolved = false;
             let disposable: vscode.Disposable | undefined;
 
+            const cleanupTimer = setTimeout(() => {
+                disposable?.dispose();
+            }, ms + 1);
+
             const timer = setTimeout(() => {
                 if (!resolved) {
                     resolved = true;
                     disposable?.dispose();
                     resolve();
                 }
+                clearTimeout(cleanupTimer);
             }, ms);
 
             disposable = token.onCancellationRequested(() => {
                 clearTimeout(timer);
+                clearTimeout(cleanupTimer);
                 if (!resolved) {
                     resolved = true;
                     resolve();
