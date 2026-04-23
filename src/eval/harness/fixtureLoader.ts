@@ -86,10 +86,11 @@ export async function loadFixtures(opts: {
             const fullPath = path.resolve(REAL_ROOT, fileName);
             const raw = await readJson(fullPath);
             const labels = validateRealFixture(raw, fullPath);
+            const effectiveMergeSha = labels.mergeSha ?? labels.headSha;
             const cacheDir = await ensureCachedRepo(labels.repo, [
                 labels.baseSha,
                 labels.headSha,
-                labels.mergeSha,
+                effectiveMergeSha,
             ]);
             out.push({
                 name,
@@ -104,7 +105,7 @@ export async function loadFixtures(opts: {
                 workspaceRoot: cacheDir,
                 baseRef: 'sha:' + labels.baseSha,
                 headRef: 'sha:' + labels.headSha,
-                mergeRef: 'sha:' + labels.mergeSha,
+                mergeRef: 'sha:' + effectiveMergeSha,
             });
         }
     }
@@ -166,8 +167,13 @@ function validateRealFixture(obj: unknown, source: string): RealFixtureFile {
     if (typeof headSha !== 'string' || headSha.length === 0) {
         throw new Error(`${source}: 'headSha' must be a non-empty string`);
     }
-    if (typeof mergeSha !== 'string' || mergeSha.length === 0) {
-        throw new Error(`${source}: 'mergeSha' must be a non-empty string`);
+    if (
+        mergeSha !== undefined &&
+        (typeof mergeSha !== 'string' || mergeSha.length === 0)
+    ) {
+        throw new Error(
+            `${source}: 'mergeSha' must be a non-empty string when provided`
+        );
     }
     return { ...base, repo, baseSha, headSha, mergeSha };
 }

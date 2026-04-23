@@ -49,7 +49,7 @@ export interface RealFixtureFile extends FixtureLabels {
     repo: string;
     baseSha: string;
     headSha: string;
-    mergeSha: string;
+    mergeSha?: string;
 }
 
 export interface LoadedFixture {
