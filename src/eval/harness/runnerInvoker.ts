@@ -131,7 +131,10 @@ export async function invokeHeadless(
             '--silent',
         ];
 
-        const child = spawn(process.execPath, args, { stdio: 'pipe' });
+        const child = spawn(process.execPath, args, {
+            stdio: 'pipe',
+            detached: process.platform !== 'win32',
+        });
         let stderr = '';
         let stdout = '';
         child.stdout?.on('data', (d) => (stdout += d.toString()));
@@ -334,6 +337,9 @@ function validateRef(ref: string, fieldName: string): void {
                 `${fieldName}: empty body after scheme — got '${ref}'`
             );
         }
+        if (ref.startsWith('sha:') && !/^[0-9a-fA-F]{6,40}$/.test(body)) {
+            throw new Error(`${fieldName}: invalid SHA format — got '${ref}'`);
+        }
         return;
     }
     for (let i = 0; i < ref.length; i++) {
@@ -424,7 +430,10 @@ export async function invokeResolutionJudge(
             '--silent',
         ];
 
-        const child = spawn(process.execPath, args, { stdio: 'pipe' });
+        const child = spawn(process.execPath, args, {
+            stdio: 'pipe',
+            detached: process.platform !== 'win32',
+        });
         let stderr = '';
         let stdout = '';
         child.stdout?.on('data', (d) => (stdout += d.toString()));

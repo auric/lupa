@@ -162,7 +162,7 @@ function isNonEmptyString(value: unknown): value is string {
     return typeof value === 'string' && value.trim().length > 0;
 }
 
-function isResolutionJudgeVerdict(
+export function isResolutionJudgeVerdict(
     value: unknown
 ): value is ResolutionJudgeVerdict {
     return (

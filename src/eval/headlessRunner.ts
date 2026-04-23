@@ -6,6 +6,7 @@ import type { RecordedFinding } from '../types/findingTypes';
 import { resolveDiff } from './diffResolver';
 import {
     awaitWithinHeadlessBudget,
+    formatHeadlessCancellationMessage,
     normalizeModelIdentifier,
     requireRemainingHeadlessBudgetMs,
 } from './headlessShared';
@@ -58,21 +59,37 @@ export async function runHeadless(
         });
     const cancellationToken = deadlineCancellationSource.token;
 
-    try {
-        const diffText = await resolveDiff(
-            {
-                workspaceRoot: opts.workspaceRoot,
-                baseRef: opts.baseRef,
-                headRef: opts.headRef,
-                timeoutMs: requireRemainingHeadlessBudgetMs(
-                    opts.timeoutMs,
-                    opts.deadlineAt,
-                    'during diff resolution'
-                ),
-                cancellationToken,
-            },
-            services
+    if (opts.cancellationToken.isCancellationRequested) {
+        throw new Error(
+            formatHeadlessCancellationMessage('before analysis started')
         );
+    }
+
+    try {
+        let diffText: string;
+        try {
+            diffText = await resolveDiff(
+                {
+                    workspaceRoot: opts.workspaceRoot,
+                    baseRef: opts.baseRef,
+                    headRef: opts.headRef,
+                    timeoutMs: requireRemainingHeadlessBudgetMs(
+                        opts.timeoutMs,
+                        opts.deadlineAt,
+                        'during diff resolution'
+                    ),
+                    cancellationToken,
+                },
+                services
+            );
+        } catch (err) {
+            if (err instanceof vscode.CancellationError) {
+                throw new Error(
+                    formatHeadlessCancellationMessage('during diff resolution')
+                );
+            }
+            throw err;
+        }
         if (!diffText.trim()) {
             throw new Error(
                 `No diff produced for ${opts.baseRef}..${opts.headRef}`

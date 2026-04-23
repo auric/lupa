@@ -4,6 +4,7 @@ import { ModelRequestHandler } from '../models/modelRequestHandler';
 import type { IServiceRegistry } from '../services/serviceManager';
 import {
     getResolutionJudgePayloadValidationError,
+    isResolutionJudgeVerdict,
     ResolutionJudgePayload,
     ResolutionJudgeResult,
 } from './harness/types';
@@ -43,6 +44,9 @@ export async function runHeadlessResolutionJudge(
         opts.cancellationToken.onCancellationRequested(() => {
             deadlineCancellationSource.cancel();
         });
+    if (opts.cancellationToken.isCancellationRequested) {
+        deadlineCancellationSource.cancel();
+    }
     const cancellationToken = deadlineCancellationSource.token;
 
     try {
@@ -143,12 +147,14 @@ function buildUserPrompt(
                 severity: finding.severity,
                 category: finding.category,
                 location: `${promptLocation.path}:${promptLocation.lineStart}-${promptLocation.lineEnd}`,
-                sources:
-                    (finding.sources ?? []).map((source) => ({
-                        path: normalizePromptPath(source.path, workspaceRoot),
-                        lineStart: source.lineStart,
-                        lineEnd: source.lineEnd,
-                    })) || [],
+                sources: (finding.sources ?? []).map((source) => ({
+                    path: normalizeWorkspaceRelativePath(
+                        source.path,
+                        workspaceRoot
+                    ),
+                    lineStart: source.lineStart,
+                    lineEnd: source.lineEnd,
+                })),
                 description: finding.description,
             },
             followupDiff: payload.diffText,
@@ -171,29 +177,27 @@ function parseJudgeResponse(
 ): ResolutionJudgeResult {
     const trimmed = content?.trim() ?? '';
     const normalized = unwrapCodeFence(trimmed);
-    if (normalized.startsWith('{') && normalized.endsWith('}')) {
-        try {
-            const parsed = JSON.parse(normalized) as {
-                verdict?: string;
-                reason?: string;
+    try {
+        const parsed = JSON.parse(normalized) as {
+            verdict?: string;
+            reason?: string;
+        };
+        if (isResolutionJudgeVerdict(parsed.verdict)) {
+            return {
+                verdict: parsed.verdict,
+                reason:
+                    typeof parsed.reason === 'string' &&
+                    parsed.reason.length > 0
+                        ? parsed.reason
+                        : 'No reason supplied by auxiliary judge.',
+                modelId,
             };
-            if (isVerdict(parsed.verdict)) {
-                return {
-                    verdict: parsed.verdict,
-                    reason:
-                        typeof parsed.reason === 'string' &&
-                        parsed.reason.length > 0
-                            ? parsed.reason
-                            : 'No reason supplied by auxiliary judge.',
-                    modelId,
-                };
-            }
-        } catch {
-            // fall through to heuristic parsing
         }
+    } catch {
+        // fall through to heuristic parsing
     }
 
-    if (isVerdict(normalized.toLowerCase())) {
+    if (isResolutionJudgeVerdict(normalized.toLowerCase())) {
         const verdict =
             normalized.toLowerCase() as ResolutionJudgeResult['verdict'];
         return {
@@ -229,21 +233,24 @@ function getPromptLocation(
     const primarySource = finding.sources?.find(isPromptSource);
     if (primarySource) {
         return {
-            path: normalizePromptPath(primarySource.path, workspaceRoot),
+            path: normalizeWorkspaceRelativePath(
+                primarySource.path,
+                workspaceRoot
+            ),
             lineStart: primarySource.lineStart,
             lineEnd: primarySource.lineEnd,
         };
     }
 
     return {
-        path: normalizePromptPath(finding.file, workspaceRoot),
+        path: normalizeWorkspaceRelativePath(finding.file, workspaceRoot),
         lineStart: finding.lineRange[0],
         lineEnd: finding.lineRange[1],
     };
 }
 
 function unwrapCodeFence(content: string): string {
-    const match = content.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    const match = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
     return match?.[1]?.trim() ?? content;
 }
 
@@ -258,19 +265,4 @@ function isPromptSource(
         source.lineStart > 0 &&
         source.lineEnd >= source.lineStart
     );
-}
-
-function isVerdict(
-    value: string | undefined
-): value is ResolutionJudgeResult['verdict'] {
-    return (
-        value === 'resolved' ||
-        value === 'unresolved' ||
-        value === 'disputed' ||
-        value === 'noise'
-    );
-}
-
-function normalizePromptPath(filePath: string, workspaceRoot: string): string {
-    return normalizeWorkspaceRelativePath(filePath, workspaceRoot);
 }
