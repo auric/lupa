@@ -3,6 +3,7 @@ import type { IServiceRegistry } from '../services/serviceManager';
 import { DiffUtils } from '../utils/diffUtils';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { RecordedFinding } from '../types/findingTypes';
+import { isCancellationError } from '../utils/asyncUtils';
 import { resolveDiff } from './diffResolver';
 import {
     awaitWithinHeadlessBudget,
@@ -85,7 +86,7 @@ export async function runHeadless(
                 services
             );
         } catch (err) {
-            if (err instanceof vscode.CancellationError) {
+            if (isCancellationError(err)) {
                 throw new Error(
                     formatHeadlessCancellationMessage('during diff resolution')
                 );
@@ -98,12 +99,6 @@ export async function runHeadless(
             );
         }
         const parsedDiff = DiffUtils.parseDiff(diffText);
-
-        requireRemainingHeadlessBudgetMs(
-            opts.timeoutMs,
-            opts.deadlineAt,
-            'before model selection completed'
-        );
 
         // persist: false — don't persist the model choice into the target
         // workspace's .vscode/lupa.json (treat the analyzed repo as read-only).
@@ -142,12 +137,6 @@ export async function runHeadless(
                     `(e.g. sign in to Copilot and enable the model in the Copilot Chat model picker).`
             );
         }
-
-        requireRemainingHeadlessBudgetMs(
-            opts.timeoutMs,
-            opts.deadlineAt,
-            'during analysis'
-        );
 
         const result = await awaitWithinHeadlessBudget(
             services.analysisEngine.analyze(
