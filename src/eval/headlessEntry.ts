@@ -1,4 +1,6 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { PRAnalysisCoordinator } from '../services/prAnalysisCoordinator';
 import { runHeadlessResolutionJudge } from './headlessJudge';
@@ -56,6 +58,38 @@ interface HeadlessArgs {
     head?: string;
     seed?: number;
     payload?: string;
+}
+
+/**
+ * Validates that a file path is absolute, contains no '..' segments, and
+ * resides within one of the allowed root directories.
+ */
+function assertSafeFilePath(
+    filePath: string,
+    context: string,
+    allowedRoots: string[]
+): void {
+    if (!path.isAbsolute(filePath)) {
+        throw new Error(
+            `${context} must be an absolute path, got: ${filePath}`
+        );
+    }
+    const normalized = path.normalize(filePath);
+    const segments = normalized.split(path.sep);
+    if (segments.includes('..')) {
+        throw new Error(
+            `${context} contains forbidden '..' segment: ${filePath}`
+        );
+    }
+    const isUnderAllowed = allowedRoots.some((root) => {
+        const rel = path.relative(path.normalize(root), normalized);
+        return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    });
+    if (!isUnderAllowed) {
+        throw new Error(
+            `${context} must be within allowed directories (${allowedRoots.join(', ')}), got: ${filePath}`
+        );
+    }
 }
 
 export const EXACT_MODEL_PREFLIGHT_MAX_MS = 15_000;
@@ -349,6 +383,11 @@ async function awaitWithCancellation<T>(
             subscription.dispose();
             reject(new Error(timeoutMessage));
         });
+        if (token.isCancellationRequested) {
+            subscription.dispose();
+            reject(new Error(timeoutMessage));
+            return;
+        }
         promise.then(
             (value) => {
                 subscription.dispose();
@@ -367,6 +406,10 @@ function writeSentinel(exitCode: number, error: string | undefined): void {
     if (!sentinelPath) {
         return;
     }
+    assertSafeFilePath(sentinelPath, 'sentinelPath', [
+        process.cwd(),
+        os.tmpdir(),
+    ]);
     const tmpPath = `${sentinelPath}.tmp`;
     try {
         fs.writeFileSync(
@@ -422,6 +465,13 @@ export async function runHeadlessFromEnv(
             );
         }
         const args = validateHeadlessArgs(JSON.parse(rawArgs));
+        const allowedRoots = [args.workspace, os.tmpdir()];
+        if (args.out) {
+            assertSafeFilePath(args.out, 'args.out', allowedRoots);
+        }
+        if (args.payload) {
+            assertSafeFilePath(args.payload, 'args.payload', allowedRoots);
+        }
         const requestedIdentifier = normalizeModelIdentifier(args.model);
         const deadlineAt =
             args.deadlineAt ?? createHeadlessDeadline(args.timeoutMs);
@@ -575,6 +625,10 @@ function sentinelExists(): boolean {
     if (!sentinelPath) {
         return false;
     }
+    assertSafeFilePath(sentinelPath, 'sentinelPath', [
+        process.cwd(),
+        os.tmpdir(),
+    ]);
     try {
         return fs.statSync(sentinelPath).isFile();
     } catch {

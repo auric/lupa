@@ -20,6 +20,7 @@ import {
     normalizeWorkspaceRelativePath,
     requireRemainingHeadlessBudgetMs,
 } from '../headlessShared';
+import { AUXILIARY_JUDGE_UNAVAILABLE_PREFIX } from './constants';
 
 const GIT_DIFF_TIMEOUT_MS = 15_000;
 
@@ -300,14 +301,14 @@ async function classifyRealFinding(
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (message.startsWith('Auxiliary judge unavailable:')) {
+        if (message.startsWith(AUXILIARY_JUDGE_UNAVAILABLE_PREFIX)) {
             return {
                 kind: 'warning',
                 warning: createResolutionWarning(
                     finding,
                     lineCheck.path,
                     'judge-unavailable',
-                    `${sourceFallbackContext}${lineCheck.reason} ${message.slice('Auxiliary judge unavailable:'.length).trim()} Excluding this finding from semantic resolution metrics.`
+                    `${sourceFallbackContext}${lineCheck.reason} ${message.slice(AUXILIARY_JUDGE_UNAVAILABLE_PREFIX.length).trim()} Excluding this finding from semantic resolution metrics.`
                 ),
             };
         }
@@ -1494,7 +1495,10 @@ function pathRequiresLiteralGitPath(filePath: string): boolean {
     return (
         filePath.includes('*') ||
         filePath.includes('?') ||
-        filePath.includes('[')
+        filePath.includes('[') ||
+        filePath.includes('{') ||
+        filePath.includes('}') ||
+        filePath.includes('\\')
     );
 }
 
