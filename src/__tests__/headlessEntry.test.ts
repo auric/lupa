@@ -571,6 +571,34 @@ describe('runHeadlessFromEnv', () => {
         expect(vscode.lm.selectChatModels).not.toHaveBeenCalled();
     });
 
+    it('reports malformed eval --models identifiers as CliError during CLI setup', async () => {
+        const { CliError, normalizeCliModelIdentifiers, parseArgs } =
+            await import('../../scripts/eval/run-eval.ts');
+
+        expect(() =>
+            normalizeCliModelIdentifiers(
+                parseArgs(['--models', 'copilot/,copilot/gpt-5'])
+            )
+        ).toThrow(CliError);
+        expect(() =>
+            normalizeCliModelIdentifiers(
+                parseArgs(['--models', 'copilot/,copilot/gpt-5'])
+            )
+        ).toThrow(/--models: Malformed model identifier 'copilot\/'/);
+    });
+
+    it('reports malformed eval --aux-model identifiers as CliError during CLI setup', async () => {
+        const { CliError, normalizeCliModelIdentifiers, parseArgs } =
+            await import('../../scripts/eval/run-eval.ts');
+
+        expect(() =>
+            normalizeCliModelIdentifiers(parseArgs(['--aux-model', 'copilot/']))
+        ).toThrow(CliError);
+        expect(() =>
+            normalizeCliModelIdentifiers(parseArgs(['--aux-model', 'copilot/']))
+        ).toThrow(/--aux-model: Malformed model identifier 'copilot\/'/);
+    });
+
     it('caps exact-model preflight below a large remaining timeout budget', async () => {
         const {
             EXACT_MODEL_PREFLIGHT_MAX_MS,

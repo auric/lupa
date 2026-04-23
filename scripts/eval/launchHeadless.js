@@ -49,6 +49,15 @@ const WATCHDOG_SIGTERM_GRACE_MS = 5_000;
 const WATCHDOG_POST_SIGNAL_RETRY_MS = WATCHDOG_SIGTERM_GRACE_MS + 2_000;
 const WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS = 20_000;
 
+function ensureLauncherDeadlineAt(args, now = Date.now()) {
+    if (typeof args.deadlineAt === 'number') {
+        return args.deadlineAt;
+    }
+
+    args.deadlineAt = now + args.timeoutMs;
+    return args.deadlineAt;
+}
+
 function createPostSignalWatchdog(onForceKill, onForceExit) {
     let activeSignal = 'signal';
     let retryTimeoutHandle;
@@ -105,11 +114,7 @@ function createPostSignalWatchdog(onForceKill, onForceExit) {
 }
 
 function requireLauncherDeadlineRemaining(args, phase, now = Date.now()) {
-    if (typeof args.deadlineAt !== 'number') {
-        return args.timeoutMs;
-    }
-
-    const remainingMs = args.deadlineAt - now;
+    const remainingMs = ensureLauncherDeadlineAt(args, now) - now;
     if (remainingMs <= 0) {
         throw new Error(`Headless launcher deadline elapsed ${phase}.`);
     }
@@ -118,10 +123,6 @@ function requireLauncherDeadlineRemaining(args, phase, now = Date.now()) {
 }
 
 async function runWithinLauncherDeadline(args, phase, work) {
-    if (typeof args.deadlineAt !== 'number') {
-        return await work();
-    }
-
     const remainingMs = requireLauncherDeadlineRemaining(args, phase);
     let timeoutHandle;
     const deadlineExceeded = new Promise((_, reject) => {
@@ -317,11 +318,10 @@ async function main() {
 }
 
 function getLauncherWatchdogMs(args) {
-    if (typeof args.deadlineAt === 'number') {
-        return Math.max(0, args.deadlineAt - Date.now()) + WATCHDOG_OVERHEAD_MS;
-    }
-
-    return args.timeoutMs + WATCHDOG_OVERHEAD_MS;
+    return (
+        Math.max(0, ensureLauncherDeadlineAt(args) - Date.now()) +
+        WATCHDOG_OVERHEAD_MS
+    );
 }
 
 /**
@@ -410,6 +410,7 @@ if (require.main === module) {
 
 module.exports = {
     createPostSignalWatchdog,
+    ensureLauncherDeadlineAt,
     forwardTerminationSignal,
     getLauncherWatchdogMs,
     requireLauncherDeadlineRemaining,

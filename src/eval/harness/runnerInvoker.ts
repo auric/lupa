@@ -498,19 +498,18 @@ function killTree(child: ChildProcess): void {
         }
         return;
     }
-    const killProcessGroup = (signal: NodeJS.Signals): void => {
+    const killProcessGroup = (signal: NodeJS.Signals): boolean => {
         try {
             process.kill(-child.pid!, signal);
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    const killLauncher = (signal: NodeJS.Signals): void => {
+        if (killProcessGroup(signal)) {
             return;
-        } catch (error) {
-            if (
-                error &&
-                typeof error === 'object' &&
-                'code' in error &&
-                error.code === 'ESRCH'
-            ) {
-                return;
-            }
         }
         try {
             child.kill(signal);
@@ -519,9 +518,9 @@ function killTree(child: ChildProcess): void {
         }
     };
 
-    killProcessGroup('SIGTERM');
+    killLauncher('SIGTERM');
     setTimeout(() => {
-        killProcessGroup('SIGKILL');
+        killLauncher('SIGKILL');
     }, SIGTERM_GRACE_MS).unref();
 }
 

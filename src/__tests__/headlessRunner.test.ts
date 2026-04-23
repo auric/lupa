@@ -340,6 +340,37 @@ describe('launchHeadless watchdog', () => {
         }
     });
 
+    it('derives an absolute launcher deadline from timeoutMs when --deadline-at is omitted', async () => {
+        vi.useFakeTimers();
+
+        try {
+            const now = new Date('2026-04-23T00:00:00.000Z');
+            vi.setSystemTime(now);
+            const { runWithinLauncherDeadline } =
+                await import('../../scripts/eval/launchHeadless.js');
+            const args = {
+                timeoutMs: 500,
+                deadlineAt: null,
+            };
+
+            const budgetPromise = runWithinLauncherDeadline(
+                args,
+                'during VS Code download and headless profile setup',
+                () => new Promise(() => {})
+            );
+
+            expect(args.deadlineAt).toBe(now.getTime() + 500);
+
+            await vi.advanceTimersByTimeAsync(500);
+
+            await expect(budgetPromise).rejects.toThrow(
+                /Headless launcher deadline elapsed during VS Code download and headless profile setup\./
+            );
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('re-forwards repeated termination signals without exiting early while cleanup is still in progress', async () => {
         const { forwardTerminationSignal } =
             await import('../../scripts/eval/launchHeadless.js');

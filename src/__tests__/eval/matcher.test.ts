@@ -1741,6 +1741,76 @@ index 1234567..89abcde 100644
         }
     });
 
+    it('falls back to killing the launcher pid when POSIX process-group cleanup returns ESRCH', async () => {
+        vi.useFakeTimers();
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', {
+            value: 'linux',
+        });
+        const processKillSpy = vi
+            .spyOn(process, 'kill')
+            .mockImplementation(() => {
+                const error = new Error(
+                    'process group not found'
+                ) as NodeJS.ErrnoException;
+                error.code = 'ESRCH';
+                throw error;
+            });
+
+        try {
+            const childKill = vi.fn();
+            mockedSpawn.mockImplementation((cmd: string) => {
+                if (cmd !== 'git') {
+                    throw new Error(`Unexpected command: ${cmd}`);
+                }
+
+                const proc = new EventEmitter() as EventEmitter & {
+                    stdout: EventEmitter;
+                    stderr: EventEmitter;
+                    kill: typeof childKill;
+                    pid: number;
+                };
+                proc.stdout = new EventEmitter();
+                proc.stderr = new EventEmitter();
+                proc.kill = childKill;
+                proc.pid = 321;
+                return proc;
+            });
+
+            const resultPromise = invokeHeadless({
+                workspaceRoot: '/tmp/workspace',
+                baseRef: 'main',
+                headRef: 'sha:deadbeef',
+                model: 'copilot/gpt-5-mini',
+                seed: 7,
+                timeoutMs: 60_000,
+                deadlineAt: Date.now() + 500,
+                bailOnError: false,
+            });
+
+            await vi.advanceTimersByTimeAsync(500);
+
+            const result = await resultPromise;
+            expect(result).toMatchObject({
+                ok: false,
+                result: null,
+            });
+            expect(processKillSpy).toHaveBeenCalledWith(-321, 'SIGTERM');
+            expect(childKill).toHaveBeenCalledWith('SIGTERM');
+
+            await vi.advanceTimersByTimeAsync(getHarnessSigtermGraceMs());
+
+            expect(processKillSpy).toHaveBeenCalledWith(-321, 'SIGKILL');
+            expect(childKill).toHaveBeenCalledWith('SIGKILL');
+        } finally {
+            processKillSpy.mockRestore();
+            Object.defineProperty(process, 'platform', {
+                value: originalPlatform,
+            });
+            vi.useRealTimers();
+        }
+    });
+
     it('separates resolution-only warnings from failures and renders invalid severity metrics distinctly from no-findings severities', () => {
         const noFindingsRun: SingleRun = {
             fixture: 'fixture-no-findings',

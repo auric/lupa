@@ -11,6 +11,7 @@ import fs from 'node:fs/promises';
 import readline from 'node:readline';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { loadFixtures } from '../../src/eval/harness/fixtureLoader';
 import {
     invokeHeadless,
@@ -62,7 +63,7 @@ terminal before spawning any VS Code instances. In non-interactive contexts
 consumes Copilot quota — treat --yes with care.
 `;
 
-class CliError extends Error {
+export class CliError extends Error {
     constructor(message: string) {
         super(message);
         this.name = 'CliError';
@@ -94,7 +95,7 @@ interface AuxiliaryJudgeBudget {
     deadlineAt: number;
 }
 
-function parseArgs(argv: readonly string[]): ParsedArgs {
+export function parseArgs(argv: readonly string[]): ParsedArgs {
     const out: ParsedArgs = {
         models: [...DEFAULT_MODELS],
         auxModel: DEFAULT_AUXILIARY_MODEL,
@@ -165,6 +166,32 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
         throw new CliError(`Unknown flag: ${a}`);
     }
     return out;
+}
+
+function normalizeCliModelIdentifier(
+    identifier: string,
+    flag: '--models' | '--aux-model'
+): string {
+    try {
+        return normalizeModelIdentifier(identifier);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new CliError(`${flag}: ${message}`);
+    }
+}
+
+export function normalizeCliModelIdentifiers(args: ParsedArgs): ParsedArgs {
+    return {
+        ...args,
+        models: Array.from(
+            new Set(
+                args.models.map((model) =>
+                    normalizeCliModelIdentifier(model, '--models')
+                )
+            )
+        ),
+        auxModel: normalizeCliModelIdentifier(args.auxModel, '--aux-model'),
+    };
 }
 
 function parseStringValue(raw: string | undefined, flag: string): string {
@@ -339,16 +366,13 @@ async function confirmOrRefuse(
 }
 
 async function main(): Promise<number> {
-    const args = parseArgs(process.argv.slice(2));
+    let args = parseArgs(process.argv.slice(2));
     if (args.help) {
         process.stdout.write(USAGE);
         return 0;
     }
 
-    args.models = Array.from(
-        new Set(args.models.map((model) => normalizeModelIdentifier(model)))
-    );
-    args.auxModel = normalizeModelIdentifier(args.auxModel);
+    args = normalizeCliModelIdentifiers(args);
 
     const fixtures = await loadFixtures({
         kinds: args.fixtures,
@@ -541,15 +565,26 @@ function createAuxiliaryJudgeBudget(
     };
 }
 
-main()
-    .then((code) => process.exit(code))
-    .catch((err: unknown) => {
-        if (err instanceof CliError) {
-            process.stderr.write(err.message + '\n\n' + USAGE);
-            process.exit(2);
-        }
-        const msg =
-            err instanceof Error ? (err.stack ?? err.message) : String(err);
-        process.stderr.write(msg + '\n');
-        process.exit(1);
-    });
+function isDirectExecution(): boolean {
+    const entryPoint = process.argv[1];
+    if (!entryPoint) {
+        return false;
+    }
+
+    return path.resolve(entryPoint) === fileURLToPath(import.meta.url);
+}
+
+if (isDirectExecution()) {
+    main()
+        .then((code) => process.exit(code))
+        .catch((err: unknown) => {
+            if (err instanceof CliError) {
+                process.stderr.write(err.message + '\n\n' + USAGE);
+                process.exit(2);
+            }
+            const msg =
+                err instanceof Error ? (err.stack ?? err.message) : String(err);
+            process.stderr.write(msg + '\n');
+            process.exit(1);
+        });
+}
