@@ -1532,6 +1532,37 @@ describe('runHeadlessFromEnv', () => {
     });
 });
 
+describe('assertSafeFilePath', () => {
+    it('rejects relative paths', async () => {
+        const { assertSafeFilePath } = await import('../eval/headlessEntry');
+        expect(() =>
+            assertSafeFilePath('sentinel.json', 'sentinelPath', [
+                '/workspace',
+                '/tmp',
+            ])
+        ).toThrow('sentinelPath must be an absolute path, got: sentinel.json');
+    });
+
+    it('rejects paths containing .. segments', async () => {
+        const { assertSafeFilePath } = await import('../eval/headlessEntry');
+        const malicious =
+            path.sep === '\\' ? '\\tmp\\..\\etc\\passwd' : '/tmp/../etc/passwd';
+        expect(() =>
+            assertSafeFilePath(malicious, 'args.out', ['/workspace', '/tmp'])
+        ).toThrow(`args.out contains forbidden '..' segment: ${malicious}`);
+    });
+
+    it('rejects paths outside allowed roots', async () => {
+        const { assertSafeFilePath } = await import('../eval/headlessEntry');
+        const outsidePath = path.join('/', 'etc', 'passwd');
+        expect(() =>
+            assertSafeFilePath(outsidePath, 'args.out', ['/workspace', '/tmp'])
+        ).toThrow(
+            `args.out must be within allowed directories (/workspace, /tmp), got: ${outsidePath}`
+        );
+    });
+});
+
 // Regression for round-3 review blocker: ServiceManager.initializeFoundationServices
 // invokes gitOperations.initialize() on extension activation, BEFORE the headless
 // runner gets a chance to pass { persist: false } in diffResolver. Without a guard

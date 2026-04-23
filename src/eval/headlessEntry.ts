@@ -64,7 +64,7 @@ interface HeadlessArgs {
  * Validates that a file path is absolute, contains no '..' segments, and
  * resides within one of the allowed root directories.
  */
-function assertSafeFilePath(
+export function assertSafeFilePath(
     filePath: string,
     context: string,
     allowedRoots: string[]
@@ -74,13 +74,13 @@ function assertSafeFilePath(
             `${context} must be an absolute path, got: ${filePath}`
         );
     }
-    const normalized = path.normalize(filePath);
-    const segments = normalized.split(path.sep);
-    if (segments.includes('..')) {
+    const rawSegments = filePath.split(/[\\/]/);
+    if (rawSegments.includes('..')) {
         throw new Error(
             `${context} contains forbidden '..' segment: ${filePath}`
         );
     }
+    const normalized = path.normalize(filePath);
     const isUnderAllowed = allowedRoots.some((root) => {
         let rootNormalized = path.normalize(root);
         let fileNormalized = normalized;
