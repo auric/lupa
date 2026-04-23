@@ -21,6 +21,8 @@ const LAUNCHER_POSIX_SIGTERM_GRACE_MS = 5_000;
 const SIGTERM_GRACE_MS = LAUNCHER_POSIX_SIGTERM_GRACE_MS + 1_000;
 const CHECKOUT_POST_KILL_WAIT_MS = SIGTERM_GRACE_MS + 2_000;
 const STDERR_TAIL_CHARS = 2_000;
+const posixKillEscalationHandles = new WeakMap<ChildProcess, NodeJS.Timeout>();
+const posixKillCleanupRegistered = new WeakSet<ChildProcess>();
 
 export interface InvokeHeadlessOptions {
     workspaceRoot: string;
@@ -519,6 +521,28 @@ function tailStderr(stderr: string, stdout: string): string {
     return '...' + combined.slice(-STDERR_TAIL_CHARS);
 }
 
+function clearPendingPosixKillEscalation(child: ChildProcess): void {
+    const handle = posixKillEscalationHandles.get(child);
+    if (handle === undefined) {
+        return;
+    }
+    clearTimeout(handle);
+    posixKillEscalationHandles.delete(child);
+}
+
+function registerPosixKillCleanup(child: ChildProcess): void {
+    if (posixKillCleanupRegistered.has(child)) {
+        return;
+    }
+
+    const clear = () => {
+        clearPendingPosixKillEscalation(child);
+    };
+    child.on('exit', clear);
+    child.on('close', clear);
+    posixKillCleanupRegistered.add(child);
+}
+
 function killTree(child: ChildProcess): void {
     if (!child.pid) {
         return;
@@ -555,10 +579,18 @@ function killTree(child: ChildProcess): void {
         }
     };
 
+    registerPosixKillCleanup(child);
     killLauncher('SIGTERM');
-    setTimeout(() => {
+    if (posixKillEscalationHandles.has(child)) {
+        return;
+    }
+
+    const escalationHandle = setTimeout(() => {
+        posixKillEscalationHandles.delete(child);
         killLauncher('SIGKILL');
-    }, SIGTERM_GRACE_MS).unref();
+    }, SIGTERM_GRACE_MS);
+    escalationHandle.unref?.();
+    posixKillEscalationHandles.set(child, escalationHandle);
 }
 
 function handleInvokeHeadlessError(

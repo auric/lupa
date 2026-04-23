@@ -58,7 +58,6 @@ interface HeadlessArgs {
 }
 
 export const EXACT_MODEL_PREFLIGHT_MAX_MS = 15_000;
-export const EXACT_MODEL_PREFLIGHT_VENDOR_READY_GRACE_MS = 2_000;
 const MODEL_DISCOVERY_POLL_INTERVAL_MS = 1_000;
 
 /**
@@ -188,8 +187,7 @@ async function waitForCopilotModels(
         vscode.LanguageModelChat[]
     > => await vscode.lm.selectChatModels({ vendor: requestedVendor });
 
-    const initialVendorModels = await selectRequestedVendorModels();
-    const initial = findRequestedModels(initialVendorModels);
+    const initial = findRequestedModels(await selectRequestedVendorModels());
     if (initial.length > 0) {
         return initial;
     }
@@ -204,8 +202,6 @@ async function waitForCopilotModels(
         let cancellation: vscode.Disposable | undefined;
         let interval: ReturnType<typeof setInterval> | undefined;
         let timeout: ReturnType<typeof setTimeout> | undefined;
-        let vendorReadyAt =
-            initialVendorModels.length > 0 ? Date.now() : undefined;
         const cleanup = () => {
             if (settled) {
                 return;
@@ -227,19 +223,6 @@ async function waitForCopilotModels(
             cleanup();
             resolve(models);
         };
-        const finishIfVendorReadyGraceElapsed = (): boolean => {
-            if (vendorReadyAt === undefined) {
-                return false;
-            }
-            if (
-                Date.now() - vendorReadyAt >=
-                EXACT_MODEL_PREFLIGHT_VENDOR_READY_GRACE_MS
-            ) {
-                finish([]);
-                return true;
-            }
-            return false;
-        };
         const check = async () => {
             if (settled) {
                 return;
@@ -253,13 +236,6 @@ async function waitForCopilotModels(
                 const found = findRequestedModels(vendorModels);
                 if (found.length > 0) {
                     finish(found);
-                    return;
-                }
-                if (vendorModels.length > 0) {
-                    vendorReadyAt ??= Date.now();
-                    finishIfVendorReadyGraceElapsed();
-                } else {
-                    vendorReadyAt = undefined;
                 }
             } catch (err) {
                 // Fire-and-forget callers (event handler, interval) would
@@ -284,7 +260,6 @@ async function waitForCopilotModels(
             finish([]);
         }, timeoutMs);
         timeout.unref?.();
-        finishIfVendorReadyGraceElapsed();
     });
 }
 

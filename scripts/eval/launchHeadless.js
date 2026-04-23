@@ -48,6 +48,8 @@ const WATCHDOG_OVERHEAD_MS = 60_000;
 const WATCHDOG_SIGTERM_GRACE_MS = 5_000;
 const WATCHDOG_POST_SIGNAL_RETRY_MS = WATCHDOG_SIGTERM_GRACE_MS + 2_000;
 const WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS = 20_000;
+const posixKillEscalationHandles = new WeakMap();
+const posixKillCleanupRegistered = new WeakSet();
 
 function ensureLauncherDeadlineAt(args, now = Date.now()) {
     if (typeof args.deadlineAt === 'number') {
@@ -359,6 +361,28 @@ function getLauncherWatchdogMs(args) {
     );
 }
 
+function clearPendingPosixKillEscalation(child) {
+    const handle = posixKillEscalationHandles.get(child);
+    if (!handle) {
+        return;
+    }
+    clearTimeout(handle);
+    posixKillEscalationHandles.delete(child);
+}
+
+function registerPosixKillCleanup(child) {
+    if (posixKillCleanupRegistered.has(child)) {
+        return;
+    }
+
+    const clear = () => {
+        clearPendingPosixKillEscalation(child);
+    };
+    child.on('exit', clear);
+    child.on('close', clear);
+    posixKillCleanupRegistered.add(child);
+}
+
 /**
  * VS Code spawns a tree of helper processes (extension host, pty host, file
  * watchers, crash reporter). On Windows, child.kill() only terminates the
@@ -399,10 +423,18 @@ function killProcessTree(child) {
             return false;
         }
     };
+    registerPosixKillCleanup(child);
     groupSignal('SIGTERM');
-    setTimeout(() => {
+    if (posixKillEscalationHandles.has(child)) {
+        return;
+    }
+
+    const escalationHandle = setTimeout(() => {
+        posixKillEscalationHandles.delete(child);
         groupSignal('SIGKILL');
-    }, WATCHDOG_SIGTERM_GRACE_MS).unref();
+    }, WATCHDOG_SIGTERM_GRACE_MS);
+    escalationHandle.unref?.();
+    posixKillEscalationHandles.set(child, escalationHandle);
 }
 
 function readSentinelExitCode(childExitCode) {

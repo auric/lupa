@@ -121,17 +121,14 @@ function buildUserPrompt(
     workspaceRoot: string
 ): string {
     const finding = payload.finding;
-    const normalizedFindingPath = normalizePromptPath(
-        finding.file,
-        workspaceRoot
-    );
+    const promptLocation = getPromptLocation(finding, workspaceRoot);
     const evidencePayload = JSON.stringify(
         {
             finding: {
                 title: finding.title,
                 severity: finding.severity,
                 category: finding.category,
-                location: `${normalizedFindingPath}:${finding.lineRange[0]}-${finding.lineRange[1]}`,
+                location: `${promptLocation.path}:${promptLocation.lineStart}-${promptLocation.lineEnd}`,
                 sources:
                     (finding.sources ?? []).map((source) => ({
                         path: normalizePromptPath(source.path, workspaceRoot),
@@ -197,9 +194,46 @@ function parseJudgeResponse(
     );
 }
 
+function getPromptLocation(
+    finding: ResolutionJudgePayload['finding'],
+    workspaceRoot: string
+): {
+    path: string;
+    lineStart: number;
+    lineEnd: number;
+} {
+    const primarySource = finding.sources?.find(isPromptSource);
+    if (primarySource) {
+        return {
+            path: normalizePromptPath(primarySource.path, workspaceRoot),
+            lineStart: primarySource.lineStart,
+            lineEnd: primarySource.lineEnd,
+        };
+    }
+
+    return {
+        path: normalizePromptPath(finding.file, workspaceRoot),
+        lineStart: finding.lineRange[0],
+        lineEnd: finding.lineRange[1],
+    };
+}
+
 function unwrapCodeFence(content: string): string {
     const match = content.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
     return match?.[1]?.trim() ?? content;
+}
+
+function isPromptSource(
+    source: NonNullable<ResolutionJudgePayload['finding']['sources']>[number]
+): boolean {
+    return (
+        typeof source.path === 'string' &&
+        source.path.length > 0 &&
+        Number.isInteger(source.lineStart) &&
+        Number.isInteger(source.lineEnd) &&
+        source.lineStart > 0 &&
+        source.lineEnd >= source.lineStart
+    );
 }
 
 function isVerdict(

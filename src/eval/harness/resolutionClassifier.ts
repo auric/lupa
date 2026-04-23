@@ -251,7 +251,7 @@ async function classifyRealFinding(
                 finding,
                 comparable.sources,
                 fixture.workspaceRoot,
-                normalizedPath
+                lineCheck.path
             ),
             diffText: lineCheck.diffText,
         });
@@ -494,13 +494,28 @@ function sanitizeFindingForJudge(
     finding: RecordedFinding,
     comparableSources: readonly FindingSource[],
     workspaceRoot: string | undefined,
-    defaultPath: string
+    judgedPath: string
 ): RecordedFinding {
     const normalizedFile = normalizePath(finding.file, workspaceRoot);
+    const primarySource =
+        comparableSources.find((source) => source.path === judgedPath) ??
+        comparableSources[0];
+    const orderedSources = primarySource
+        ? [
+              primarySource,
+              ...comparableSources.filter((source) => source !== primarySource),
+          ]
+        : [...comparableSources];
+
     return {
         ...finding,
-        file: normalizedFile.length > 0 ? normalizedFile : defaultPath,
-        sources: comparableSources.map((source) => ({
+        file:
+            primarySource?.path ??
+            (normalizedFile.length > 0 ? normalizedFile : judgedPath),
+        lineRange: primarySource
+            ? [primarySource.lineStart, primarySource.lineEnd]
+            : finding.lineRange,
+        sources: orderedSources.map((source) => ({
             path: source.path,
             lineStart: source.lineStart,
             lineEnd: source.lineEnd,

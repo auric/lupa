@@ -1747,7 +1747,10 @@ index 1234567..89abcde 100644
             } else {
                 expect(processKillSpy).toHaveBeenCalledWith(-123, 'SIGTERM');
                 await vi.advanceTimersByTimeAsync(getHarnessSigtermGraceMs());
-                expect(processKillSpy).toHaveBeenCalledWith(-123, 'SIGKILL');
+                expect(processKillSpy).not.toHaveBeenCalledWith(
+                    -123,
+                    'SIGKILL'
+                );
                 expect(kill).not.toHaveBeenCalled();
             }
             expect(result.error).toContain(
@@ -1897,8 +1900,8 @@ index 1234567..89abcde 100644
 
             await vi.advanceTimersByTimeAsync(getHarnessSigtermGraceMs());
 
-            expect(processKillSpy).toHaveBeenCalledWith(-321, 'SIGKILL');
-            expect(childKill).toHaveBeenCalledWith('SIGKILL');
+            expect(processKillSpy).not.toHaveBeenCalledWith(-321, 'SIGKILL');
+            expect(childKill).not.toHaveBeenCalledWith('SIGKILL');
         } finally {
             processKillSpy.mockRestore();
             Object.defineProperty(process, 'platform', {

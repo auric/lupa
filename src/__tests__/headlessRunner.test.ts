@@ -909,6 +909,87 @@ describe('runHeadlessResolutionJudge', () => {
         }
     });
 
+    it('parses fenced JSON responses from the auxiliary judge', async () => {
+        const payloadPath = writePayloadFile();
+        const tokenSource = new vscode.CancellationTokenSource();
+        const services = makeServices({
+            selectedModel: {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            },
+        });
+        vi.mocked(ModelRequestHandler.sendRequest).mockResolvedValue({
+            content:
+                '```json\n{"verdict":"resolved","reason":"Patch now enforces the remaining budget."}\n```',
+        } as never);
+
+        try {
+            const result = await runHeadlessResolutionJudge(
+                {
+                    workspaceRoot: '/ws',
+                    modelIdentifier: 'copilot/gpt-5-mini',
+                    timeoutMs: 60_000,
+                    payloadPath,
+                    cancellationToken: tokenSource.token,
+                },
+                services
+            );
+
+            expect(result).toMatchObject({
+                verdict: 'resolved',
+                reason: 'Patch now enforces the remaining budget.',
+                modelId: 'copilot/gpt-5-mini',
+            });
+        } finally {
+            fs.rmSync(path.dirname(payloadPath), {
+                recursive: true,
+                force: true,
+            });
+        }
+    });
+
+    it('throws an unparseable-verdict error when the auxiliary judge returns malformed text', async () => {
+        const payloadPath = writePayloadFile();
+        const tokenSource = new vscode.CancellationTokenSource();
+        const services = makeServices({
+            selectedModel: {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            },
+        });
+        vi.mocked(ModelRequestHandler.sendRequest).mockResolvedValue({
+            content: 'maybe resolved? hard to tell',
+        } as never);
+
+        try {
+            await expect(
+                runHeadlessResolutionJudge(
+                    {
+                        workspaceRoot: '/ws',
+                        modelIdentifier: 'copilot/gpt-5-mini',
+                        timeoutMs: 60_000,
+                        payloadPath,
+                        cancellationToken: tokenSource.token,
+                    },
+                    services
+                )
+            ).rejects.toThrow(
+                /Auxiliary judge returned an unparseable verdict: maybe resolved\? hard to tell/
+            );
+        } finally {
+            fs.rmSync(path.dirname(payloadPath), {
+                recursive: true,
+                force: true,
+            });
+        }
+    });
+
     it('fails fast with a targeted error when the resolution-judge payload shape is invalid', async () => {
         const payloadPath = writeInvalidPayloadFile();
         const tokenSource = new vscode.CancellationTokenSource();
@@ -1008,9 +1089,9 @@ describe('runHeadlessResolutionJudge', () => {
         expect(request.messages[1]?.content).not.toContain('<followup_diff>');
     });
 
-    it('normalizes absolute finding and source paths to workspace-relative form in the judge prompt payload', async () => {
+    it('normalizes source-backed prompt locations to workspace-relative form in the judge prompt payload', async () => {
         const payloadPath = writePayloadFile({
-            file: '/tmp/workspace/src/eval/headlessEntry.ts',
+            file: '/tmp/workspace/src/legacy/location.ts',
             sources: [
                 {
                     path: '/tmp/workspace/src/eval/headlessEntry.ts',
@@ -1061,6 +1142,9 @@ describe('runHeadlessResolutionJudge', () => {
             .calls[0]!;
         expect(request.messages[1]?.content).toContain(
             '"location": "src/eval/headlessEntry.ts:10-20"'
+        );
+        expect(request.messages[1]?.content).not.toContain(
+            '/tmp/workspace/src/legacy/location.ts:10-20'
         );
         expect(request.messages[1]?.content).toContain(
             '"path": "src/eval/headlessEntry.ts"'
