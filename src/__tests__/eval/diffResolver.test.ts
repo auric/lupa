@@ -151,6 +151,19 @@ describe('resolveDiff', () => {
         ).rejects.toThrow(/baseRef: starts with '-'/);
     });
 
+    it('rejects empty sha: refs', async () => {
+        await expect(
+            resolveDiff(
+                {
+                    workspaceRoot: '/w',
+                    baseRef: 'sha:',
+                    headRef: 'sha:abc',
+                },
+                services
+            )
+        ).rejects.toThrow(/baseRef: empty ref body — got 'sha:'/);
+    });
+
     it('surfaces git errors', async () => {
         mockGitRun({ stdout: '', stderr: 'unknown revision', exitCode: 128 });
 

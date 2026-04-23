@@ -87,6 +87,9 @@ function validateGitRef(ref: string, fieldName: string): void {
     const body = ref.startsWith(SHA_REF_PREFIX)
         ? ref.slice(SHA_REF_PREFIX.length)
         : ref;
+    if (body.length === 0) {
+        throw new Error(`${fieldName}: empty ref body — got '${ref}'`);
+    }
     if (body.startsWith('-')) {
         throw new Error(
             `${fieldName}: starts with '-', which is not allowed — got '${ref}'`

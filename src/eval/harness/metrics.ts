@@ -220,7 +220,7 @@ function aggregateResolutionRateBySeverity(
 
 function getRunResolutionMetricStatus(run: SingleRun): ResolutionMetricStatus {
     if (run.resolutionWarning) {
-        return run.result && run.result.findings.length === 0
+        return run.result == null || run.result.findings.length === 0
             ? 'no-findings'
             : 'invalid-skipped';
     }

@@ -31,7 +31,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn, execSync } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 const { downloadAndUnzipVSCode } = require('@vscode/test-electron');
 const { parseHeadlessArgs, HeadlessArgError } = require('./headlessArgs');
 const {
@@ -398,7 +398,10 @@ function killProcessTree(child) {
     }
     if (process.platform === 'win32') {
         try {
-            execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: 'ignore' });
+            execFileSync('taskkill', ['/F', '/T', '/PID', String(child.pid)], {
+                stdio: 'ignore',
+                windowsHide: true,
+            });
         } catch {
             child.kill('SIGKILL');
         }

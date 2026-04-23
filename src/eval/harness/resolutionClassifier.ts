@@ -1134,8 +1134,8 @@ function runGitDiffForPath(
             : gitPath
         : undefined;
     const args = gitPath
-        ? ['diff', `${fromRef}..${toRef}`, '--', gitPathArg!]
-        : ['diff', `${fromRef}..${toRef}`];
+        ? ['diff', '--no-ext-diff', `${fromRef}..${toRef}`, '--', gitPathArg!]
+        : ['diff', '--no-ext-diff', `${fromRef}..${toRef}`];
     const commandLabel = gitPath
         ? `git diff ${fromRef}..${toRef} -- ${gitPath}`
         : `git diff ${fromRef}..${toRef}`;
@@ -1197,7 +1197,7 @@ function runGitDiffNameOnly(
     return new Promise((resolve, reject) => {
         const proc = spawn(
             'git',
-            ['diff', '--name-only', `${fromRef}..${toRef}`],
+            ['diff', '--no-ext-diff', '--name-only', `${fromRef}..${toRef}`],
             {
                 cwd: workspaceRoot,
                 stdio: 'pipe',
@@ -1328,6 +1328,7 @@ function runGitDiffNameStatus(
             'git',
             [
                 'diff',
+                '--no-ext-diff',
                 '--name-status',
                 '--find-renames=100%',
                 `${fromRef}..${toRef}`,

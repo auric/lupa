@@ -105,10 +105,17 @@ export function validateRef(ref: string, fieldName: string): void {
                 `${fieldName}: empty body after scheme — got '${ref}'`
             );
         }
+        // NOTE: This regex limits SHAs to 40 hex chars (SHA-1).
+        // If Git SHA-256 repos become common, increase the limit to 64.
         if (ref.startsWith('sha:') && !/^[0-9a-fA-F]{1,40}$/.test(body)) {
             throw new Error(`${fieldName}: invalid SHA format — got '${ref}'`);
         }
         return;
+    }
+    if (!hasScheme && ref.includes('..')) {
+        throw new Error(
+            `${fieldName}: contains '..' range operator — got '${ref}'`
+        );
     }
     for (let i = 0; i < ref.length; i++) {
         const code = ref.charCodeAt(i);
