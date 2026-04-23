@@ -937,6 +937,7 @@ describe('runHeadlessResolutionJudge', () => {
             });
         } finally {
             nowSpy.mockRestore();
+            tokenSource.dispose();
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,
                 force: true,
@@ -986,6 +987,7 @@ describe('runHeadlessResolutionJudge', () => {
                 /requested exact model 'copilot\/gpt-5-mini' was not selected;.*copilot\/gpt-4o-mini/i
             );
         } finally {
+            tokenSource.dispose();
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,
                 force: true,
@@ -1026,6 +1028,7 @@ describe('runHeadlessResolutionJudge', () => {
             expect(result.verdict).toBe('unresolved');
             expect(result.reason).toContain("bare verdict 'unresolved'");
         } finally {
+            tokenSource.dispose();
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,
                 force: true,
@@ -1068,6 +1071,7 @@ describe('runHeadlessResolutionJudge', () => {
                 modelId: 'copilot/gpt-5-mini',
             });
         } finally {
+            tokenSource.dispose();
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,
                 force: true,
@@ -1107,6 +1111,7 @@ describe('runHeadlessResolutionJudge', () => {
                 /Auxiliary judge returned an unparseable verdict: maybe resolved\? hard to tell/
             );
         } finally {
+            tokenSource.dispose();
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,
                 force: true,
@@ -1144,6 +1149,7 @@ describe('runHeadlessResolutionJudge', () => {
                 /finding\.severity must be one of CRITICAL, HIGH, MEDIUM, LOW/i
             );
         } finally {
+            tokenSource.dispose();
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,
                 force: true,
@@ -1183,6 +1189,7 @@ describe('runHeadlessResolutionJudge', () => {
                 )
             ).rejects.toThrow(/diffText must be a non-empty string/i);
         } finally {
+            tokenSource.dispose();
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,
                 force: true,
@@ -1226,6 +1233,7 @@ describe('runHeadlessResolutionJudge', () => {
                 services
             );
         } finally {
+            tokenSource.dispose();
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,
                 force: true,
@@ -1295,6 +1303,7 @@ describe('runHeadlessResolutionJudge', () => {
                 services
             );
         } finally {
+            tokenSource.dispose();
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,
                 force: true,
@@ -1355,6 +1364,7 @@ describe('runHeadlessResolutionJudge', () => {
                 services
             );
         } finally {
+            tokenSource.dispose();
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,
                 force: true,
@@ -1420,6 +1430,7 @@ describe('runHeadlessResolutionJudge', () => {
             await rejectionAssertion;
             expect(ModelRequestHandler.sendRequest).not.toHaveBeenCalled();
         } finally {
+            tokenSource.dispose();
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,
                 force: true,

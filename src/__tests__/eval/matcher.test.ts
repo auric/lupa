@@ -2703,9 +2703,6 @@ index 1234567..89abcde 100644
     it('falls back to killing the launcher pid when POSIX process-group cleanup returns ESRCH', async () => {
         vi.useFakeTimers();
         const originalPlatform = process.platform;
-        Object.defineProperty(process, 'platform', {
-            value: 'linux',
-        });
         const processKillSpy = vi
             .spyOn(process, 'kill')
             .mockImplementation(() => {
@@ -2717,6 +2714,9 @@ index 1234567..89abcde 100644
             });
 
         try {
+            Object.defineProperty(process, 'platform', {
+                value: 'linux',
+            });
             const childKill = vi.fn();
             let checkoutProc:
                 | (EventEmitter & {
@@ -2934,6 +2934,12 @@ describe('validateRef', () => {
     it('rejects refs with control characters', () => {
         expect(() => validateRef('feature\tbranch', 'baseRef')).toThrow(
             /baseRef: contains whitespace or control characters/
+        );
+    });
+
+    it('rejects refs starting with -', () => {
+        expect(() => validateRef('--force', 'baseRef')).toThrow(
+            /baseRef: starts with '-', which is not allowed/
         );
     });
 });

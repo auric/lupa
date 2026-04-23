@@ -44,8 +44,9 @@ describe('runHeadlessFromEnv', () => {
     afterEach(() => {
         try {
             fs.rmSync(tmpDir, { recursive: true, force: true });
-        } catch {
+        } catch (e) {
             // best-effort cleanup; tmp files are harmless if left behind
+            console.error('cleanup failed', e);
         }
         for (const key of ENV_KEYS) {
             const prior = originalEnv[key];

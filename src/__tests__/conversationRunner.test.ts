@@ -3655,12 +3655,8 @@ describe('ConversationRunner.sleepWithCancellation', () => {
                 tokenSource.token
             );
 
-            const resolved = vi.fn();
-            sleep.then(resolved, resolved);
-
             vi.advanceTimersByTime(50);
-            await sleep;
-            expect(resolved).toHaveBeenCalled();
+            await expect(sleep).resolves.toBeUndefined();
         } finally {
             vi.useRealTimers();
         }
