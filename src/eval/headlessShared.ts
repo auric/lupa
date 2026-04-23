@@ -88,6 +88,38 @@ export function formatHeadlessCancellationMessage(phase: string): string {
     return `Headless run cancelled ${phase}.`;
 }
 
+export function validateRef(ref: string, fieldName: string): void {
+    if (typeof ref !== 'string' || ref.length === 0) {
+        throw new Error(`${fieldName}: must be a non-empty string`);
+    }
+    if (ref.startsWith('-')) {
+        throw new Error(
+            `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
+        );
+    }
+    const hasScheme = ref.startsWith('dir:') || ref.startsWith('sha:');
+    if (hasScheme) {
+        const body = ref.slice(ref.indexOf(':') + 1);
+        if (body.length === 0) {
+            throw new Error(
+                `${fieldName}: empty body after scheme — got '${ref}'`
+            );
+        }
+        if (ref.startsWith('sha:') && !/^[0-9a-fA-F]{1,40}$/.test(body)) {
+            throw new Error(`${fieldName}: invalid SHA format — got '${ref}'`);
+        }
+        return;
+    }
+    for (let i = 0; i < ref.length; i++) {
+        const code = ref.charCodeAt(i);
+        if (code <= 0x1f || code === 0x20) {
+            throw new Error(
+                `${fieldName}: contains whitespace or control characters — got '${ref}'`
+            );
+        }
+    }
+}
+
 export function requireRemainingHeadlessBudgetMs(
     timeoutMs: number,
     deadlineAt: number | undefined,

@@ -1531,6 +1531,51 @@ describe('runHeadlessFromEnv', () => {
         );
         expect(runHeadlessResolutionJudge).toHaveBeenCalled();
     });
+
+    it('rejects base refs starting with -', async () => {
+        const sentinel = await runWithRawArgs(
+            JSON.stringify({
+                workspace: '/ws',
+                base: '--force',
+                head: 'feature/x',
+                model: 'copilot/gpt-4.1',
+                timeoutMs: 60_000,
+            })
+        );
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain('base');
+        expect(sentinel.error).toContain("starts with '-'");
+    });
+
+    it('rejects head refs starting with -', async () => {
+        const sentinel = await runWithRawArgs(
+            JSON.stringify({
+                workspace: '/ws',
+                base: 'main',
+                head: '-malicious',
+                model: 'copilot/gpt-4.1',
+                timeoutMs: 60_000,
+            })
+        );
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain('head');
+        expect(sentinel.error).toContain("starts with '-'");
+    });
+
+    it('rejects sha: refs with invalid SHA format', async () => {
+        const sentinel = await runWithRawArgs(
+            JSON.stringify({
+                workspace: '/ws',
+                base: 'sha:12345678901234567890123456789012345678901',
+                head: 'feature/x',
+                model: 'copilot/gpt-4.1',
+                timeoutMs: 60_000,
+            })
+        );
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain('base');
+        expect(sentinel.error).toContain('invalid SHA format');
+    });
 });
 
 describe('assertSafeFilePath', () => {

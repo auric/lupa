@@ -13,6 +13,7 @@ import { LAUNCHER_SCRIPT } from './constants';
 import {
     formatHeadlessTimeoutMessage,
     requireRemainingHeadlessBudgetMs,
+    validateRef,
 } from '../headlessShared';
 
 const MIN_TIMEOUT_MS = 10_000;
@@ -323,38 +324,6 @@ function createCheckoutTimeoutError(
               )
             : `${formatHeadlessTimeoutMessage(checkoutTimeoutMs, 'during pre-launch checkout')} Git checkout did not exit within ${CHECKOUT_POST_KILL_WAIT_MS}ms after termination was requested.`
     );
-}
-
-export function validateRef(ref: string, fieldName: string): void {
-    if (typeof ref !== 'string' || ref.length === 0) {
-        throw new Error(`${fieldName}: must be a non-empty string`);
-    }
-    if (ref.startsWith('-')) {
-        throw new Error(
-            `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
-        );
-    }
-    const hasScheme = ref.startsWith('dir:') || ref.startsWith('sha:');
-    if (hasScheme) {
-        const body = ref.slice(ref.indexOf(':') + 1);
-        if (body.length === 0) {
-            throw new Error(
-                `${fieldName}: empty body after scheme — got '${ref}'`
-            );
-        }
-        if (ref.startsWith('sha:') && !/^[0-9a-fA-F]{1,40}$/.test(body)) {
-            throw new Error(`${fieldName}: invalid SHA format — got '${ref}'`);
-        }
-        return;
-    }
-    for (let i = 0; i < ref.length; i++) {
-        const code = ref.charCodeAt(i);
-        if (code <= 0x1f || code === 0x20) {
-            throw new Error(
-                `${fieldName}: contains whitespace or control characters — got '${ref}'`
-            );
-        }
-    }
 }
 
 type ParsedResult = ParsedJsonResult<HarnessHeadlessAnalysisResult>;

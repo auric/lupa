@@ -15,6 +15,7 @@ import {
     getRemainingHeadlessBudgetMs,
     normalizeModelIdentifier,
     requireRemainingHeadlessBudgetMs,
+    validateRef,
 } from './headlessShared';
 
 /**
@@ -202,11 +203,16 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
         };
     }
 
+    const base = requireString('base');
+    const head = requireString('head');
+    validateRef(base, `${LUPA_HEADLESS_ARGS_ENV}.base`);
+    validateRef(head, `${LUPA_HEADLESS_ARGS_ENV}.head`);
+
     return {
         mode,
         workspace,
-        base: requireString('base'),
-        head: requireString('head'),
+        base,
+        head,
         model: requireString('model'),
         seed: typeof seedRaw === 'number' ? seedRaw : 0,
         timeoutMs: requirePositiveNumber('timeoutMs'),
@@ -324,6 +330,13 @@ async function waitForCopilotModels(
                         `Exact-model preflight failed for ${normalizedRequestedIdentifier}: ${lastProbeError.error.message}`
                     )
                 );
+                return;
+            }
+            if (models.length === 0) {
+                const reason = lastProbeError
+                    ? `Model discovery timed out (${timeoutMs}ms). Last probe error: ${lastProbeError.error.message}`
+                    : `Model discovery timed out (${timeoutMs}ms). No models found.`;
+                reject(new Error(reason));
                 return;
             }
             resolve(models);
