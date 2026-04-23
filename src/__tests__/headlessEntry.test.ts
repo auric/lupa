@@ -761,7 +761,7 @@ describe('runHeadlessFromEnv', () => {
         const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
         expect(sentinel.exitCode).toBe(1);
         expect(sentinel.error).toContain(
-            `Requested model copilot/gpt-4.1 was not available during exact-model preflight (${EXACT_MODEL_PREFLIGHT_MAX_MS}ms).`
+            `Model discovery timed out (${EXACT_MODEL_PREFLIGHT_MAX_MS}ms)`
         );
         expect(sentinel.error).not.toContain(
             `Headless run exceeded timeout (${args.timeoutMs}ms)`
