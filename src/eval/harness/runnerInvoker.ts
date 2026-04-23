@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
-import { spawn, type ChildProcess, execSync } from 'node:child_process';
+import { spawn, type ChildProcess, execFileSync } from 'node:child_process';
 import {
     getHeadlessAnalysisResultValidationError,
     type HarnessHeadlessAnalysisResult,
@@ -562,7 +562,10 @@ function killTree(child: ChildProcess): void {
     }
     if (process.platform === 'win32') {
         try {
-            execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: 'ignore' });
+            execFileSync('taskkill', ['/F', '/T', '/PID', String(child.pid)], {
+                stdio: 'ignore',
+                windowsHide: true,
+            });
         } catch {
             try {
                 child.kill('SIGKILL');
