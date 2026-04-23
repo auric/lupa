@@ -919,7 +919,7 @@ describe('classifyResolutionForRun', () => {
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess('');
                 }
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath === 'src/a.ts') {
                     return createMockGitDiffProcess('');
                 }
@@ -970,7 +970,7 @@ index 1234567..89abcde 100644
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess('');
                 }
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath !== 'src/a.ts') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }
@@ -1025,7 +1025,7 @@ index 1234567..89abcde 100644
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess('');
                 }
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath !== 'src/a.ts') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }
@@ -1079,7 +1079,7 @@ index 1234567..89abcde 100644
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess('');
                 }
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath !== 'src/a.ts') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }
@@ -1130,7 +1130,9 @@ index 1234567..89abcde 100644
             )
         ).toBe(true);
         expect(
-            mockedSpawn.mock.calls.some((call) => call[1]?.[3] === 'src/a.ts')
+            mockedSpawn.mock.calls.some(
+                (call) => call[1]?.[call[1].length - 1] === 'src/a.ts'
+            )
         ).toBe(true);
     });
 
@@ -1144,7 +1146,7 @@ index 1234567..89abcde 100644
                     return createMockGitDiffProcess('');
                 }
 
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath !== ':(literal)src/app/[id]/page.tsx') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }
@@ -1190,7 +1192,7 @@ index 1234567..89abcde 100644
                     return createMockGitDiffProcess('');
                 }
 
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath !== ':(literal)src/app/[id]/page.tsx') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }
@@ -1238,7 +1240,7 @@ index 1234567..89abcde 100644
                     return createMockGitDiffProcess('');
                 }
 
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath === 'src/other.ts') {
                     return createMockGitDiffProcess('');
                 }
@@ -1279,7 +1281,8 @@ index 1234567..89abcde 100644
             mockedSpawn.mock.calls.some(
                 (call) =>
                     call[1]?.[0] === 'diff' &&
-                    call[1]?.[3] === 'packages/feature/src/a.ts'
+                    call[1]?.[call[1].length - 1] ===
+                        'packages/feature/src/a.ts'
             )
         ).toBe(true);
     });
@@ -1294,7 +1297,7 @@ index 1234567..89abcde 100644
                     return createMockGitDiffProcess('');
                 }
 
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath === '/outside/src/a.ts') {
                     throw new Error(
                         'Outside-workspace absolute paths must not be diffed directly.'
@@ -1371,7 +1374,7 @@ index 1234567..89abcde 100644
                     return createMockGitDiffProcess('');
                 }
 
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath !== 'src/b.ts') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }
@@ -1483,7 +1486,7 @@ index 1234567..89abcde 100644
                     return createMockGitDiffProcess('');
                 }
 
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath !== 'SRC/A.ts') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }
@@ -1541,7 +1544,7 @@ index 1234567..89abcde 100644
                     return createMockGitDiffProcess('');
                 }
 
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath !== 'Packages/Feature/SRC/A.ts') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }
@@ -1600,7 +1603,7 @@ index 1234567..89abcde 100644
                     return createMockGitDiffProcess('');
                 }
 
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath === 'a.ts') {
                     return createMockGitDiffProcess('');
                 }
@@ -1653,7 +1656,7 @@ index 1234567..89abcde 100644
             mockedSpawn.mock.calls.filter(
                 (call) =>
                     call[1]?.[0] === 'diff' &&
-                    call[1]?.[3] === 'a.ts' &&
+                    call[1]?.[call[1].length - 1] === 'a.ts' &&
                     !call[1]?.includes('--name-only') &&
                     !call[1]?.includes('--name-status')
             )
@@ -1672,7 +1675,7 @@ index 1234567..89abcde 100644
                     return createMockGitDiffProcess('');
                 }
 
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath !== 'packages/feature/src/a.ts') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }
@@ -1814,7 +1817,7 @@ index 1234567..89abcde 100644
                     return createMockGitDiffProcess('');
                 }
 
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath === 'src/resolved.ts') {
                     return createMockGitDiffProcess(`diff --git a/src/resolved.ts b/src/resolved.ts
 index 1234567..89abcde 100644
@@ -2215,7 +2218,7 @@ index 1234567..89abcde 100644
                 if (args.includes('--name-status')) {
                     return createMockGitDiffProcess('');
                 }
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath === 'src/resolved.ts') {
                     return createMockGitDiffProcess(`diff --git a/src/resolved.ts b/src/resolved.ts
 index 1234567..89abcde 100644
@@ -2342,7 +2345,7 @@ index 1234567..0000000
                     );
                 }
 
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath !== 'packages/feature/src/a.ts') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }
@@ -2392,7 +2395,7 @@ index 1234567..89abcde 100644
                     return createMockGitDiffProcess('');
                 }
 
-                const gitPath = args[3];
+                const gitPath = args[args.length - 1];
                 if (gitPath !== 'src/old-name.ts') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }

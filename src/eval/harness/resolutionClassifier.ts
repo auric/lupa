@@ -414,11 +414,16 @@ async function checkRealFindingPaths(
         )
     );
     const settledDiffs = await Promise.allSettled(diffPromises);
-    const firstRejection = settledDiffs.find(
-        (s): s is PromiseRejectedResult => s.status === 'rejected'
-    );
-    if (firstRejection) {
-        throw firstRejection.reason;
+    const allRejected =
+        settledDiffs.length > 0 &&
+        settledDiffs.every((s) => s.status === 'rejected');
+    if (allRejected) {
+        const firstRejection = settledDiffs.find(
+            (s): s is PromiseRejectedResult => s.status === 'rejected'
+        );
+        if (firstRejection) {
+            throw firstRejection.reason;
+        }
     }
 
     for (let i = 0; i < pathEntries.length; i++) {
