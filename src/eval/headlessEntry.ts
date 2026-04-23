@@ -82,7 +82,13 @@ function assertSafeFilePath(
         );
     }
     const isUnderAllowed = allowedRoots.some((root) => {
-        const rel = path.relative(path.normalize(root), normalized);
+        let rootNormalized = path.normalize(root);
+        let fileNormalized = normalized;
+        if (process.platform === 'win32') {
+            rootNormalized = rootNormalized.toLowerCase();
+            fileNormalized = fileNormalized.toLowerCase();
+        }
+        const rel = path.relative(rootNormalized, fileNormalized);
         return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
     });
     if (!isUnderAllowed) {

@@ -592,7 +592,12 @@ function getDirectExecutionArgIndex(argv: readonly string[]): number {
             continue;
         }
 
-        if (path.resolve(candidate) === modulePath) {
+        const resolvedCandidate = path.resolve(candidate);
+        if (
+            process.platform === 'win32'
+                ? resolvedCandidate.toLowerCase() === modulePath.toLowerCase()
+                : resolvedCandidate === modulePath
+        ) {
             return index;
         }
     }
