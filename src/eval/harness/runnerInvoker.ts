@@ -325,7 +325,7 @@ function createCheckoutTimeoutError(
     );
 }
 
-function validateRef(ref: string, fieldName: string): void {
+export function validateRef(ref: string, fieldName: string): void {
     if (typeof ref !== 'string' || ref.length === 0) {
         throw new Error(`${fieldName}: must be a non-empty string`);
     }

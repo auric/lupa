@@ -24,6 +24,7 @@ import {
     getResolutionJudgeWatchdogMs,
     invokeHeadless,
     invokeResolutionJudge,
+    validateRef,
 } from '../../eval/harness/runnerInvoker';
 import type {
     ExpectedFinding,
@@ -2886,6 +2887,53 @@ index 1234567..89abcde 100644
 
         expect(getHarnessSigtermGraceMs()).toBeGreaterThan(
             WATCHDOG_SIGTERM_GRACE_MS
+        );
+    });
+});
+
+describe('validateRef', () => {
+    it('rejects empty refs', () => {
+        expect(() => validateRef('', 'baseRef')).toThrow(
+            /baseRef: must be a non-empty string/
+        );
+    });
+
+    it('rejects sha: with empty body', () => {
+        expect(() => validateRef('sha:', 'headRef')).toThrow(
+            /headRef: empty body after scheme/
+        );
+    });
+
+    it('rejects sha: with non-hex characters', () => {
+        expect(() => validateRef('sha:zzz', 'headRef')).toThrow(
+            /headRef: invalid SHA format/
+        );
+    });
+
+    it('rejects sha: with wrong length (too short)', () => {
+        expect(() => validateRef('sha:12345', 'headRef')).toThrow(
+            /headRef: invalid SHA format/
+        );
+    });
+
+    it('rejects sha: with wrong length (too long)', () => {
+        expect(() =>
+            validateRef(
+                'sha:12345678901234567890123456789012345678901',
+                'headRef'
+            )
+        ).toThrow(/headRef: invalid SHA format/);
+    });
+
+    it('rejects refs with whitespace', () => {
+        expect(() => validateRef('feature branch', 'baseRef')).toThrow(
+            /baseRef: contains whitespace or control characters/
+        );
+    });
+
+    it('rejects refs with control characters', () => {
+        expect(() => validateRef('feature\tbranch', 'baseRef')).toThrow(
+            /baseRef: contains whitespace or control characters/
         );
     });
 });
