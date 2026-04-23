@@ -60,6 +60,8 @@ export async function runHeadless(
     const cancellationToken = deadlineCancellationSource.token;
 
     if (opts.cancellationToken.isCancellationRequested) {
+        cancellationDisposable.dispose();
+        deadlineCancellationSource.dispose();
         throw new Error(
             formatHeadlessCancellationMessage('before analysis started')
         );

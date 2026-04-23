@@ -1075,21 +1075,23 @@ export class ConversationRunner {
         }
         return new Promise((resolve) => {
             let resolved = false;
+            let disposable: vscode.Disposable | undefined;
 
             const timer = setTimeout(() => {
                 if (!resolved) {
                     resolved = true;
+                    disposable?.dispose();
                     resolve();
                 }
             }, ms);
 
-            const disposable = token.onCancellationRequested(() => {
+            disposable = token.onCancellationRequested(() => {
                 clearTimeout(timer);
                 if (!resolved) {
                     resolved = true;
                     resolve();
                 }
-                disposable.dispose();
+                disposable?.dispose();
             });
         });
     }
