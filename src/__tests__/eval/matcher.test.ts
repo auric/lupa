@@ -1,14 +1,16 @@
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-const { mockedSpawn, mockedExecSync } = vi.hoisted(() => ({
+const { mockedSpawn, mockedExecSync, mockedExecFileSync } = vi.hoisted(() => ({
     mockedSpawn: vi.fn(),
     mockedExecSync: vi.fn(),
+    mockedExecFileSync: vi.fn(),
 }));
 
 vi.mock('node:child_process', () => ({
     spawn: mockedSpawn,
     execSync: mockedExecSync,
+    execFileSync: mockedExecFileSync,
 }));
 
 import { matchFindings } from '../../eval/harness/matcher';
@@ -1863,27 +1865,27 @@ index 1234567..89abcde 100644
             match: emptyMatch(),
         });
 
-        expect(summary.total).toBe(1);
+        expect(summary.total).toBe(3);
         expect(summary.resolved).toBe(1);
-        expect(summary.skipped).toBe(2);
-        expect(summary.metricStatus).toBe('invalid-skipped');
+        expect(summary.unresolved).toBe(2);
+        expect(summary.skipped).toBe(0);
+        expect(summary.metricStatus).toBe('valid');
         expect(summary.findings).toEqual([
             expect.objectContaining({
                 findingId: 'resolved-before-error',
                 verdict: 'resolved',
             }),
-        ]);
-        expect(summary.warnings).toEqual([
             expect.objectContaining({
                 findingId: 'failed-during-error',
-                kind: 'classification-failed',
+                verdict: 'unresolved',
             }),
             expect.objectContaining({
                 findingId: 'never-attempted',
-                kind: 'classification-failed',
+                verdict: 'unresolved',
             }),
         ]);
-        expect(Number.isNaN(summary.resolutionRate)).toBe(true);
+        expect(summary.warnings).toEqual([]);
+        expect(summary.resolutionRate).toBeCloseTo(1 / 3, 3);
     });
 
     it('treats insertion-only follow-up patches as ambiguous and escalates to the judge', async () => {
@@ -2130,13 +2132,11 @@ index 1234567..89abcde 100644
             produced: [makeProduced({ id: 'judge-unavailable-prefix' })],
             match: emptyMatch(),
             judgeClient: {
-                judge: vi
-                    .fn()
-                    .mockRejectedValue(
-                        Object.assign(new Error('deadline budget too small.'), {
-                            code: 'JUDGE_UNAVAILABLE',
-                        })
-                    ),
+                judge: vi.fn().mockRejectedValue(
+                    Object.assign(new Error('deadline budget too small.'), {
+                        code: 'JUDGE_UNAVAILABLE',
+                    })
+                ),
             },
         });
 
@@ -2465,12 +2465,13 @@ index 1234567..89abcde 100644
             await vi.advanceTimersByTimeAsync(500);
 
             await expect(summaryPromise).resolves.toMatchObject({
-                metricStatus: 'invalid-skipped',
-                skipped: 1,
-                warnings: [
+                metricStatus: 'valid',
+                unresolved: 1,
+                skipped: 0,
+                findings: [
                     expect.objectContaining({
                         findingId: 'git-timeout',
-                        kind: 'classification-failed',
+                        verdict: 'unresolved',
                     }),
                 ],
             });
@@ -2607,9 +2608,10 @@ index 1234567..89abcde 100644
                 })
             );
             if (process.platform === 'win32') {
-                expect(mockedExecSync).toHaveBeenCalledWith(
-                    'taskkill /F /T /PID 123',
-                    { stdio: 'ignore' }
+                expect(mockedExecFileSync).toHaveBeenCalledWith(
+                    'taskkill',
+                    ['/F', '/T', '/PID', '123'],
+                    { stdio: 'ignore', windowsHide: true }
                 );
                 expect(kill).not.toHaveBeenCalled();
             } else {
