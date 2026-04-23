@@ -81,6 +81,8 @@ export function assertSafeFilePath(
         );
     }
     const normalized = path.normalize(filePath);
+    // Callers must ensure allowedRoots do not contain untrusted symlinks
+    // (symlink resolution is not performed here).
     const isUnderAllowed = allowedRoots.some((root) => {
         let rootNormalized = path.normalize(root);
         let fileNormalized = normalized;
@@ -136,6 +138,12 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
         }
         return v;
     };
+    const workspace = requireString('workspace');
+    if (!path.isAbsolute(workspace)) {
+        throw new Error(
+            `${LUPA_HEADLESS_ARGS_ENV}.workspace must be an absolute path`
+        );
+    }
     const seedRaw = o.seed;
     if (
         seedRaw !== undefined &&
@@ -178,7 +186,7 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
         }
         return {
             mode,
-            workspace: requireString('workspace'),
+            workspace,
             model: requireString('model'),
             payload,
             timeoutMs: requirePositiveNumber('timeoutMs'),
@@ -191,7 +199,7 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
 
     return {
         mode,
-        workspace: requireString('workspace'),
+        workspace,
         base: requireString('base'),
         head: requireString('head'),
         model: requireString('model'),
@@ -412,12 +420,12 @@ function writeSentinel(exitCode: number, error: string | undefined): void {
     if (!sentinelPath) {
         return;
     }
-    assertSafeFilePath(sentinelPath, 'sentinelPath', [
-        process.cwd(),
-        os.tmpdir(),
-    ]);
     const tmpPath = `${sentinelPath}.tmp`;
     try {
+        assertSafeFilePath(sentinelPath, 'sentinelPath', [
+            process.cwd(),
+            os.tmpdir(),
+        ]);
         fs.writeFileSync(
             tmpPath,
             JSON.stringify({ exitCode, error: error ?? null }, null, 2)
@@ -631,11 +639,11 @@ function sentinelExists(): boolean {
     if (!sentinelPath) {
         return false;
     }
-    assertSafeFilePath(sentinelPath, 'sentinelPath', [
-        process.cwd(),
-        os.tmpdir(),
-    ]);
     try {
+        assertSafeFilePath(sentinelPath, 'sentinelPath', [
+            process.cwd(),
+            os.tmpdir(),
+        ]);
         return fs.statSync(sentinelPath).isFile();
     } catch {
         return false;

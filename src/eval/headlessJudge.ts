@@ -10,6 +10,7 @@ import {
 } from './harness/types';
 import {
     awaitWithinHeadlessBudget,
+    formatHeadlessCancellationMessage,
     normalizeModelIdentifier,
     normalizeWorkspaceRelativePath,
     requireRemainingHeadlessBudgetMs,
@@ -35,18 +36,24 @@ export async function runHeadlessResolutionJudge(
     opts: HeadlessResolutionJudgeOptions,
     services: IServiceRegistry
 ): Promise<ResolutionJudgeResult> {
-    const payload = readPayload(opts.payloadPath);
-    const normalizedRequestedIdentifier = normalizeModelIdentifier(
-        opts.modelIdentifier
-    );
     const deadlineCancellationSource = new vscode.CancellationTokenSource();
     const cancellationDisposable =
         opts.cancellationToken.onCancellationRequested(() => {
             deadlineCancellationSource.cancel();
         });
     if (opts.cancellationToken.isCancellationRequested) {
-        deadlineCancellationSource.cancel();
+        cancellationDisposable.dispose();
+        deadlineCancellationSource.dispose();
+        throw new Error(
+            formatHeadlessCancellationMessage(
+                'before resolution judging started'
+            )
+        );
     }
+    const payload = await readPayload(opts.payloadPath);
+    const normalizedRequestedIdentifier = normalizeModelIdentifier(
+        opts.modelIdentifier
+    );
     const cancellationToken = deadlineCancellationSource.token;
 
     try {
@@ -105,10 +112,12 @@ export async function runHeadlessResolutionJudge(
     }
 }
 
-function readPayload(payloadPath: string): ResolutionJudgePayload {
+async function readPayload(
+    payloadPath: string
+): Promise<ResolutionJudgePayload> {
     let raw: string;
     try {
-        raw = fs.readFileSync(payloadPath, 'utf8');
+        raw = await fs.promises.readFile(payloadPath, 'utf8');
     } catch (error) {
         throw new Error(
             `Failed to read resolution-judge payload at ${payloadPath}: ${error instanceof Error ? error.message : String(error)}`

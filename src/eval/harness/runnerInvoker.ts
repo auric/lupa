@@ -337,7 +337,7 @@ export function validateRef(ref: string, fieldName: string): void {
                 `${fieldName}: empty body after scheme — got '${ref}'`
             );
         }
-        if (ref.startsWith('sha:') && !/^[0-9a-fA-F]{6,40}$/.test(body)) {
+        if (ref.startsWith('sha:') && !/^[0-9a-fA-F]{1,40}$/.test(body)) {
             throw new Error(`${fieldName}: invalid SHA format — got '${ref}'`);
         }
         return;
