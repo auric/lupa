@@ -1,5 +1,6 @@
 import {
     ALLOWED_FINDING_CATEGORIES,
+    FAILURE_MECHANISMS,
     FINDING_SEVERITIES,
 } from '../../types/findingTypes';
 import type {
@@ -128,6 +129,14 @@ function isPositiveInteger(value: unknown): value is number {
     return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
+function isNonNegativeInteger(value: unknown): value is number {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+    return typeof value === 'number' && Number.isFinite(value);
+}
+
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === 'string' && value.trim().length > 0;
 }
@@ -214,8 +223,8 @@ export function getResolutionJudgePayloadValidationError(
         }
     }
 
-    if (typeof payload.diffText !== 'string') {
-        return 'diffText must be a string';
+    if (!isNonEmptyString(payload.diffText)) {
+        return 'diffText must be a non-empty string';
     }
 
     return null;
@@ -235,6 +244,276 @@ export function getResolutionJudgeResultValidationError(
     }
     if (!isNonEmptyString(result.modelId)) {
         return 'result.modelId must be a non-empty string';
+    }
+    return null;
+}
+
+function getFindingSourceValidationError(
+    source: unknown,
+    fieldName: string
+): string | null {
+    if (!isObjectRecord(source)) {
+        return `${fieldName} must be an object`;
+    }
+    if (!isNonEmptyString(source.path)) {
+        return `${fieldName}.path must be a non-empty string`;
+    }
+    if (!isPositiveInteger(source.lineStart)) {
+        return `${fieldName}.lineStart must be a positive integer`;
+    }
+    if (!isPositiveInteger(source.lineEnd)) {
+        return `${fieldName}.lineEnd must be a positive integer`;
+    }
+    if (source.lineEnd < source.lineStart) {
+        return `${fieldName}.lineEnd must be >= lineStart`;
+    }
+    return null;
+}
+
+function getRecordedFindingValidationError(
+    finding: unknown,
+    fieldName: string
+): string | null {
+    if (!isObjectRecord(finding)) {
+        return `${fieldName} must be an object`;
+    }
+    if (!isNonEmptyString(finding.id)) {
+        return `${fieldName}.id must be a non-empty string`;
+    }
+    if (!isNonEmptyString(finding.agentId)) {
+        return `${fieldName}.agentId must be a non-empty string`;
+    }
+    if (!isFiniteNumber(finding.timestamp)) {
+        return `${fieldName}.timestamp must be a finite number`;
+    }
+    if (
+        !(FINDING_SEVERITIES as readonly string[]).includes(
+            String(finding.severity)
+        )
+    ) {
+        return `${fieldName}.severity must be one of ${(FINDING_SEVERITIES as readonly string[]).join(', ')}`;
+    }
+    if (
+        !(ALLOWED_FINDING_CATEGORIES as readonly string[]).includes(
+            String(finding.category)
+        )
+    ) {
+        return (
+            `${fieldName}.category must be one of ` +
+            (ALLOWED_FINDING_CATEGORIES as readonly string[]).join(', ')
+        );
+    }
+    if (!isNonEmptyString(finding.title)) {
+        return `${fieldName}.title must be a non-empty string`;
+    }
+    if (!isNonEmptyString(finding.file)) {
+        return `${fieldName}.file must be a non-empty string`;
+    }
+    if (
+        !Array.isArray(finding.lineRange) ||
+        finding.lineRange.length !== 2 ||
+        !isPositiveInteger(finding.lineRange[0]) ||
+        !isPositiveInteger(finding.lineRange[1]) ||
+        finding.lineRange[1] < finding.lineRange[0]
+    ) {
+        return `${fieldName}.lineRange must be a two-element array of positive integers with end >= start`;
+    }
+    if (!isNonEmptyString(finding.description)) {
+        return `${fieldName}.description must be a non-empty string`;
+    }
+    if (!isNonEmptyString(finding.affectedComponent)) {
+        return `${fieldName}.affectedComponent must be a non-empty string`;
+    }
+    if (
+        !(FAILURE_MECHANISMS as readonly string[]).includes(
+            String(finding.failureMechanism)
+        )
+    ) {
+        return `${fieldName}.failureMechanism must be one of ${(FAILURE_MECHANISMS as readonly string[]).join(', ')}`;
+    }
+    if (
+        !Array.isArray(finding.supportingToolCalls) ||
+        finding.supportingToolCalls.some(
+            (toolCallId) => !isNonEmptyString(toolCallId)
+        )
+    ) {
+        return `${fieldName}.supportingToolCalls must be an array of non-empty strings`;
+    }
+    if (!isObjectRecord(finding.disproof)) {
+        return `${fieldName}.disproof must be an object`;
+    }
+    if (typeof finding.disproof.attempted !== 'boolean') {
+        return `${fieldName}.disproof.attempted must be a boolean`;
+    }
+    if (typeof finding.disproof.method !== 'string') {
+        return `${fieldName}.disproof.method must be a string`;
+    }
+    if (typeof finding.disproof.result !== 'string') {
+        return `${fieldName}.disproof.result must be a string`;
+    }
+    if (!Array.isArray(finding.verifiableClaims)) {
+        return `${fieldName}.verifiableClaims must be an array`;
+    }
+    if (finding.sources !== undefined) {
+        if (!Array.isArray(finding.sources)) {
+            return `${fieldName}.sources must be an array when provided`;
+        }
+        for (let index = 0; index < finding.sources.length; index++) {
+            const error = getFindingSourceValidationError(
+                finding.sources[index],
+                `${fieldName}.sources[${index}]`
+            );
+            if (error) {
+                return error;
+            }
+        }
+    }
+    if (finding.lspValidation !== undefined) {
+        if (!isObjectRecord(finding.lspValidation)) {
+            return `${fieldName}.lspValidation must be an object when provided`;
+        }
+        if (
+            !['verified', 'refuted', 'inconclusive', 'pending'].includes(
+                String(finding.lspValidation.status)
+            )
+        ) {
+            return `${fieldName}.lspValidation.status must be one of verified, refuted, inconclusive, or pending`;
+        }
+        if (typeof finding.lspValidation.details !== 'string') {
+            return `${fieldName}.lspValidation.details must be a string`;
+        }
+        if (!Array.isArray(finding.lspValidation.claimResults)) {
+            return `${fieldName}.lspValidation.claimResults must be an array`;
+        }
+    }
+    return null;
+}
+
+function getToolCallRecordValidationError(
+    record: unknown,
+    fieldName: string
+): string | null {
+    if (!isObjectRecord(record)) {
+        return `${fieldName} must be an object`;
+    }
+    if (!isNonEmptyString(record.id)) {
+        return `${fieldName}.id must be a non-empty string`;
+    }
+    if (!isNonEmptyString(record.toolName)) {
+        return `${fieldName}.toolName must be a non-empty string`;
+    }
+    if (typeof record.success !== 'boolean') {
+        return `${fieldName}.success must be a boolean`;
+    }
+    if (!isFiniteNumber(record.timestamp)) {
+        return `${fieldName}.timestamp must be a finite number`;
+    }
+    if (typeof record.arguments !== 'object' || record.arguments === null) {
+        return `${fieldName}.arguments must be an object`;
+    }
+    if (
+        typeof record.result !== 'string' &&
+        (typeof record.result !== 'object' || record.result === null)
+    ) {
+        return `${fieldName}.result must be a string or object`;
+    }
+    if (record.error !== undefined && typeof record.error !== 'string') {
+        return `${fieldName}.error must be a string when provided`;
+    }
+    if (record.durationMs !== undefined && !isFiniteNumber(record.durationMs)) {
+        return `${fieldName}.durationMs must be a finite number when provided`;
+    }
+    if (
+        record.executionTimeMs !== undefined &&
+        !isFiniteNumber(record.executionTimeMs)
+    ) {
+        return `${fieldName}.executionTimeMs must be a finite number when provided`;
+    }
+    if (
+        record.iterationsUsed !== undefined &&
+        !isNonNegativeInteger(record.iterationsUsed)
+    ) {
+        return `${fieldName}.iterationsUsed must be a non-negative integer when provided`;
+    }
+    if (record.nestedCalls !== undefined) {
+        if (!Array.isArray(record.nestedCalls)) {
+            return `${fieldName}.nestedCalls must be an array when provided`;
+        }
+        for (let index = 0; index < record.nestedCalls.length; index++) {
+            const error = getToolCallRecordValidationError(
+                record.nestedCalls[index],
+                `${fieldName}.nestedCalls[${index}]`
+            );
+            if (error) {
+                return error;
+            }
+        }
+    }
+    return null;
+}
+
+export function getHeadlessAnalysisResultValidationError(
+    result: unknown
+): string | null {
+    if (!isObjectRecord(result)) {
+        return 'result must be a JSON object';
+    }
+    if (!Array.isArray(result.findings)) {
+        return 'result.findings must be an array';
+    }
+    for (let index = 0; index < result.findings.length; index++) {
+        const error = getRecordedFindingValidationError(
+            result.findings[index],
+            `result.findings[${index}]`
+        );
+        if (error) {
+            return error;
+        }
+    }
+    if (typeof result.narrative !== 'string') {
+        return 'result.narrative must be a string';
+    }
+    if (!isObjectRecord(result.telemetry)) {
+        return 'result.telemetry must be a JSON object';
+    }
+    if (!isNonNegativeInteger(result.telemetry.iterations)) {
+        return 'result.telemetry.iterations must be a non-negative integer';
+    }
+    if (!isNonNegativeInteger(result.telemetry.toolCalls)) {
+        return 'result.telemetry.toolCalls must be a non-negative integer';
+    }
+    if (!isNonNegativeInteger(result.telemetry.promptTokens)) {
+        return 'result.telemetry.promptTokens must be a non-negative integer';
+    }
+    if (!isNonNegativeInteger(result.telemetry.completionTokens)) {
+        return 'result.telemetry.completionTokens must be a non-negative integer';
+    }
+    if (!isNonNegativeInteger(result.telemetry.durationMs)) {
+        return 'result.telemetry.durationMs must be a non-negative integer';
+    }
+    if (!isNonNegativeInteger(result.telemetry.compactionsUsed)) {
+        return 'result.telemetry.compactionsUsed must be a non-negative integer';
+    }
+    if (!Array.isArray(result.rawToolCallLog)) {
+        return 'result.rawToolCallLog must be an array';
+    }
+    for (let index = 0; index < result.rawToolCallLog.length; index++) {
+        const error = getToolCallRecordValidationError(
+            result.rawToolCallLog[index],
+            `result.rawToolCallLog[${index}]`
+        );
+        if (error) {
+            return error;
+        }
+    }
+    if (!isNonEmptyString(result.modelId)) {
+        return 'result.modelId must be a non-empty string';
+    }
+    if (!isNonNegativeInteger(result.seed)) {
+        return 'result.seed must be a non-negative integer';
+    }
+    if (typeof result.completed !== 'boolean') {
+        return 'result.completed must be a boolean';
     }
     return null;
 }

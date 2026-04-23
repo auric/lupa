@@ -137,7 +137,7 @@ function buildUserPrompt(
                     })) || [],
                 description: finding.description,
             },
-            followupDiff: payload.diffText || '(no diff for this path)',
+            followupDiff: payload.diffText,
         },
         null,
         2

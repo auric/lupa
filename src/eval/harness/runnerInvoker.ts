@@ -4,6 +4,7 @@ import os from 'node:os';
 import { spawn, type ChildProcess, execSync } from 'node:child_process';
 import type { HeadlessAnalysisResult } from '../headlessRunner';
 import {
+    getHeadlessAnalysisResultValidationError,
     getResolutionJudgeResultValidationError,
     type ResolutionJudgePayload,
     type ResolutionJudgeResult,
@@ -352,7 +353,10 @@ type ParsedJsonResult<T> =
     | { ok: false; reason: string };
 
 async function tryReadResult(outPath: string): Promise<ParsedResult> {
-    return tryReadJsonResult<HeadlessAnalysisResult>(outPath);
+    return tryReadJsonResult<HeadlessAnalysisResult>(
+        outPath,
+        getHeadlessAnalysisResultValidationError
+    );
 }
 
 async function tryReadJsonResult<T>(

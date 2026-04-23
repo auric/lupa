@@ -365,8 +365,19 @@ async function confirmOrRefuse(
     return await promptYesNo('Proceed? [y/N] ');
 }
 
-async function main(): Promise<number> {
-    let args = parseArgs(process.argv.slice(2));
+export function getCliArgs(argv: readonly string[]): readonly string[] {
+    const directExecutionArgIndex = getDirectExecutionArgIndex(argv);
+    if (directExecutionArgIndex === -1) {
+        return argv.slice(2);
+    }
+
+    return argv.slice(directExecutionArgIndex + 1);
+}
+
+export async function main(
+    argv: readonly string[] = getCliArgs(process.argv)
+): Promise<number> {
+    let args = parseArgs(argv);
     if (args.help) {
         process.stdout.write(USAGE);
         return 0;
@@ -565,13 +576,27 @@ function createAuxiliaryJudgeBudget(
     };
 }
 
-function isDirectExecution(): boolean {
-    const entryPoint = process.argv[1];
-    if (!entryPoint) {
-        return false;
+function getDirectExecutionArgIndex(argv: readonly string[]): number {
+    const modulePath = path.resolve(fileURLToPath(import.meta.url));
+
+    for (let index = 1; index < argv.length; index++) {
+        const candidate = argv[index];
+        if (!candidate || candidate === '--' || candidate.startsWith('-')) {
+            continue;
+        }
+
+        if (path.resolve(candidate) === modulePath) {
+            return index;
+        }
     }
 
-    return path.resolve(entryPoint) === fileURLToPath(import.meta.url);
+    return -1;
+}
+
+export function isDirectExecution(
+    argv: readonly string[] = process.argv
+): boolean {
+    return getDirectExecutionArgIndex(argv) !== -1;
 }
 
 if (isDirectExecution()) {

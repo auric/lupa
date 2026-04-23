@@ -588,6 +588,53 @@ describe('classifyResolutionForRun', () => {
         ).rejects.toThrow(/result\.reason must be a non-empty string/i);
     });
 
+    it('rejects malformed analysis JSON even when it is parseable and the launcher exits zero', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                const outIndex = args.indexOf('--out');
+                const outPath = args[outIndex + 1];
+                fs.writeFileSync(
+                    outPath,
+                    JSON.stringify({
+                        findings: [],
+                        narrative: 'usable-looking result',
+                        telemetry: {
+                            iterations: 1,
+                            toolCalls: 0,
+                            promptTokens: 0,
+                            completionTokens: 0,
+                            durationMs: 25,
+                            compactionsUsed: 0,
+                        },
+                        rawToolCallLog: [],
+                        modelId: 'copilot/gpt-5-mini',
+                        seed: 7,
+                    })
+                );
+                return createMockLauncherProcess(0);
+            }
+        );
+
+        const result = await invokeHeadless({
+            workspaceRoot: '/tmp/workspace',
+            baseRef: 'main',
+            headRef: 'feature/x',
+            model: 'copilot/gpt-5-mini',
+            seed: 7,
+            timeoutMs: 60_000,
+            bailOnError: false,
+        });
+
+        expect(result.ok).toBe(false);
+        if (result.ok) {
+            throw new Error(
+                'Expected invokeHeadless to return a failure result'
+            );
+        }
+        expect(result.result).toBeNull();
+        expect(result.error).toContain('result.completed must be a boolean');
+    });
+
     it('returns the parsed incomplete analysis result as an error when the launcher exits non-zero', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {

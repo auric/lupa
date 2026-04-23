@@ -1029,6 +1029,45 @@ describe('runHeadlessResolutionJudge', () => {
         expect(ModelRequestHandler.sendRequest).not.toHaveBeenCalled();
     });
 
+    it('fails fast when the resolution-judge payload has an empty diffText instead of prompting with placeholder text', async () => {
+        const payloadPath = writePayloadFile({
+            diffText: '   \n\t',
+        });
+        const tokenSource = new vscode.CancellationTokenSource();
+        const services = makeServices({
+            selectedModel: {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            },
+        });
+        vi.mocked(ModelRequestHandler.sendRequest).mockReset();
+
+        try {
+            await expect(
+                runHeadlessResolutionJudge(
+                    {
+                        workspaceRoot: '/ws',
+                        modelIdentifier: 'copilot/gpt-5-mini',
+                        timeoutMs: 60_000,
+                        payloadPath,
+                        cancellationToken: tokenSource.token,
+                    },
+                    services
+                )
+            ).rejects.toThrow(/diffText must be a non-empty string/i);
+        } finally {
+            fs.rmSync(path.dirname(payloadPath), {
+                recursive: true,
+                force: true,
+            });
+        }
+
+        expect(ModelRequestHandler.sendRequest).not.toHaveBeenCalled();
+    });
+
     it('frames finding and diff payloads as untrusted Evidence JSON for the auxiliary judge prompt', async () => {
         const payloadPath = writePayloadFile({
             description:

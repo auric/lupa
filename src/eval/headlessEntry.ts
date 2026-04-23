@@ -186,8 +186,19 @@ async function waitForCopilotModels(
     const selectRequestedVendorModels = async (): Promise<
         vscode.LanguageModelChat[]
     > => await vscode.lm.selectChatModels({ vendor: requestedVendor });
+    const probeRequestedModels = async (): Promise<
+        vscode.LanguageModelChat[]
+    > => {
+        try {
+            return findRequestedModels(await selectRequestedVendorModels());
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            process.stderr.write(`waitForCopilotModels probe failed: ${msg}\n`);
+            return [];
+        }
+    };
 
-    const initial = findRequestedModels(await selectRequestedVendorModels());
+    const initial = await probeRequestedModels();
     if (initial.length > 0) {
         return initial;
     }
@@ -231,19 +242,9 @@ async function waitForCopilotModels(
                 finish([]);
                 return;
             }
-            try {
-                const vendorModels = await selectRequestedVendorModels();
-                const found = findRequestedModels(vendorModels);
-                if (found.length > 0) {
-                    finish(found);
-                }
-            } catch (err) {
-                // Fire-and-forget callers (event handler, interval) would
-                // otherwise surface rejections as unhandledRejection.
-                const msg = err instanceof Error ? err.message : String(err);
-                process.stderr.write(
-                    `waitForCopilotModels probe failed: ${msg}\n`
-                );
+            const found = await probeRequestedModels();
+            if (found.length > 0) {
+                finish(found);
             }
         };
         event = vscode.lm.onDidChangeChatModels(() => {
