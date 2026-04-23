@@ -585,7 +585,7 @@ describe('runHeadlessFromEnv', () => {
                 parseArgs(['--models', 'copilot/,copilot/gpt-5'])
             )
         ).toThrow(/--models: Malformed model identifier 'copilot\/'/);
-    });
+    }, 15_000);
 
     it('reports malformed eval --aux-model identifiers as CliError during CLI setup', async () => {
         const { CliError, normalizeCliModelIdentifiers, parseArgs } =
@@ -597,7 +597,53 @@ describe('runHeadlessFromEnv', () => {
         expect(() =>
             normalizeCliModelIdentifiers(parseArgs(['--aux-model', 'copilot/']))
         ).toThrow(/--aux-model: Malformed model identifier 'copilot\/'/);
-    });
+    }, 15_000);
+
+    it('returns null when the remaining auxiliary judge budget is below the minimum threshold', async () => {
+        const { createAuxiliaryJudgeBudget } =
+            await import('../../scripts/eval/run-eval.ts');
+        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+
+        try {
+            expect(createAuxiliaryJudgeBudget(19_999)).toBeNull();
+        } finally {
+            nowSpy.mockRestore();
+        }
+    }, 15_000);
+
+    it('returns the minimum auxiliary judge budget when the remaining budget exactly matches the threshold', async () => {
+        const { createAuxiliaryJudgeBudget, MIN_AUXILIARY_JUDGE_TIMEOUT_MS } =
+            await import('../../scripts/eval/run-eval.ts');
+        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+
+        try {
+            expect(
+                createAuxiliaryJudgeBudget(
+                    10_000 + MIN_AUXILIARY_JUDGE_TIMEOUT_MS
+                )
+            ).toEqual({
+                timeoutMs: MIN_AUXILIARY_JUDGE_TIMEOUT_MS,
+                deadlineAt: 10_000 + MIN_AUXILIARY_JUDGE_TIMEOUT_MS,
+            });
+        } finally {
+            nowSpy.mockRestore();
+        }
+    }, 15_000);
+
+    it('clamps the auxiliary judge budget to the configured maximum', async () => {
+        const { createAuxiliaryJudgeBudget, MAX_AUXILIARY_JUDGE_TIMEOUT_MS } =
+            await import('../../scripts/eval/run-eval.ts');
+        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+
+        try {
+            expect(createAuxiliaryJudgeBudget(300_000)).toEqual({
+                timeoutMs: MAX_AUXILIARY_JUDGE_TIMEOUT_MS,
+                deadlineAt: 10_000 + MAX_AUXILIARY_JUDGE_TIMEOUT_MS,
+            });
+        } finally {
+            nowSpy.mockRestore();
+        }
+    }, 15_000);
 
     it('detects the documented vite-node argv shape as direct CLI execution without treating test imports as direct runs', async () => {
         const { getCliArgs, isDirectExecution } =
@@ -622,6 +668,15 @@ describe('runHeadlessFromEnv', () => {
                 'copilot/gpt-5',
             ])
         ).toEqual(['--models', 'copilot/gpt-5']);
+        expect(
+            getCliArgs([
+                process.execPath,
+                path.resolve('node_modules/vite-node/dist/cli.mjs'),
+                runEvalPath,
+                '--',
+                '--help',
+            ])
+        ).toEqual(['--help']);
 
         expect(
             isDirectExecution([
@@ -630,9 +685,9 @@ describe('runHeadlessFromEnv', () => {
                 path.resolve('src/__tests__/headlessEntry.test.ts'),
             ])
         ).toBe(false);
-    });
+    }, 15_000);
 
-    it('caps exact-model preflight below a large remaining timeout budget', async () => {
+    it('caps exact-model preflight at the dedicated max even when more run budget remains', async () => {
         const {
             EXACT_MODEL_PREFLIGHT_MAX_MS,
             getExactModelPreflightTimeoutMs,
@@ -646,6 +701,71 @@ describe('runHeadlessFromEnv', () => {
                 10_000
             )
         ).toBe(EXACT_MODEL_PREFLIGHT_MAX_MS);
+    });
+
+    it('reports an exact-model preflight miss at the capped budget before the overall run timeout expires', async () => {
+        vi.useFakeTimers();
+        const { EXACT_MODEL_PREFLIGHT_MAX_MS } =
+            await import('../eval/headlessEntry');
+        const args = {
+            workspace: '/ws',
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/gpt-4.1',
+            seed: 42,
+            timeoutMs: EXACT_MODEL_PREFLIGHT_MAX_MS + 30_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        const { runHeadless } = await import('../eval/headlessRunner');
+        vi.mocked(runHeadless).mockReset();
+        vi.mocked(vscode.lm.selectChatModels).mockReset();
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReset();
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+        vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
+            {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            } as unknown as import('vscode').LanguageModelChat,
+        ]);
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReturnValue({
+            dispose: vi.fn(),
+        } as never);
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        try {
+            const { runHeadlessFromEnv } =
+                await import('../eval/headlessEntry');
+            const runPromise = runHeadlessFromEnv(coordinator as never);
+
+            await vi.advanceTimersByTimeAsync(EXACT_MODEL_PREFLIGHT_MAX_MS);
+            await runPromise;
+        } finally {
+            vi.useRealTimers();
+        }
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain(
+            `Requested model copilot/gpt-4.1 was not available during exact-model preflight (${EXACT_MODEL_PREFLIGHT_MAX_MS}ms).`
+        );
+        expect(sentinel.error).not.toContain(
+            `Headless run exceeded timeout (${args.timeoutMs}ms)`
+        );
+        expect(runHeadless).not.toHaveBeenCalled();
     });
 
     it('keeps polling until the exact model appears just before the preflight deadline', async () => {
@@ -868,6 +988,130 @@ describe('runHeadlessFromEnv', () => {
         expect(selectCalls).toBeGreaterThan(1);
     });
 
+    it('does not report a transient exact-model probe failure after later probes succeed but still find no exact match', async () => {
+        vi.useFakeTimers();
+        const args = {
+            workspace: '/ws',
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/gpt-4.1',
+            seed: 42,
+            timeoutMs: 2_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        vi.mocked(vscode.lm.selectChatModels).mockReset();
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReset();
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+
+        let selectCalls = 0;
+        vi.mocked(vscode.lm.selectChatModels).mockImplementation(async () => {
+            selectCalls += 1;
+            if (selectCalls === 1) {
+                throw new Error('transient selectChatModels error');
+            }
+            return [
+                {
+                    id: 'gpt-5-mini',
+                    name: 'GPT-5 mini',
+                    family: 'gpt-5',
+                    vendor: 'copilot',
+                    maxInputTokens: 128000,
+                } as unknown as import('vscode').LanguageModelChat,
+            ];
+        });
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReturnValue({
+            dispose: vi.fn(),
+        } as never);
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        try {
+            const { runHeadlessFromEnv } =
+                await import('../eval/headlessEntry');
+            const runPromise = runHeadlessFromEnv(coordinator as never);
+
+            await vi.advanceTimersByTimeAsync(2_000);
+            await runPromise;
+        } finally {
+            vi.useRealTimers();
+        }
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain(
+            'Headless run exceeded timeout (2000ms) while waiting for copilot/gpt-4.1.'
+        );
+        expect(sentinel.error).not.toContain(
+            'Exact-model preflight failed for copilot/gpt-4.1: transient selectChatModels error'
+        );
+        expect(selectCalls).toBeGreaterThan(1);
+    });
+
+    it('surfaces the last persistent exact-model preflight error instead of reporting model-unavailable', async () => {
+        vi.useFakeTimers();
+        const { EXACT_MODEL_PREFLIGHT_MAX_MS } =
+            await import('../eval/headlessEntry');
+        const args = {
+            workspace: '/ws',
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/gpt-4.1',
+            seed: 42,
+            timeoutMs: EXACT_MODEL_PREFLIGHT_MAX_MS + 1_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        vi.mocked(vscode.lm.selectChatModels).mockReset();
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReset();
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+        vi.mocked(vscode.lm.selectChatModels).mockRejectedValue(
+            new Error('copilot auth unavailable') as never
+        );
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReturnValue({
+            dispose: vi.fn(),
+        } as never);
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        try {
+            const { runHeadlessFromEnv } =
+                await import('../eval/headlessEntry');
+            const runPromise = runHeadlessFromEnv(coordinator as never);
+            await vi.advanceTimersByTimeAsync(EXACT_MODEL_PREFLIGHT_MAX_MS);
+            await runPromise;
+        } finally {
+            vi.useRealTimers();
+        }
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain(
+            'Exact-model preflight failed for copilot/gpt-4.1: copilot auth unavailable'
+        );
+        expect(sentinel.error).not.toContain(
+            'was not available during exact-model preflight'
+        );
+    });
+
     it('uses only the remaining timeout budget while waiting for models after initialization completes', async () => {
         vi.useFakeTimers();
         const args = {
@@ -927,6 +1171,168 @@ describe('runHeadlessFromEnv', () => {
         );
         expect(vscode.lm.selectChatModels).toHaveBeenCalledTimes(1);
         expect(eventDisposable.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it('recovers when the first exact-model probe hangs but a later probe finds the requested model', async () => {
+        vi.useFakeTimers();
+        const args = {
+            workspace: '/ws',
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/gpt-4.1',
+            seed: 42,
+            timeoutMs: 5_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        const { runHeadless } = await import('../eval/headlessRunner');
+        const { runHeadlessFromEnv } = await import('../eval/headlessEntry');
+        let onDidChangeChatModels: (() => void) | undefined;
+        vi.mocked(vscode.lm.selectChatModels).mockReset();
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReset();
+        vi.mocked(runHeadless).mockReset();
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+        let selectCalls = 0;
+        vi.mocked(vscode.lm.selectChatModels).mockImplementation(async () => {
+            selectCalls += 1;
+            if (selectCalls === 1) {
+                return (await new Promise(() => {})) as never;
+            }
+
+            return [
+                {
+                    id: 'gpt-4.1',
+                    name: 'GPT-4.1',
+                    family: 'gpt-4',
+                    vendor: 'copilot',
+                    maxInputTokens: 128000,
+                } as unknown as import('vscode').LanguageModelChat,
+            ];
+        });
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockImplementation(
+            (listener) => {
+                onDidChangeChatModels = listener;
+                return {
+                    dispose: vi.fn(),
+                } as never;
+            }
+        );
+        vi.mocked(runHeadless).mockResolvedValue({
+            findings: [],
+            narrative: 'complete narrative',
+            telemetry: {
+                iterations: 1,
+                toolCalls: 0,
+                promptTokens: 0,
+                completionTokens: 0,
+                durationMs: 123,
+                compactionsUsed: 0,
+            },
+            rawToolCallLog: [],
+            modelId: 'copilot/gpt-4.1',
+            seed: 42,
+            completed: true,
+        } as never);
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        try {
+            const runPromise = runHeadlessFromEnv(coordinator as never);
+
+            await vi.advanceTimersByTimeAsync(3_000);
+            onDidChangeChatModels?.();
+            await vi.runAllTicks();
+
+            await vi.waitFor(
+                () => {
+                    expect(runHeadless).toHaveBeenCalledTimes(1);
+                },
+                {
+                    timeout: 50,
+                    interval: 1,
+                }
+            );
+
+            await runPromise;
+        } finally {
+            vi.useRealTimers();
+        }
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(0);
+        expect(sentinel.error).toBeNull();
+        expect(runHeadless).toHaveBeenCalledTimes(1);
+        expect(selectCalls).toBeGreaterThan(1);
+    });
+
+    it('does not surface a stale exact-model probe error when a newer probe is still hanging at timeout', async () => {
+        vi.useFakeTimers();
+        const args = {
+            workspace: '/ws',
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/gpt-4.1',
+            seed: 42,
+            timeoutMs: 2_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        vi.mocked(vscode.lm.selectChatModels).mockReset();
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReset();
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+
+        let selectCalls = 0;
+        vi.mocked(vscode.lm.selectChatModels).mockImplementation(async () => {
+            selectCalls += 1;
+            if (selectCalls === 1) {
+                throw new Error('transient selectChatModels error');
+            }
+            return (await new Promise(() => {})) as never;
+        });
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReturnValue({
+            dispose: vi.fn(),
+        } as never);
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        try {
+            const { runHeadlessFromEnv } =
+                await import('../eval/headlessEntry');
+            const runPromise = runHeadlessFromEnv(coordinator as never);
+
+            await vi.advanceTimersByTimeAsync(2_000);
+            await runPromise;
+        } finally {
+            vi.useRealTimers();
+        }
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(1);
+        expect(sentinel.error).toContain(
+            'Headless run exceeded timeout (2000ms) while waiting for copilot/gpt-4.1.'
+        );
+        expect(sentinel.error).not.toContain(
+            'Exact-model preflight failed for copilot/gpt-4.1: transient selectChatModels error'
+        );
+        expect(selectCalls).toBe(2);
     });
 
     it('times out during initialization before attempting model discovery', async () => {

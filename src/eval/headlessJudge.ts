@@ -38,53 +38,67 @@ export async function runHeadlessResolutionJudge(
     const normalizedRequestedIdentifier = normalizeModelIdentifier(
         opts.modelIdentifier
     );
+    const deadlineCancellationSource = new vscode.CancellationTokenSource();
+    const cancellationDisposable =
+        opts.cancellationToken.onCancellationRequested(() => {
+            deadlineCancellationSource.cancel();
+        });
+    const cancellationToken = deadlineCancellationSource.token;
 
-    const model = await awaitWithinHeadlessBudget(
-        services.copilotModelManager.selectModel({
-            identifier: opts.modelIdentifier,
-            persist: false,
-        }),
-        {
-            timeoutMs: opts.timeoutMs,
-            deadlineAt: opts.deadlineAt,
-            phase: 'during model selection for resolution judging',
-            cancellationToken: opts.cancellationToken,
-        }
-    );
-    const actualIdentifier = normalizeModelIdentifier(
-        `${model.vendor}/${model.id}`
-    );
-    if (actualIdentifier !== normalizedRequestedIdentifier) {
-        throw new Error(
-            `Requested model '${normalizedRequestedIdentifier}' is not available; ` +
-                `CopilotModelManager fell back to '${actualIdentifier}'. ` +
-                `Refusing to run on an unintended model (risks premium quota).`
-        );
-    }
-
-    const requestTimeoutMs = requireRemainingHeadlessBudgetMs(
-        opts.timeoutMs,
-        opts.deadlineAt,
-        'during resolution judging'
-    );
-
-    const response = await ModelRequestHandler.sendRequest(
-        model,
-        {
-            messages: [
-                { role: 'system', content: SYSTEM_PROMPT },
-                {
-                    role: 'user',
-                    content: buildUserPrompt(payload, opts.workspaceRoot),
+    try {
+        const model = await awaitWithinHeadlessBudget(
+            services.copilotModelManager.selectModel({
+                identifier: opts.modelIdentifier,
+                persist: false,
+            }),
+            {
+                timeoutMs: opts.timeoutMs,
+                deadlineAt: opts.deadlineAt,
+                phase: 'during model selection for resolution judging',
+                cancellationToken,
+                onBudgetExceeded: () => {
+                    deadlineCancellationSource.cancel();
                 },
-            ],
-            tools: [],
-        },
-        opts.cancellationToken,
-        requestTimeoutMs
-    );
+            }
+        );
+        const actualIdentifier = normalizeModelIdentifier(
+            `${model.vendor}/${model.id}`
+        );
+        if (actualIdentifier !== normalizedRequestedIdentifier) {
+            throw new Error(
+                `Requested exact model '${normalizedRequestedIdentifier}' was not selected; ` +
+                    `CopilotModelManager fell back to '${actualIdentifier}'. ` +
+                    `Refusing to run on an unintended model (risks premium quota).`
+            );
+        }
 
-    return parseJudgeResponse(response.content, actualIdentifier);
+        const requestTimeoutMs = requireRemainingHeadlessBudgetMs(
+            opts.timeoutMs,
+            opts.deadlineAt,
+            'during resolution judging'
+        );
+
+        const response = await ModelRequestHandler.sendRequest(
+            model,
+            {
+                messages: [
+                    { role: 'system', content: SYSTEM_PROMPT },
+                    {
+                        role: 'user',
+                        content: buildUserPrompt(payload, opts.workspaceRoot),
+                    },
+                ],
+                tools: [],
+            },
+            cancellationToken,
+            requestTimeoutMs
+        );
+
+        return parseJudgeResponse(response.content, actualIdentifier);
+    } finally {
+        cancellationDisposable.dispose();
+        deadlineCancellationSource.dispose();
+    }
 }
 
 function readPayload(payloadPath: string): ResolutionJudgePayload {
@@ -190,8 +204,18 @@ function parseJudgeResponse(
     }
 
     throw new Error(
-        `Auxiliary judge returned an unparseable verdict: ${trimmed || '(empty response)'}`
+        trimmed.length > 0
+            ? `Auxiliary judge returned an unparseable verdict: ${summarizeJudgeResponse(trimmed)}`
+            : 'Auxiliary judge returned an empty response.'
     );
+}
+
+function summarizeJudgeResponse(content: string): string {
+    const normalized = content.replace(/\s+/gu, ' ').trim();
+    if (normalized.length <= 160) {
+        return normalized;
+    }
+    return `${normalized.slice(0, 157)}...`;
 }
 
 function getPromptLocation(

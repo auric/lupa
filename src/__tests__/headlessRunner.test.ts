@@ -434,6 +434,24 @@ describe('runHeadless', () => {
         };
     }
 
+    it('fires the budget-exceeded hook when the shared headless budget is already exhausted on entry', async () => {
+        const { awaitWithinHeadlessBudget } =
+            await import('../eval/headlessShared');
+        const onBudgetExceeded = vi.fn();
+
+        await expect(
+            awaitWithinHeadlessBudget(new Promise(() => {}), {
+                timeoutMs: 60_000,
+                deadlineAt: Date.now() - 1,
+                phase: 'during analysis',
+                onBudgetExceeded,
+            })
+        ).rejects.toThrow(
+            'Headless run exceeded timeout (60000ms) during analysis.'
+        );
+        expect(onBudgetExceeded).toHaveBeenCalledTimes(1);
+    });
+
     it('returns a result matching the HeadlessAnalysisResult shape', async () => {
         vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
         const services = makeServices({
@@ -542,7 +560,7 @@ describe('runHeadless', () => {
             },
         });
         await expect(runHeadless(baseOpts(), services)).rejects.toThrow(
-            /not available.*fell back to 'copilot\/claude-sonnet-4'/
+            /requested exact model.*fell back to 'copilot\/claude-sonnet-4'/i
         );
     });
 
@@ -693,10 +711,86 @@ describe('runHeadless', () => {
             await vi.advanceTimersByTimeAsync(500);
 
             await expect(resultPromise).rejects.toThrow(
-                /during model selection/i
+                'Headless run exceeded timeout (60000ms) during model selection.'
             );
             expect(analyzeSpy).not.toHaveBeenCalled();
         } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('fails analysis once the remaining deadline budget is exhausted while analysisEngine.analyze is still running', async () => {
+        vi.useFakeTimers();
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        let analysisToken: vscode.CancellationToken | undefined;
+        const analyzeSpy = vi
+            .fn()
+            .mockImplementation(
+                (input: { token: vscode.CancellationToken }) => {
+                    analysisToken = input.token;
+                    return new Promise(() => {});
+                }
+            );
+        const services = makeServices({ analyzeSpy });
+
+        try {
+            const resultPromise = runHeadless(
+                {
+                    ...baseOpts(),
+                    deadlineAt: Date.now() + 500,
+                },
+                services
+            );
+
+            await vi.advanceTimersByTimeAsync(500);
+
+            await expect(resultPromise).rejects.toThrow(
+                'Headless run exceeded timeout (60000ms) during analysis.'
+            );
+            expect(analyzeSpy).toHaveBeenCalledTimes(1);
+            expect(analysisToken?.isCancellationRequested).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('reports parent-token cancellation during analysis without mislabeling it as a timeout', async () => {
+        vi.useFakeTimers();
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        const parentTokenSource = new vscode.CancellationTokenSource();
+        let analysisToken: vscode.CancellationToken | undefined;
+        const analyzeSpy = vi
+            .fn()
+            .mockImplementation(
+                (input: { token: vscode.CancellationToken }) => {
+                    analysisToken = input.token;
+                    return new Promise(() => {});
+                }
+            );
+        const services = makeServices({ analyzeSpy });
+
+        try {
+            const resultPromise = runHeadless(
+                {
+                    ...baseOpts(),
+                    deadlineAt: Date.now() + 5_000,
+                    cancellationToken: parentTokenSource.token,
+                },
+                services
+            );
+
+            await vi.waitFor(() => {
+                expect(analyzeSpy).toHaveBeenCalledTimes(1);
+            });
+
+            parentTokenSource.cancel();
+
+            await expect(resultPromise).rejects.toThrow(
+                /Headless run cancelled during analysis\./i
+            );
+            expect(analysisToken?.isCancellationRequested).toBe(true);
+        } finally {
+            parentTokenSource.dispose();
             vi.useRealTimers();
         }
     });
@@ -829,7 +923,10 @@ describe('runHeadlessResolutionJudge', () => {
             expect.objectContaining({
                 tools: [],
             }),
-            tokenSource.token,
+            expect.objectContaining({
+                isCancellationRequested: false,
+                onCancellationRequested: expect.any(Function),
+            }),
             16_500
         );
     });
@@ -860,7 +957,9 @@ describe('runHeadlessResolutionJudge', () => {
                     },
                     services
                 )
-            ).rejects.toThrow(/copilot\/gpt-5-mini.*copilot\/gpt-4o-mini/);
+            ).rejects.toThrow(
+                /requested exact model 'copilot\/gpt-5-mini' was not selected;.*copilot\/gpt-4o-mini/i
+            );
         } finally {
             fs.rmSync(path.dirname(payloadPath), {
                 recursive: true,
@@ -1288,7 +1387,7 @@ describe('runHeadlessResolutionJudge', () => {
             await vi.advanceTimersByTimeAsync(500);
 
             await expect(resultPromise).rejects.toThrow(
-                /during model selection for resolution judging/i
+                'Headless run exceeded timeout (60000ms) during model selection for resolution judging.'
             );
             expect(ModelRequestHandler.sendRequest).not.toHaveBeenCalled();
         } finally {
@@ -1296,6 +1395,53 @@ describe('runHeadlessResolutionJudge', () => {
                 recursive: true,
                 force: true,
             });
+            vi.useRealTimers();
+        }
+    });
+
+    it('reports parent-token cancellation during judge model selection without mislabeling it as a timeout', async () => {
+        vi.useFakeTimers();
+        const payloadPath = writePayloadFile();
+        const tokenSource = new vscode.CancellationTokenSource();
+        vi.mocked(ModelRequestHandler.sendRequest).mockReset();
+        const services = makeServices({
+            selectedModel: {
+                id: 'gpt-5-mini',
+                name: 'GPT-5 mini',
+                family: 'gpt-5',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            },
+        });
+        vi.mocked(services.copilotModelManager.selectModel).mockImplementation(
+            () => new Promise(() => {})
+        );
+
+        try {
+            const resultPromise = runHeadlessResolutionJudge(
+                {
+                    workspaceRoot: '/ws',
+                    modelIdentifier: 'copilot/gpt-5-mini',
+                    timeoutMs: 60_000,
+                    deadlineAt: Date.now() + 5_000,
+                    payloadPath,
+                    cancellationToken: tokenSource.token,
+                },
+                services
+            );
+
+            tokenSource.cancel();
+
+            await expect(resultPromise).rejects.toThrow(
+                /Headless run cancelled during model selection for resolution judging\./i
+            );
+            expect(ModelRequestHandler.sendRequest).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(path.dirname(payloadPath), {
+                recursive: true,
+                force: true,
+            });
+            tokenSource.dispose();
             vi.useRealTimers();
         }
     });

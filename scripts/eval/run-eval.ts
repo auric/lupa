@@ -46,7 +46,8 @@ Options:
                        (default: synthetic,real)
   --only <csv>         Subset of fixture names to run
   --seeds <n>          Seeds per (fixture, model) cell (default: ${DEFAULT_SEEDS})
-  --timeout <ms>       Per-run timeout passed to the launcher
+    --timeout <ms>       Per-cell eval budget shared by launcher/bootstrap,
+                                             exact-model preflight, and analysis/judging
                        (default: ${DEFAULT_TIMEOUT_MS})
   --bail-on-error      Abort on the first runner failure
   --dry-run            Load fixtures + print the plan; skip runner invocation
@@ -87,8 +88,8 @@ interface ParsedArgs {
 
 const execFileAsync = promisify(execFile);
 const MIN_HEADLESS_RUN_TIMEOUT_MS = 10_000;
-const MIN_AUXILIARY_JUDGE_TIMEOUT_MS = 10_000;
-const MAX_AUXILIARY_JUDGE_TIMEOUT_MS = 120_000;
+export const MIN_AUXILIARY_JUDGE_TIMEOUT_MS = 10_000;
+export const MAX_AUXILIARY_JUDGE_TIMEOUT_MS = 120_000;
 
 interface AuxiliaryJudgeBudget {
     timeoutMs: number;
@@ -291,7 +292,7 @@ function printPlan(args: ParsedArgs, fixtures: readonly LoadedFixture[]): void {
     process.stdout.write(`Models: ${args.models.join(', ')}\n`);
     process.stdout.write(`Aux model: ${args.auxModel}\n`);
     process.stdout.write(`Seeds: ${args.seeds}\n`);
-    process.stdout.write(`Timeout: ${args.timeoutMs}ms\n`);
+    process.stdout.write(`Per-cell timeout budget: ${args.timeoutMs}ms\n`);
     process.stdout.write(`Out dir: ${args.outDir}\n`);
 }
 
@@ -371,7 +372,8 @@ export function getCliArgs(argv: readonly string[]): readonly string[] {
         return argv.slice(2);
     }
 
-    return argv.slice(directExecutionArgIndex + 1);
+    const args = argv.slice(directExecutionArgIndex + 1);
+    return args[0] === '--' ? args.slice(1) : args;
 }
 
 export async function main(
@@ -431,7 +433,8 @@ export async function main(
                     ? (() => {
                           const match = matchFindings(
                               r.result.findings,
-                              fixture.labels.expected_findings
+                              fixture.labels.expected_findings,
+                              fixture.workspaceRoot
                           );
                           return {
                               fixture: fixture.name,
@@ -472,6 +475,11 @@ export async function main(
                                 judge: async (payload) => {
                                     const judgeBudget =
                                         createAuxiliaryJudgeBudget(deadlineAt);
+                                    if (!judgeBudget) {
+                                        throw new Error(
+                                            `Auxiliary judge unavailable: remaining eval timeout budget is below the auxiliary judge minimum of ${MIN_AUXILIARY_JUDGE_TIMEOUT_MS}ms`
+                                        );
+                                    }
                                     const judged = await invokeResolutionJudge({
                                         workspaceRoot: fixture.workspaceRoot,
                                         model: args.auxModel,
@@ -556,23 +564,20 @@ export async function main(
     return 0;
 }
 
-function createAuxiliaryJudgeBudget(
+export function createAuxiliaryJudgeBudget(
     headlessDeadlineAt: number
-): AuxiliaryJudgeBudget {
+): AuxiliaryJudgeBudget | null {
     const now = Date.now();
-    const judgeDeadlineAt = Math.min(
-        headlessDeadlineAt,
-        now + MAX_AUXILIARY_JUDGE_TIMEOUT_MS
+    const remainingMs = Math.min(
+        headlessDeadlineAt - now,
+        MAX_AUXILIARY_JUDGE_TIMEOUT_MS
     );
-    const remainingMs = judgeDeadlineAt - now;
     if (remainingMs < MIN_AUXILIARY_JUDGE_TIMEOUT_MS) {
-        throw new Error(
-            `Remaining eval timeout budget (${remainingMs}ms) is below the auxiliary judge minimum of ${MIN_AUXILIARY_JUDGE_TIMEOUT_MS}ms`
-        );
+        return null;
     }
     return {
         timeoutMs: remainingMs,
-        deadlineAt: judgeDeadlineAt,
+        deadlineAt: now + remainingMs,
     };
 }
 

@@ -10,6 +10,7 @@ import {
 import {
     createHeadlessDeadline,
     formatHeadlessTimeoutMessage,
+    getRemainingHeadlessBudgetMs,
     normalizeModelIdentifier,
     requireRemainingHeadlessBudgetMs,
 } from './headlessShared';
@@ -174,6 +175,15 @@ async function waitForCopilotModels(
     requestedIdentifier: string,
     token: vscode.CancellationToken
 ): Promise<vscode.LanguageModelChat[]> {
+    let lastProbeError:
+        | {
+              error: Error;
+              probeId: number;
+          }
+        | undefined;
+    let startedProbeCount = 0;
+    let latestCompletedProbeId = 0;
+    let pendingProbeCount = 0;
     const normalizedRequestedIdentifier =
         normalizeModelIdentifier(requestedIdentifier);
     const requestedVendor = normalizedRequestedIdentifier.split('/')[0] ?? '';
@@ -186,28 +196,41 @@ async function waitForCopilotModels(
     const selectRequestedVendorModels = async (): Promise<
         vscode.LanguageModelChat[]
     > => await vscode.lm.selectChatModels({ vendor: requestedVendor });
-    const probeRequestedModels = async (): Promise<
-        vscode.LanguageModelChat[]
-    > => {
+    const probeRequestedModels = async (
+        probeId: number
+    ): Promise<vscode.LanguageModelChat[]> => {
         try {
-            return findRequestedModels(await selectRequestedVendorModels());
+            const requestedModels = findRequestedModels(
+                await selectRequestedVendorModels()
+            );
+            if (probeId > latestCompletedProbeId) {
+                latestCompletedProbeId = probeId;
+                lastProbeError = undefined;
+            }
+            return requestedModels;
         } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            process.stderr.write(`waitForCopilotModels probe failed: ${msg}\n`);
+            const error = err instanceof Error ? err : new Error(String(err));
+            if (probeId > latestCompletedProbeId) {
+                latestCompletedProbeId = probeId;
+                lastProbeError = {
+                    error,
+                    probeId,
+                };
+            }
             return [];
         }
     };
 
-    const initial = await probeRequestedModels();
-    if (initial.length > 0) {
-        return initial;
-    }
-
     if (token.isCancellationRequested || timeoutMs <= 0) {
+        if (lastProbeError) {
+            throw new Error(
+                `Exact-model preflight failed for ${normalizedRequestedIdentifier}: ${lastProbeError.error.message}`
+            );
+        }
         return [];
     }
 
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         let settled = false;
         let event: vscode.Disposable | undefined;
         let cancellation: vscode.Disposable | undefined;
@@ -232,9 +255,27 @@ async function waitForCopilotModels(
                 return;
             }
             cleanup();
+            if (models.length === 0 && token.isCancellationRequested) {
+                resolve(models);
+                return;
+            }
+            if (
+                models.length === 0 &&
+                lastProbeError &&
+                lastProbeError.probeId === latestCompletedProbeId &&
+                latestCompletedProbeId === startedProbeCount &&
+                pendingProbeCount === 0
+            ) {
+                reject(
+                    new Error(
+                        `Exact-model preflight failed for ${normalizedRequestedIdentifier}: ${lastProbeError.error.message}`
+                    )
+                );
+                return;
+            }
             resolve(models);
         };
-        const check = async () => {
+        const runProbe = async () => {
             if (settled) {
                 return;
             }
@@ -242,25 +283,38 @@ async function waitForCopilotModels(
                 finish([]);
                 return;
             }
-            const found = await probeRequestedModels();
-            if (found.length > 0) {
-                finish(found);
+            const probeId = ++startedProbeCount;
+            pendingProbeCount += 1;
+            try {
+                const found = await probeRequestedModels(probeId);
+                if (found.length > 0) {
+                    finish(found);
+                }
+            } finally {
+                pendingProbeCount -= 1;
             }
         };
+        const scheduleProbe = () => {
+            if (settled) {
+                return;
+            }
+            void runProbe();
+        };
         event = vscode.lm.onDidChangeChatModels(() => {
-            void check();
+            scheduleProbe();
         });
         cancellation = token.onCancellationRequested(() => {
             finish([]);
         });
         interval = setInterval(() => {
-            void check();
+            scheduleProbe();
         }, MODEL_DISCOVERY_POLL_INTERVAL_MS);
         interval.unref?.();
         timeout = setTimeout(() => {
             finish([]);
         }, timeoutMs);
         timeout.unref?.();
+        scheduleProbe();
     });
 }
 
@@ -271,13 +325,13 @@ export function getExactModelPreflightTimeoutMs(
     now: number = Date.now()
 ): number {
     return Math.min(
-        EXACT_MODEL_PREFLIGHT_MAX_MS,
         requireRemainingHeadlessBudgetMs(
             timeoutMs,
             deadlineAt,
             `while waiting for ${requestedIdentifier}`,
             now
-        )
+        ),
+        EXACT_MODEL_PREFLIGHT_MAX_MS
     );
 }
 
@@ -396,18 +450,24 @@ export async function runHeadlessFromEnv(
                 deadlineAt,
                 requestedIdentifier
             );
-            const models = await awaitWithCancellation(
-                waitForCopilotModels(
-                    modelPreflightTimeoutMs,
-                    requestedIdentifier,
-                    cts.token
-                ),
-                cts.token,
-                formatHeadlessTimeoutMessage(
-                    args.timeoutMs,
-                    `while waiting for ${requestedIdentifier}`
-                )
+            const models = await waitForCopilotModels(
+                modelPreflightTimeoutMs,
+                requestedIdentifier,
+                cts.token
             );
+            if (
+                models.length === 0 &&
+                (cts.token.isCancellationRequested ||
+                    getRemainingHeadlessBudgetMs(args.timeoutMs, deadlineAt) <=
+                        0)
+            ) {
+                throw new Error(
+                    formatHeadlessTimeoutMessage(
+                        args.timeoutMs,
+                        `while waiting for ${requestedIdentifier}`
+                    )
+                );
+            }
             if (models.length === 0) {
                 throw new Error(
                     `Requested model ${requestedIdentifier} was not available during exact-model preflight (${modelPreflightTimeoutMs}ms). If this is the first run, ` +
