@@ -2,9 +2,9 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import { spawn, type ChildProcess, execSync } from 'node:child_process';
-import type { HeadlessAnalysisResult } from '../headlessRunner';
 import {
     getHeadlessAnalysisResultValidationError,
+    type HarnessHeadlessAnalysisResult,
     getResolutionJudgeResultValidationError,
     type ResolutionJudgePayload,
     type ResolutionJudgeResult,
@@ -37,12 +37,12 @@ export interface InvokeHeadlessOptions {
 }
 
 export type InvokeHeadlessResult =
-    | { ok: true; result: HeadlessAnalysisResult; durationMs: number }
+    | { ok: true; result: HarnessHeadlessAnalysisResult; durationMs: number }
     | {
           ok: false;
           error: string;
           durationMs: number;
-          result: HeadlessAnalysisResult | null;
+          result: HarnessHeadlessAnalysisResult | null;
       };
 
 export interface InvokeResolutionJudgeOptions {
@@ -181,7 +181,7 @@ export async function invokeHeadless(
             error = `Launcher exited ${exitCode}; stderr tail: ${tailStderr(stderr, stdout)}`;
         }
 
-        const result: HeadlessAnalysisResult | null = parsed.ok
+        const result: HarnessHeadlessAnalysisResult | null = parsed.ok
             ? parsed.result
             : null;
         const outcome: InvokeHeadlessResult = {
@@ -346,14 +346,14 @@ function validateRef(ref: string, fieldName: string): void {
     }
 }
 
-type ParsedResult = ParsedJsonResult<HeadlessAnalysisResult>;
+type ParsedResult = ParsedJsonResult<HarnessHeadlessAnalysisResult>;
 
 type ParsedJsonResult<T> =
     | { ok: true; result: T }
     | { ok: false; reason: string };
 
 async function tryReadResult(outPath: string): Promise<ParsedResult> {
-    return tryReadJsonResult<HeadlessAnalysisResult>(
+    return tryReadJsonResult<HarnessHeadlessAnalysisResult>(
         outPath,
         getHeadlessAnalysisResultValidationError
     );

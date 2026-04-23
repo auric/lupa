@@ -4,11 +4,28 @@ import {
     FINDING_SEVERITIES,
 } from '../../types/findingTypes';
 import type {
+    FindingSource,
     RecordedFinding,
     FindingSeverity,
     FindingCategory,
 } from '../../types/findingTypes';
 import type { HeadlessAnalysisResult } from '../headlessRunner';
+
+/**
+ * Headless analysis JSON accepts `sources` as an optional array without
+ * rejecting malformed members up front, so per-finding consumers must treat
+ * those entries as untrusted until they sanitize them.
+ */
+export type HarnessRecordedFinding = Omit<RecordedFinding, 'sources'> & {
+    sources?: Array<Partial<FindingSource> | unknown>;
+};
+
+export type HarnessHeadlessAnalysisResult = Omit<
+    HeadlessAnalysisResult,
+    'findings'
+> & {
+    findings: HarnessRecordedFinding[];
+};
 
 export type FixtureKind = 'synthetic' | 'real';
 
@@ -79,7 +96,11 @@ export interface FindingResolution {
 export interface ResolutionWarning {
     findingId: string;
     severity: FindingSeverity;
-    kind: 'judge-unavailable' | 'judge-failed' | 'classification-failed';
+    kind:
+        | 'judge-unavailable'
+        | 'judge-failed'
+        | 'classification-failed'
+        | 'invalid-sources';
     path: string;
     message: string;
 }
@@ -248,28 +269,6 @@ export function getResolutionJudgeResultValidationError(
     return null;
 }
 
-function getFindingSourceValidationError(
-    source: unknown,
-    fieldName: string
-): string | null {
-    if (!isObjectRecord(source)) {
-        return `${fieldName} must be an object`;
-    }
-    if (!isNonEmptyString(source.path)) {
-        return `${fieldName}.path must be a non-empty string`;
-    }
-    if (!isPositiveInteger(source.lineStart)) {
-        return `${fieldName}.lineStart must be a positive integer`;
-    }
-    if (!isPositiveInteger(source.lineEnd)) {
-        return `${fieldName}.lineEnd must be a positive integer`;
-    }
-    if (source.lineEnd < source.lineStart) {
-        return `${fieldName}.lineEnd must be >= lineStart`;
-    }
-    return null;
-}
-
 function getRecordedFindingValidationError(
     finding: unknown,
     fieldName: string
@@ -354,19 +353,8 @@ function getRecordedFindingValidationError(
     if (!Array.isArray(finding.verifiableClaims)) {
         return `${fieldName}.verifiableClaims must be an array`;
     }
-    if (finding.sources !== undefined) {
-        if (!Array.isArray(finding.sources)) {
-            return `${fieldName}.sources must be an array when provided`;
-        }
-        for (let index = 0; index < finding.sources.length; index++) {
-            const error = getFindingSourceValidationError(
-                finding.sources[index],
-                `${fieldName}.sources[${index}]`
-            );
-            if (error) {
-                return error;
-            }
-        }
+    if (finding.sources !== undefined && !Array.isArray(finding.sources)) {
+        return `${fieldName}.sources must be an array when provided`;
     }
     if (finding.lspValidation !== undefined) {
         if (!isObjectRecord(finding.lspValidation)) {
@@ -520,14 +508,14 @@ export function getHeadlessAnalysisResultValidationError(
 
 export interface MatchedPair {
     expected: ExpectedFinding;
-    produced: RecordedFinding;
+    produced: HarnessRecordedFinding;
     matchReason: 'category' | 'severity' | 'both';
 }
 
 export interface MatchResult {
     matched: MatchedPair[];
     missedExpected: ExpectedFinding[];
-    falsePositives: RecordedFinding[];
+    falsePositives: HarnessRecordedFinding[];
     precision: number;
     recall: number;
     f1: number;
@@ -542,7 +530,7 @@ export interface SingleRun {
     ok: boolean;
     errorMessage: string | null;
     resolutionWarning: string | null;
-    result: HeadlessAnalysisResult | null;
+    result: HarnessHeadlessAnalysisResult | null;
     match: MatchResult | null;
     resolution: ResolutionSummary | null;
 }

@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import type { FindingSource, RecordedFinding } from '../../types/findingTypes';
 import { DiffUtils } from '../../utils/diffUtils';
 import type {
+    HarnessRecordedFinding,
     FindingResolution,
     LoadedFixture,
     MatchedPair,
@@ -15,6 +16,7 @@ import type {
     ResolutionWarning,
 } from './types';
 import {
+    isWorkspaceRelativePath,
     normalizeWorkspaceRelativePath,
     requireRemainingHeadlessBudgetMs,
 } from '../headlessShared';
@@ -27,7 +29,7 @@ export interface ResolutionJudgeClient {
 
 interface ClassifyResolutionOptions {
     fixture: LoadedFixture;
-    produced: readonly RecordedFinding[];
+    produced: readonly HarnessRecordedFinding[];
     match: MatchResult;
     timeoutMs: number;
     deadlineAt?: number;
@@ -40,6 +42,7 @@ interface LineCheckResult {
     reason: string;
     diffText: string;
     path: string;
+    canonicalPath: string;
 }
 
 interface RenameStatusEntry {
@@ -58,6 +61,7 @@ interface ComparableSources {
     sources: FindingSource[];
     usedFallback: boolean;
     hadInvalidSources: boolean;
+    allSourcesInvalid: boolean;
 }
 
 interface DiffLookupResult {
@@ -134,7 +138,7 @@ export async function classifyResolutionForRun(
 }
 
 function classifySyntheticFinding(
-    finding: RecordedFinding,
+    finding: HarnessRecordedFinding,
     matchedPair: MatchedPair | undefined
 ): FindingResolution {
     const matchedExpected = matchedPair?.expected;
@@ -170,7 +174,7 @@ function classifySyntheticFinding(
 
 async function classifyRealFinding(
     fixture: LoadedFixture,
-    finding: RecordedFinding,
+    finding: HarnessRecordedFinding,
     matchedPair: MatchedPair | undefined,
     pathDiffCache: Map<string, string>,
     renameStatusCache: Map<string, readonly RenameStatusEntry[]>,
@@ -200,11 +204,14 @@ async function classifyRealFinding(
     const normalizedPath =
         comparable.sources[0]?.path ??
         normalizePath(finding.file, fixture.workspaceRoot);
+    const sourceFallbackContext = comparable.allSourcesInvalid
+        ? `All cited source ranges for finding '${finding.id}' were invalid, so resolution fell back to the finding's top-level file and lineRange. `
+        : '';
     const lineCheck = await checkRealFindingPaths(
         fixture,
         comparable.sources,
         comparable.usedFallback,
-        comparable.hadInvalidSources,
+        comparable.hadInvalidSources && !comparable.allSourcesInvalid,
         pathDiffCache,
         renameStatusCache,
         changedPathsCache,
@@ -227,7 +234,27 @@ async function classifyRealFinding(
                 matchedLabelPath: matchedExpected
                     ? normalizePath(matchedExpected.path)
                     : undefined,
-                reason: lineCheck.reason,
+                reason: sourceFallbackContext + lineCheck.reason,
+            },
+        };
+    }
+
+    if (!lineCheck.diffText.trim()) {
+        return {
+            kind: 'classified',
+            resolution: {
+                findingId: finding.id,
+                severity: finding.severity,
+                verdict: 'disputed',
+                method: lineCheck.method,
+                path: lineCheck.path,
+                matchedLabelPath: matchedExpected
+                    ? normalizePath(matchedExpected.path)
+                    : undefined,
+                reason:
+                    sourceFallbackContext +
+                    lineCheck.reason +
+                    ' No follow-up diff was available for auxiliary judging, so this finding remains disputed.',
             },
         };
     }
@@ -239,7 +266,8 @@ async function classifyRealFinding(
                 finding,
                 lineCheck.path,
                 'judge-unavailable',
-                lineCheck.reason +
+                sourceFallbackContext +
+                    lineCheck.reason +
                     ' Auxiliary judge unavailable, excluding this finding from semantic resolution metrics.'
             ),
         };
@@ -251,7 +279,7 @@ async function classifyRealFinding(
                 finding,
                 comparable.sources,
                 fixture.workspaceRoot,
-                lineCheck.path
+                lineCheck.canonicalPath
             ),
             diffText: lineCheck.diffText,
         });
@@ -272,13 +300,24 @@ async function classifyRealFinding(
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        if (message.startsWith('Auxiliary judge unavailable:')) {
+            return {
+                kind: 'warning',
+                warning: createResolutionWarning(
+                    finding,
+                    lineCheck.path,
+                    'judge-unavailable',
+                    `${sourceFallbackContext}${lineCheck.reason} ${message.slice('Auxiliary judge unavailable:'.length).trim()} Excluding this finding from semantic resolution metrics.`
+                ),
+            };
+        }
         return {
             kind: 'warning',
             warning: createResolutionWarning(
                 finding,
                 lineCheck.path,
                 'judge-failed',
-                `${lineCheck.reason} Auxiliary judge failed for finding '${finding.id}': ${message}. Excluding this finding from semantic resolution metrics.`
+                `${sourceFallbackContext}${lineCheck.reason} Auxiliary judge failed for finding '${finding.id}': ${message}. Excluding this finding from semantic resolution metrics.`
             ),
         };
     }
@@ -286,7 +325,7 @@ async function classifyRealFinding(
 
 function createClassificationFailureWarnings(
     fixture: LoadedFixture,
-    remainingFindings: readonly RecordedFinding[],
+    remainingFindings: readonly HarnessRecordedFinding[],
     error: unknown
 ): ResolutionWarning[] {
     const message = error instanceof Error ? error.message : String(error);
@@ -303,7 +342,7 @@ function createClassificationFailureWarnings(
 }
 
 function createResolutionWarning(
-    finding: RecordedFinding,
+    finding: HarnessRecordedFinding,
     path: string,
     kind: ResolutionWarning['kind'],
     message: string
@@ -363,6 +402,10 @@ async function checkRealFindingPaths(
                 verdict: 'ambiguous',
                 method: usedFallback ? 'line-range-fallback' : 'source-overlap',
                 path: findingPath,
+                canonicalPath:
+                    diffLookup.renameCheckPath !== undefined
+                        ? normalizePath(diffLookup.renameCheckPath)
+                        : findingPath,
                 reason: diffLookup.ambiguityReason,
                 diffText: diffLookup.diffText,
             });
@@ -381,6 +424,10 @@ async function checkRealFindingPaths(
                 verdict: 'ambiguous',
                 method: usedFallback ? 'line-range-fallback' : 'source-overlap',
                 path: findingPath,
+                canonicalPath:
+                    diffLookup.renameCheckPath !== undefined
+                        ? normalizePath(diffLookup.renameCheckPath)
+                        : findingPath,
                 reason: `The follow-up change for ${findingPath} appears to be a pure rename or move without a semantic edit, so the proxy is ambiguous.`,
                 diffText: diffLookup.diffText,
             });
@@ -388,6 +435,9 @@ async function checkRealFindingPaths(
         }
         const lineCheck = checkLineOverlap(
             findingPath,
+            diffLookup.renameCheckPath !== undefined
+                ? normalizePath(diffLookup.renameCheckPath)
+                : findingPath,
             pathSources,
             usedFallback,
             diffLookup.diffText,
@@ -410,6 +460,7 @@ async function checkRealFindingPaths(
             verdict: 'ambiguous',
             method: ambiguousResults[0]!.method,
             path: ambiguousResults[0]!.path,
+            canonicalPath: ambiguousResults[0]!.canonicalPath,
             reason: ambiguousResults.map((result) => result.reason).join(' '),
             diffText: ambiguousResults
                 .map((result) => result.diffText)
@@ -423,6 +474,7 @@ async function checkRealFindingPaths(
             verdict: 'unresolved',
             method: usedFallback ? 'line-range-fallback' : 'source-overlap',
             path: touchedWithoutOverlap[0]!,
+            canonicalPath: touchedWithoutOverlap[0]!,
             reason:
                 touchedWithoutOverlap.length === 1
                     ? `Cited lines did not overlap any changed hunk in ${touchedWithoutOverlap[0]}.`
@@ -435,35 +487,36 @@ async function checkRealFindingPaths(
         verdict: 'unresolved',
         method: usedFallback ? 'line-range-fallback' : 'source-overlap',
         path: defaultPath,
+        canonicalPath: defaultPath,
         reason: 'No changes touched the cited path between headSha and mergeSha.',
         diffText: '',
     };
 }
 
-function getComparableSources(finding: RecordedFinding): ComparableSources;
 function getComparableSources(
-    finding: RecordedFinding,
+    finding: HarnessRecordedFinding
+): ComparableSources;
+function getComparableSources(
+    finding: HarnessRecordedFinding,
     workspaceRoot: string | undefined
 ): ComparableSources;
 function getComparableSources(
-    finding: RecordedFinding,
+    finding: HarnessRecordedFinding,
     workspaceRoot?: string
 ): ComparableSources {
-    const normalizedSources = (finding.sources ?? [])
-        .map((source) => ({
-            path: normalizePath(source.path, workspaceRoot),
-            lineStart: source.lineStart,
-            lineEnd: source.lineEnd,
-        }))
+    const rawSources = Array.isArray(finding.sources) ? finding.sources : [];
+    const normalizedSources = rawSources
+        .map((source) => normalizeComparableSource(source, workspaceRoot))
+        .filter((source): source is FindingSource => source !== undefined)
         .filter(isComparableSource);
-    const hadInvalidSources =
-        (finding.sources?.length ?? 0) > normalizedSources.length &&
-        normalizedSources.length > 0;
+    const sourceCount = rawSources.length;
+    const hadInvalidSources = sourceCount > normalizedSources.length;
     if (normalizedSources.length > 0) {
         return {
             sources: normalizedSources,
             usedFallback: false,
             hadInvalidSources,
+            allSourcesInvalid: false,
         };
     }
 
@@ -476,12 +529,13 @@ function getComparableSources(
             },
         ],
         usedFallback: true,
-        hadInvalidSources: false,
+        hadInvalidSources,
+        allSourcesInvalid: sourceCount > 0 && normalizedSources.length === 0,
     };
 }
 
 function getPrimaryFindingPath(
-    finding: RecordedFinding,
+    finding: HarnessRecordedFinding,
     workspaceRoot: string | undefined
 ): string {
     return (
@@ -490,15 +544,20 @@ function getPrimaryFindingPath(
     );
 }
 
-function sanitizeFindingForJudge(
-    finding: RecordedFinding,
+export function sanitizeFindingForJudge(
+    finding: HarnessRecordedFinding,
     comparableSources: readonly FindingSource[],
     workspaceRoot: string | undefined,
     judgedPath: string
 ): RecordedFinding {
     const normalizedFile = normalizePath(finding.file, workspaceRoot);
     const primarySource =
-        comparableSources.find((source) => source.path === judgedPath) ??
+        comparableSources.find((source) =>
+            pathsEqualForComparison(source.path, judgedPath)
+        ) ??
+        comparableSources.find((source) =>
+            sourceMatchesJudgedPath(source.path, judgedPath)
+        ) ??
         comparableSources[0];
     const orderedSources = primarySource
         ? [
@@ -509,22 +568,56 @@ function sanitizeFindingForJudge(
 
     return {
         ...finding,
-        file:
-            primarySource?.path ??
-            (normalizedFile.length > 0 ? normalizedFile : judgedPath),
+        file: judgedPath.length > 0 ? judgedPath : normalizedFile,
         lineRange: primarySource
             ? [primarySource.lineStart, primarySource.lineEnd]
             : finding.lineRange,
         sources: orderedSources.map((source) => ({
-            path: source.path,
+            path: source === primarySource ? judgedPath : source.path,
             lineStart: source.lineStart,
             lineEnd: source.lineEnd,
         })),
     };
 }
 
+function sourceMatchesJudgedPath(
+    sourcePath: string,
+    judgedPath: string
+): boolean {
+    return (
+        pathsEqualForComparison(sourcePath, judgedPath) ||
+        pathMatchesCitedSuffix(judgedPath, sourcePath)
+    );
+}
+
+function normalizeComparableSource(
+    source: unknown,
+    workspaceRoot: string | undefined
+): FindingSource | undefined {
+    if (!source || typeof source !== 'object') {
+        return undefined;
+    }
+
+    const candidate = source as Partial<Record<keyof FindingSource, unknown>>;
+    return {
+        path: normalizePath(
+            typeof candidate.path === 'string' ? candidate.path : '',
+            workspaceRoot
+        ),
+        lineStart:
+            typeof candidate.lineStart === 'number'
+                ? candidate.lineStart
+                : Number.NaN,
+        lineEnd:
+            typeof candidate.lineEnd === 'number'
+                ? candidate.lineEnd
+                : Number.NaN,
+    };
+}
+
 function checkLineOverlap(
     findingPath: string,
+    canonicalPath: string,
     sources: readonly FindingSource[],
     usedFallback: boolean,
     diffText: string,
@@ -535,6 +628,7 @@ function checkLineOverlap(
             verdict: 'unresolved',
             method: usedFallback ? 'line-range-fallback' : 'source-overlap',
             path: findingPath,
+            canonicalPath,
             reason: 'No changes touched the cited path between headSha and mergeSha.',
             diffText,
         };
@@ -547,6 +641,7 @@ function checkLineOverlap(
             verdict: 'ambiguous',
             method: usedFallback ? 'line-range-fallback' : 'source-overlap',
             path: findingPath,
+            canonicalPath,
             reason: 'Diff exists for the cited path, but the parsed file header no longer matches it cleanly (possible rename or path normalization mismatch).',
             diffText,
         };
@@ -571,6 +666,7 @@ function checkLineOverlap(
                 verdict: 'resolved',
                 method: usedFallback ? 'line-range-fallback' : 'source-overlap',
                 path: findingPath,
+                canonicalPath,
                 reason: `Cited old lines were removed or rewritten by deletion-only hunks in ${findingPath}, which generally indicates the finding was addressed.`,
                 diffText,
             };
@@ -579,6 +675,7 @@ function checkLineOverlap(
             verdict: 'resolved',
             method: usedFallback ? 'line-range-fallback' : 'source-overlap',
             path: findingPath,
+            canonicalPath,
             reason: `Cited lines overlapped a changed hunk in ${findingPath}.`,
             diffText,
         };
@@ -589,6 +686,7 @@ function checkLineOverlap(
             verdict: 'ambiguous',
             method: usedFallback ? 'line-range-fallback' : 'source-overlap',
             path: findingPath,
+            canonicalPath,
             reason: 'At least one cited source range was invalid, so the line-overlap proxy was inconclusive.',
             diffText,
         };
@@ -611,6 +709,7 @@ function checkLineOverlap(
             verdict: 'ambiguous',
             method: usedFallback ? 'line-range-fallback' : 'source-overlap',
             path: findingPath,
+            canonicalPath,
             reason: `The follow-up patch only inserted lines in ${findingPath}; additive fixes can resolve a finding without changing the cited old-line range, so the proxy is ambiguous.`,
             diffText,
         };
@@ -620,6 +719,7 @@ function checkLineOverlap(
         verdict: 'unresolved',
         method: usedFallback ? 'line-range-fallback' : 'source-overlap',
         path: findingPath,
+        canonicalPath,
         reason: `Cited lines did not overlap any changed hunk in ${findingPath}.`,
         diffText,
     };
@@ -757,10 +857,26 @@ async function getDiffForPath(
         return {
             diffText: cached,
             renameCheckPath: diffTarget.gitPath,
+            ambiguityReason: getSuffixAmbiguityReason(
+                normalizedPath,
+                diffTarget.ambiguousSuffixMatches
+            ),
         };
     }
 
     if (!diffTarget.matchedPath) {
+        if (!isWorkspaceRelativePath(normalizedPath)) {
+            cache.set(cacheKey, '');
+            return {
+                diffText: '',
+                renameCheckPath: undefined,
+                ambiguityReason: getSuffixAmbiguityReason(
+                    normalizedPath,
+                    diffTarget.ambiguousSuffixMatches
+                ),
+            };
+        }
+
         const fallbackDiff = await getDiffForOriginalPath(
             fixture,
             normalizedPath,
@@ -779,11 +895,10 @@ async function getDiffForPath(
         return {
             diffText: '',
             renameCheckPath: undefined,
-            ambiguityReason:
-                diffTarget.ambiguousSuffixMatches &&
-                diffTarget.ambiguousSuffixMatches.length > 0
-                    ? `Multiple changed paths matched the cited suffix '${normalizedPath}': ${diffTarget.ambiguousSuffixMatches.join(', ')}. The direct diff for '${normalizedPath}' was empty, so the proxy is ambiguous.`
-                    : undefined,
+            ambiguityReason: getSuffixAmbiguityReason(
+                normalizedPath,
+                diffTarget.ambiguousSuffixMatches
+            ),
         };
     }
 
@@ -803,6 +918,17 @@ async function getDiffForPath(
         diffText,
         renameCheckPath: diffTarget.gitPath,
     };
+}
+
+function getSuffixAmbiguityReason(
+    normalizedPath: string,
+    ambiguousSuffixMatches: readonly string[] | undefined
+): string | undefined {
+    if (!ambiguousSuffixMatches || ambiguousSuffixMatches.length === 0) {
+        return undefined;
+    }
+
+    return `Multiple changed paths matched the cited suffix '${normalizedPath}': ${ambiguousSuffixMatches.join(', ')}. The direct diff for '${normalizedPath}' was empty, so the proxy is ambiguous.`;
 }
 
 async function getDiffForOriginalPath(
@@ -860,11 +986,25 @@ async function resolveDiffTarget(
         timeoutMs,
         deadlineAt
     );
-    if (changedPaths.includes(gitPath)) {
+    if (
+        changedPaths.some((candidatePath) =>
+            pathsEqualForComparison(candidatePath, gitPath)
+        )
+    ) {
         return {
             cachePath: gitPath,
-            gitPath,
+            gitPath: changedPaths.find((candidatePath) =>
+                pathsEqualForComparison(candidatePath, gitPath)
+            )!,
             matchedPath: true,
+        };
+    }
+
+    if (!isWorkspaceRelativePath(gitPath)) {
+        return {
+            cachePath: `unmatched:${gitPath}`,
+            gitPath: undefined,
+            matchedPath: false,
         };
     }
 
@@ -941,8 +1081,13 @@ function runGitDiffForPath(
     const fromRef = stripRefPrefix(headRef);
     const toRef = stripRefPrefix(mergeRef);
     const gitPath = repoPath ? normalizePath(repoPath) : undefined;
+    const gitPathArg = gitPath
+        ? pathRequiresLiteralGitPath(gitPath)
+            ? `:(literal)${gitPath}`
+            : gitPath
+        : undefined;
     const args = gitPath
-        ? ['diff', `${fromRef}..${toRef}`, '--', gitPath]
+        ? ['diff', `${fromRef}..${toRef}`, '--', gitPathArg!]
         : ['diff', `${fromRef}..${toRef}`];
     const commandLabel = gitPath
         ? `git diff ${fromRef}..${toRef} -- ${gitPath}`
@@ -1213,8 +1358,8 @@ function hasResolvableRenameMatch(
 
     const exactMatches = entries.filter(
         (entry) =>
-            entry.oldPath === normalizedFindingPath ||
-            entry.newPath === normalizedFindingPath
+            pathsEqualForComparison(entry.oldPath, normalizedFindingPath) ||
+            pathsEqualForComparison(entry.newPath, normalizedFindingPath)
     );
     if (exactMatches.length > 0) {
         return exactMatches.length === 1;
@@ -1232,22 +1377,26 @@ function renameEntryMatchesBySuffix(
     findingPath: string
 ): boolean {
     return [entry.oldPath, entry.newPath].some((candidatePath) =>
-        pathsMatchBySuffix(candidatePath, findingPath)
+        pathMatchesCitedSuffix(candidatePath, findingPath)
     );
 }
 
 function pathsMatchBySuffix(leftPath: string, rightPath: string): boolean {
+    const normalizedLeftPath = normalizePathComparisonKey(leftPath);
+    const normalizedRightPath = normalizePathComparisonKey(rightPath);
     return (
-        leftPath.endsWith(`/${rightPath}`) || rightPath.endsWith(`/${leftPath}`)
+        normalizedLeftPath === normalizedRightPath ||
+        normalizedLeftPath.endsWith(`/${normalizedRightPath}`)
     );
 }
 
 function findMatchingDiffFile(
-    parsed: Array<{ filePath: string }>,
+    parsed: Array<{ filePath: string; originalHeader: string }>,
     findingPath: string
 ):
     | {
           filePath: string;
+          originalHeader: string;
           hunks: Array<{
               oldStart: number;
               oldLines: number;
@@ -1257,12 +1406,15 @@ function findMatchingDiffFile(
       }
     | undefined {
     const normalizedFindingPath = normalizePath(findingPath);
-    const exact = parsed.find(
-        (file) => normalizePath(file.filePath) === normalizedFindingPath
+    const exactMatches = parsed.filter((file) =>
+        getDiffCandidatePaths(file).some((candidatePath) =>
+            pathsEqualForComparison(candidatePath, normalizedFindingPath)
+        )
     );
-    if (exact) {
-        return exact as {
+    if (exactMatches.length === 1) {
+        return exactMatches[0] as {
             filePath: string;
+            originalHeader: string;
             hunks: Array<{
                 oldStart: number;
                 oldLines: number;
@@ -1272,11 +1424,13 @@ function findMatchingDiffFile(
         };
     }
 
+    if (!isWorkspaceRelativePath(normalizedFindingPath)) {
+        return undefined;
+    }
+
     const suffixMatches = parsed.filter((file) => {
-        const normalizedFilePath = normalizePath(file.filePath);
-        return (
-            normalizedFilePath.endsWith(`/${normalizedFindingPath}`) ||
-            normalizedFindingPath.endsWith(`/${normalizedFilePath}`)
+        return getDiffCandidatePaths(file).some((candidatePath) =>
+            pathMatchesCitedSuffix(candidatePath, normalizedFindingPath)
         );
     });
 
@@ -1286,6 +1440,7 @@ function findMatchingDiffFile(
 
     return suffixMatches[0] as {
         filePath: string;
+        originalHeader: string;
         hunks: Array<{
             oldStart: number;
             oldLines: number;
@@ -1295,6 +1450,56 @@ function findMatchingDiffFile(
             }>;
         }>;
     };
+}
+
+function getDiffCandidatePaths(file: {
+    filePath: string;
+    originalHeader: string;
+}): string[] {
+    const candidates = new Set<string>([normalizePath(file.filePath)]);
+    const headerMatch = /^diff --git a\/(.+) b\/(.+)$/.exec(
+        file.originalHeader
+    );
+    if (!headerMatch) {
+        return [...candidates];
+    }
+
+    const oldPath = headerMatch[1] ? normalizePath(headerMatch[1]) : '';
+    const newPath = headerMatch[2] ? normalizePath(headerMatch[2]) : '';
+    if (oldPath.length > 0) {
+        candidates.add(oldPath);
+    }
+    if (newPath.length > 0) {
+        candidates.add(newPath);
+    }
+
+    return [...candidates];
+}
+
+function pathsEqualForComparison(leftPath: string, rightPath: string): boolean {
+    return (
+        normalizePathComparisonKey(leftPath) ===
+        normalizePathComparisonKey(rightPath)
+    );
+}
+
+function pathMatchesCitedSuffix(
+    candidatePath: string,
+    citedPath: string
+): boolean {
+    return pathsMatchBySuffix(candidatePath, citedPath);
+}
+
+function pathRequiresLiteralGitPath(filePath: string): boolean {
+    return (
+        filePath.includes('*') ||
+        filePath.includes('?') ||
+        filePath.includes('[')
+    );
+}
+
+function normalizePathComparisonKey(filePath: string): string {
+    return process.platform === 'win32' ? filePath.toLowerCase() : filePath;
 }
 
 function summarizeResolution(

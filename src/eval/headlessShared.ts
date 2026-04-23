@@ -24,10 +24,10 @@ export function normalizeModelIdentifier(identifier: string): string {
 }
 
 export function normalizeWorkspaceRelativePath(
-    filePath: string,
+    filePath: unknown,
     workspaceRoot: string | undefined
 ): string {
-    const trimmed = filePath.trim();
+    const trimmed = getTrimmedPathString(filePath);
     if (trimmed.length === 0) {
         return '';
     }
@@ -44,6 +44,22 @@ export function normalizeWorkspaceRelativePath(
     }
 
     return normalizePosixPath(trimmed);
+}
+
+export function isWorkspaceRelativePath(filePath: unknown): boolean {
+    const trimmed = getTrimmedPathString(filePath);
+    if (trimmed.length === 0 || hasUnsafeWorkspacePathPrefix(trimmed)) {
+        return false;
+    }
+
+    const normalized = normalizePosixPath(trimmed);
+    return (
+        normalized.length > 0 &&
+        !hasUnsafeWorkspacePathPrefix(normalized) &&
+        !isAbsolutePathLike(normalized) &&
+        normalized !== '..' &&
+        !normalized.startsWith('../')
+    );
 }
 
 export function createHeadlessDeadline(timeoutMs: number): number {
@@ -68,6 +84,10 @@ export function formatHeadlessTimeoutMessage(
     return `Headless run exceeded timeout (${timeoutMs}ms) ${phase}.`;
 }
 
+export function formatHeadlessCancellationMessage(phase: string): string {
+    return `Headless run cancelled ${phase}.`;
+}
+
 export function requireRemainingHeadlessBudgetMs(
     timeoutMs: number,
     deadlineAt: number | undefined,
@@ -90,6 +110,7 @@ export interface HeadlessBudgetAwaitOptions {
     deadlineAt?: number;
     phase: string;
     cancellationToken?: vscode.CancellationToken;
+    onBudgetExceeded?: () => void;
 }
 
 function createHeadlessBudgetExceededError(
@@ -99,18 +120,26 @@ function createHeadlessBudgetExceededError(
     return new Error(formatHeadlessTimeoutMessage(timeoutMs, phase));
 }
 
+function createHeadlessBudgetCancellationError(phase: string): Error {
+    return new Error(formatHeadlessCancellationMessage(phase));
+}
+
 export async function awaitWithinHeadlessBudget<T>(
     promise: Promise<T>,
     opts: HeadlessBudgetAwaitOptions
 ): Promise<T> {
-    const remainingMs = requireRemainingHeadlessBudgetMs(
+    const remainingMs = getRemainingHeadlessBudgetMs(
         opts.timeoutMs,
-        opts.deadlineAt,
-        opts.phase
+        opts.deadlineAt
     );
+    if (remainingMs <= 0) {
+        opts.onBudgetExceeded?.();
+        throw createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase);
+    }
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let cancellationDisposable: vscode.Disposable | undefined;
+    let budgetExceeded = false;
 
     promise.catch(() => {});
 
@@ -120,12 +149,10 @@ export async function awaitWithinHeadlessBudget<T>(
         const cancellationPromise = new Promise<never>((_, reject) => {
             cancellationDisposable =
                 opts.cancellationToken?.onCancellationRequested(() => {
-                    reject(
-                        createHeadlessBudgetExceededError(
-                            opts.timeoutMs,
-                            opts.phase
-                        )
-                    );
+                    if (budgetExceeded) {
+                        return;
+                    }
+                    reject(createHeadlessBudgetCancellationError(opts.phase));
                 });
         });
         cancellationPromise.catch(() => {});
@@ -133,15 +160,17 @@ export async function awaitWithinHeadlessBudget<T>(
 
         if (opts.cancellationToken.isCancellationRequested) {
             cancellationDisposable?.dispose();
-            throw createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase);
+            throw createHeadlessBudgetCancellationError(opts.phase);
         }
     }
 
     const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
+            budgetExceeded = true;
             reject(
                 createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase)
             );
+            opts.onBudgetExceeded?.();
         }, remainingMs);
     });
     timeoutPromise.catch(() => {});
@@ -162,6 +191,18 @@ function isAbsolutePathLike(filePath: string): boolean {
         path.isAbsolute(filePath) ||
         /^[a-zA-Z]:[\\/]/.test(filePath) ||
         filePath.startsWith('\\\\')
+    );
+}
+
+function getTrimmedPathString(filePath: unknown): string {
+    return typeof filePath === 'string' ? filePath.trim() : '';
+}
+
+function hasUnsafeWorkspacePathPrefix(filePath: string): boolean {
+    return (
+        /^[a-zA-Z][a-zA-Z\d+.-]*:(?:\/\/|\/)/.test(filePath) ||
+        /^[a-zA-Z]:/.test(filePath) ||
+        filePath.startsWith(':')
     );
 }
 

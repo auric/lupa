@@ -12,7 +12,10 @@ vi.mock('node:child_process', () => ({
 }));
 
 import { matchFindings } from '../../eval/harness/matcher';
-import { classifyResolutionForRun } from '../../eval/harness/resolutionClassifier';
+import {
+    classifyResolutionForRun,
+    sanitizeFindingForJudge,
+} from '../../eval/harness/resolutionClassifier';
 import { aggregate } from '../../eval/harness/metrics';
 import { renderMarkdown } from '../../eval/harness/reporter';
 import {
@@ -29,6 +32,12 @@ import type {
     SingleRun,
 } from '../../eval/harness/types';
 import type { RecordedFinding } from '../../types/findingTypes';
+
+function asRecordedFindingSources(
+    value: unknown[]
+): RecordedFinding['sources'] {
+    return value as unknown as RecordedFinding['sources'];
+}
 
 function makeProduced(
     overrides: Partial<RecordedFinding> = {}
@@ -168,6 +177,55 @@ describe('matchFindings', () => {
                 missed: 1,
                 falsePositives: 1,
             });
+        });
+
+        it('matches canonical-equivalent produced paths after normalization', () => {
+            const workspaceRoot = '/tmp/workspace';
+
+            expect(
+                matchFindings(
+                    [makeProduced({ file: './src/a.ts' })],
+                    [makeExpected({ path: 'src/a.ts' })],
+                    workspaceRoot
+                ).matched
+            ).toHaveLength(1);
+
+            expect(
+                matchFindings(
+                    [makeProduced({ file: '/tmp/workspace/src/a.ts' })],
+                    [makeExpected({ path: 'src/a.ts' })],
+                    workspaceRoot
+                ).matched
+            ).toHaveLength(1);
+
+            expect(
+                matchFindings(
+                    [makeProduced({ file: 'src\\a.ts' })],
+                    [makeExpected({ path: 'src/a.ts' })],
+                    workspaceRoot
+                ).matched
+            ).toHaveLength(1);
+        });
+
+        it('matches Windows case-variant paths as canonical equivalents', () => {
+            const originalPlatform = process.platform;
+            Object.defineProperty(process, 'platform', {
+                value: 'win32',
+            });
+
+            try {
+                expect(
+                    matchFindings(
+                        [makeProduced({ file: 'src\\A.ts' })],
+                        [makeExpected({ path: 'src/a.ts' })],
+                        'C:\\tmp\\workspace'
+                    ).matched
+                ).toHaveLength(1);
+            } finally {
+                Object.defineProperty(process, 'platform', {
+                    value: originalPlatform,
+                });
+            }
         });
     });
 
@@ -635,6 +693,66 @@ describe('classifyResolutionForRun', () => {
         expect(result.error).toContain('result.completed must be a boolean');
     });
 
+    it('accepts malformed optional finding.sources entries in analysis JSON as raw harness data so later per-finding sanitization can handle them', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                const outIndex = args.indexOf('--out');
+                const outPath = args[outIndex + 1];
+                fs.writeFileSync(
+                    outPath,
+                    JSON.stringify({
+                        findings: [
+                            {
+                                ...makeProduced(),
+                                sources: [
+                                    null,
+                                    {
+                                        path: 'src/a.ts',
+                                        lineStart: 0,
+                                        lineEnd: 0,
+                                    },
+                                ],
+                            },
+                        ],
+                        narrative: 'usable-looking result',
+                        telemetry: {
+                            iterations: 1,
+                            toolCalls: 0,
+                            promptTokens: 0,
+                            completionTokens: 0,
+                            durationMs: 25,
+                            compactionsUsed: 0,
+                        },
+                        rawToolCallLog: [],
+                        modelId: 'copilot/gpt-5-mini',
+                        seed: 7,
+                        completed: true,
+                    })
+                );
+                return createMockLauncherProcess(0);
+            }
+        );
+
+        const result = await invokeHeadless({
+            workspaceRoot: '/tmp/workspace',
+            baseRef: 'main',
+            headRef: 'feature/x',
+            model: 'copilot/gpt-5-mini',
+            seed: 7,
+            timeoutMs: 60_000,
+            bailOnError: false,
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) {
+            throw new Error('Expected invokeHeadless to accept the result');
+        }
+        expect(result.result.findings[0]?.sources).toEqual([
+            null,
+            { path: 'src/a.ts', lineStart: 0, lineEnd: 0 },
+        ]);
+    });
+
     it('returns the parsed incomplete analysis result as an error when the launcher exits non-zero', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
@@ -839,7 +957,7 @@ index 1234567..89abcde 100644
         });
     });
 
-    it('filters invalid sources and falls back to the finding file and lineRange when none remain', async () => {
+    it('falls back to the finding file and lineRange when all provided sources are invalid', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
                 if (args.includes('--name-only')) {
@@ -879,12 +997,73 @@ index 1234567..89abcde 100644
             match: emptyMatch(),
         });
 
-        expect(summary.findings[0]).toMatchObject({
-            findingId: 'fallback-invalid-sources',
-            verdict: 'resolved',
-            path: 'src/a.ts',
-            method: 'line-range-fallback',
+        expect(summary.total).toBe(1);
+        expect(summary.skipped).toBe(0);
+        expect(summary.findings).toEqual([
+            expect.objectContaining({
+                findingId: 'fallback-invalid-sources',
+                verdict: 'resolved',
+                method: 'line-range-fallback',
+                path: 'src/a.ts',
+                reason: expect.stringContaining(
+                    "fell back to the finding's top-level file and lineRange"
+                ),
+            }),
+        ]);
+    });
+
+    it('treats all-invalid-source fallback non-overlap as unresolved instead of ambiguous', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+                const gitPath = args[3];
+                if (gitPath !== 'src/a.ts') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+index 1234567..89abcde 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -30,1 +30,1 @@
+-legacy();
++replacement();
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'fallback-invalid-sources-non-overlap',
+                    file: './src/a.ts',
+                    lineRange: [10, 10],
+                    sources: [
+                        { path: './src/a.ts', lineStart: 0, lineEnd: 0 },
+                        { path: './src/a.ts', lineStart: 12, lineEnd: 10 },
+                    ],
+                }),
+            ],
+            match: emptyMatch(),
         });
+
+        expect(summary.skipped).toBe(0);
+        expect(summary.findings).toEqual([
+            expect.objectContaining({
+                findingId: 'fallback-invalid-sources-non-overlap',
+                verdict: 'unresolved',
+                method: 'line-range-fallback',
+                path: 'src/a.ts',
+                reason: expect.stringContaining(
+                    "fell back to the finding's top-level file and lineRange"
+                ),
+            }),
+        ]);
     });
 
     it('canonicalizes absolute and dot-prefixed finding paths before diffing', async () => {
@@ -951,6 +1130,98 @@ index 1234567..89abcde 100644
         ).toBe(true);
     });
 
+    it('treats bracketed workspace-relative file names as valid literal git paths', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/app/[id]/page.tsx\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+
+                const gitPath = args[3];
+                if (gitPath !== ':(literal)src/app/[id]/page.tsx') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+
+                return createMockGitDiffProcess(`diff --git a/src/app/[id]/page.tsx b/src/app/[id]/page.tsx
+index 1234567..89abcde 100644
+--- a/src/app/[id]/page.tsx
++++ b/src/app/[id]/page.tsx
+@@ -10,1 +10,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'bracketed-route-path',
+                    file: 'src/app/[id]/page.tsx',
+                    lineRange: [10, 10],
+                }),
+            ],
+            match: emptyMatch(),
+        });
+
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'bracketed-route-path',
+            verdict: 'resolved',
+            path: 'src/app/[id]/page.tsx',
+        });
+    });
+
+    it('resolves bracketed workspace-relative suffix paths before diffing', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/app/[id]/page.tsx\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+
+                const gitPath = args[3];
+                if (gitPath !== ':(literal)src/app/[id]/page.tsx') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+
+                return createMockGitDiffProcess(`diff --git a/src/app/[id]/page.tsx b/src/app/[id]/page.tsx
+index 1234567..89abcde 100644
+--- a/src/app/[id]/page.tsx
++++ b/src/app/[id]/page.tsx
+@@ -10,1 +10,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'bracketed-route-suffix-path',
+                    file: 'app/[id]/page.tsx',
+                    lineRange: [10, 10],
+                }),
+            ],
+            match: emptyMatch(),
+        });
+
+        expect(summary.findings[0]).toMatchObject({
+            findingId: 'bracketed-route-suffix-path',
+            verdict: 'resolved',
+            path: 'app/[id]/page.tsx',
+        });
+    });
+
     it('resolves a unique suffix path to a repo-relative candidate before diffing', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
@@ -964,6 +1235,9 @@ index 1234567..89abcde 100644
                 }
 
                 const gitPath = args[3];
+                if (gitPath === 'src/other.ts') {
+                    return createMockGitDiffProcess('');
+                }
                 if (gitPath !== 'packages/feature/src/a.ts') {
                     throw new Error(`Unexpected git path: ${gitPath}`);
                 }
@@ -1006,7 +1280,311 @@ index 1234567..89abcde 100644
         ).toBe(true);
     });
 
-    it('preserves unmatched multi-suffix paths as ambiguous when the direct diff is empty', async () => {
+    it('keeps outside-workspace absolute paths per-finding and never falls back to a direct git diff pathspec', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/b.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+
+                const gitPath = args[3];
+                if (gitPath === '/outside/src/a.ts') {
+                    throw new Error(
+                        'Outside-workspace absolute paths must not be diffed directly.'
+                    );
+                }
+
+                if (gitPath !== 'src/b.ts') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+
+                return createMockGitDiffProcess(`diff --git a/src/b.ts b/src/b.ts
+index 1234567..89abcde 100644
+--- a/src/b.ts
++++ b/src/b.ts
+@@ -20,1 +20,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'outside-workspace-path',
+                    file: '/outside/src/a.ts',
+                    sources: [
+                        {
+                            path: '/outside/src/a.ts',
+                            lineStart: 10,
+                            lineEnd: 10,
+                        },
+                    ],
+                }),
+                makeProduced({
+                    id: 'workspace-path',
+                    file: 'src/b.ts',
+                    lineRange: [20, 20],
+                }),
+            ],
+            match: emptyMatch(),
+        });
+
+        expect(summary.findings).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    findingId: 'outside-workspace-path',
+                    verdict: 'unresolved',
+                    path: '/outside/src/a.ts',
+                }),
+                expect.objectContaining({
+                    findingId: 'workspace-path',
+                    verdict: 'resolved',
+                    path: 'src/b.ts',
+                }),
+            ])
+        );
+        expect(
+            mockedSpawn.mock.calls.some(
+                (call) => call[1]?.[3] === '/outside/src/a.ts'
+            )
+        ).toBe(false);
+    });
+
+    it('treats URI-like, drive-prefixed, and colon-prefixed git-pathspec-like finding paths as outside-workspace inputs', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/b.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+
+                const gitPath = args[3];
+                if (gitPath !== 'src/b.ts') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+
+                return createMockGitDiffProcess(`diff --git a/src/b.ts b/src/b.ts
+index 1234567..89abcde 100644
+--- a/src/b.ts
++++ b/src/b.ts
+@@ -20,1 +20,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'uri-like-path',
+                    file: 'file:///outside/src/a.ts',
+                    sources: [
+                        {
+                            path: 'file:///outside/src/a.ts',
+                            lineStart: 10,
+                            lineEnd: 10,
+                        },
+                    ],
+                }),
+                makeProduced({
+                    id: 'drive-like-path',
+                    file: 'C:outside\\src\\a.ts',
+                    sources: [
+                        {
+                            path: 'C:outside\\src\\a.ts',
+                            lineStart: 10,
+                            lineEnd: 10,
+                        },
+                    ],
+                }),
+                makeProduced({
+                    id: 'pathspec-like-path',
+                    file: ':(glob)**/*.ts',
+                    sources: [
+                        {
+                            path: ':(glob)**/*.ts',
+                            lineStart: 10,
+                            lineEnd: 10,
+                        },
+                    ],
+                }),
+                makeProduced({
+                    id: 'workspace-path',
+                    file: 'src/b.ts',
+                    lineRange: [20, 20],
+                }),
+            ],
+            match: emptyMatch(),
+        });
+
+        expect(summary.findings).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    findingId: 'uri-like-path',
+                    verdict: 'unresolved',
+                    path: 'file:/outside/src/a.ts',
+                }),
+                expect.objectContaining({
+                    findingId: 'drive-like-path',
+                    verdict: 'unresolved',
+                    path: 'C:outside/src/a.ts',
+                }),
+                expect.objectContaining({
+                    findingId: 'pathspec-like-path',
+                    verdict: 'unresolved',
+                    path: ':(glob)**/*.ts',
+                }),
+                expect.objectContaining({
+                    findingId: 'workspace-path',
+                    verdict: 'resolved',
+                    path: 'src/b.ts',
+                }),
+            ])
+        );
+        expect(
+            mockedSpawn.mock.calls.some((call) =>
+                [
+                    'file:/outside/src/a.ts',
+                    'C:outside/src/a.ts',
+                    ':(glob)**/*.ts',
+                ].includes(String(call[1]?.[3]))
+            )
+        ).toBe(false);
+    });
+
+    it('matches Windows case-variant changed paths during resolution classification', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', {
+            value: 'win32',
+        });
+
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('SRC/A.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+
+                const gitPath = args[3];
+                if (gitPath !== 'SRC/A.ts') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+
+                return createMockGitDiffProcess(`diff --git a/SRC/A.ts b/SRC/A.ts
+index 1234567..89abcde 100644
+--- a/SRC/A.ts
++++ b/SRC/A.ts
+@@ -10,1 +10,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        try {
+            const summary = await classifyResolution({
+                fixture: makeRealFixture(),
+                produced: [
+                    makeProduced({
+                        id: 'windows-case-exact-path',
+                        file: 'src/a.ts',
+                        lineRange: [10, 10],
+                    }),
+                ],
+                match: emptyMatch(),
+            });
+
+            expect(summary.findings[0]).toMatchObject({
+                findingId: 'windows-case-exact-path',
+                verdict: 'resolved',
+            });
+        } finally {
+            Object.defineProperty(process, 'platform', {
+                value: originalPlatform,
+            });
+        }
+    });
+
+    it('matches Windows case-variant suffix paths during resolution classification', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', {
+            value: 'win32',
+        });
+
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess(
+                        'Packages/Feature/SRC/A.ts\n'
+                    );
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+
+                const gitPath = args[3];
+                if (gitPath !== 'Packages/Feature/SRC/A.ts') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+
+                return createMockGitDiffProcess(`diff --git a/Packages/Feature/SRC/A.ts b/Packages/Feature/SRC/A.ts
+index 1234567..89abcde 100644
+--- a/Packages/Feature/SRC/A.ts
++++ b/Packages/Feature/SRC/A.ts
+@@ -10,1 +10,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        try {
+            const summary = await classifyResolution({
+                fixture: makeRealFixture(),
+                produced: [
+                    makeProduced({
+                        id: 'windows-case-suffix-path',
+                        file: 'a.ts',
+                        sources: [
+                            {
+                                path: 'a.ts',
+                                lineStart: 10,
+                                lineEnd: 10,
+                            },
+                        ],
+                    }),
+                ],
+                match: emptyMatch(),
+            });
+
+            expect(summary.findings[0]).toMatchObject({
+                findingId: 'windows-case-suffix-path',
+                verdict: 'resolved',
+            });
+        } finally {
+            Object.defineProperty(process, 'platform', {
+                value: originalPlatform,
+            });
+        }
+    });
+
+    it('preserves unmatched suffix ambiguity across cache hits so repeated findings stay disputed', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
                 if (args.includes('--name-only')) {
@@ -1031,35 +1609,193 @@ index 1234567..89abcde 100644
             fixture: makeRealFixture(),
             produced: [
                 makeProduced({
-                    id: 'ambiguous-suffix-fallback',
+                    id: 'ambiguous-suffix-first',
                     file: 'a.ts',
                     sources: [{ path: 'a.ts', lineStart: 10, lineEnd: 10 }],
+                }),
+                makeProduced({
+                    id: 'ambiguous-suffix-second',
+                    file: 'a.ts',
+                    lineRange: [30, 30],
+                    sources: [{ path: 'a.ts', lineStart: 30, lineEnd: 30 }],
                 }),
             ],
             match: emptyMatch(),
         });
 
-        expect(summary.total).toBe(0);
-        expect(summary.skipped).toBe(1);
-        expect(summary.warnings).toEqual([
-            expect.objectContaining({
-                findingId: 'ambiguous-suffix-fallback',
-                kind: 'judge-unavailable',
-                path: 'a.ts',
-                message: expect.stringContaining(
-                    "Multiple changed paths matched the cited suffix 'a.ts'"
-                ),
-            }),
-        ]);
+        expect(summary.total).toBe(2);
+        expect(summary.skipped).toBe(0);
+        expect(summary.findings).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    findingId: 'ambiguous-suffix-first',
+                    verdict: 'disputed',
+                    path: 'a.ts',
+                    reason: expect.stringContaining(
+                        "Multiple changed paths matched the cited suffix 'a.ts'"
+                    ),
+                }),
+                expect.objectContaining({
+                    findingId: 'ambiguous-suffix-second',
+                    verdict: 'disputed',
+                    path: 'a.ts',
+                    reason: expect.stringContaining(
+                        "Multiple changed paths matched the cited suffix 'a.ts'"
+                    ),
+                }),
+            ])
+        );
         expect(
-            mockedSpawn.mock.calls.some(
+            mockedSpawn.mock.calls.filter(
                 (call) =>
                     call[1]?.[0] === 'diff' &&
                     call[1]?.[3] === 'a.ts' &&
                     !call[1]?.includes('--name-only') &&
                     !call[1]?.includes('--name-status')
             )
-        ).toBe(true);
+        ).toHaveLength(1);
+    });
+
+    it('passes the resolved canonical path to the auxiliary judge after unique-suffix path resolution', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess(
+                        'packages/feature/src/a.ts\n'
+                    );
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+
+                const gitPath = args[3];
+                if (gitPath !== 'packages/feature/src/a.ts') {
+                    throw new Error(`Unexpected git path: ${gitPath}`);
+                }
+
+                return createMockGitDiffProcess(`diff --git a/packages/feature/src/a.ts b/packages/feature/src/a.ts
+index 1234567..89abcde 100644
+--- a/packages/feature/src/a.ts
++++ b/packages/feature/src/a.ts
+@@ -9,0 +10,2 @@
++if (!value) {
++}
+`);
+            }
+        );
+        const judge = vi.fn().mockResolvedValue({
+            verdict: 'resolved',
+            reason: 'Canonical path payload matched the diff path.',
+            modelId: 'copilot/gpt-5-mini',
+        });
+
+        await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'canonical-judge-path',
+                    file: 'a.ts',
+                    sources: [{ path: 'a.ts', lineStart: 10, lineEnd: 10 }],
+                }),
+            ],
+            match: emptyMatch(),
+            judgeClient: { judge },
+        });
+
+        expect(judge).toHaveBeenCalledWith(
+            expect.objectContaining({
+                finding: expect.objectContaining({
+                    file: 'packages/feature/src/a.ts',
+                    sources: [
+                        {
+                            path: 'packages/feature/src/a.ts',
+                            lineStart: 10,
+                            lineEnd: 10,
+                        },
+                    ],
+                }),
+            })
+        );
+    });
+
+    it('chooses the canonicalized matching source for the judge payload when another source appears first', () => {
+        const sanitized = sanitizeFindingForJudge(
+            makeProduced({
+                id: 'canonical-judge-primary-source',
+                file: 'a.ts',
+                sources: [
+                    { path: 'src/other.ts', lineStart: 50, lineEnd: 50 },
+                    { path: 'a.ts', lineStart: 10, lineEnd: 10 },
+                ],
+            }),
+            [
+                { path: 'src/other.ts', lineStart: 50, lineEnd: 50 },
+                { path: 'a.ts', lineStart: 10, lineEnd: 10 },
+            ],
+            '/tmp/workspace',
+            'packages/feature/src/a.ts'
+        );
+
+        expect(sanitized).toMatchObject({
+            file: 'packages/feature/src/a.ts',
+            lineRange: [10, 10],
+            sources: [
+                {
+                    path: 'packages/feature/src/a.ts',
+                    lineStart: 10,
+                    lineEnd: 10,
+                },
+                {
+                    path: 'src/other.ts',
+                    lineStart: 50,
+                    lineEnd: 50,
+                },
+            ],
+        });
+    });
+
+    it('prefers an exact canonical source match over an earlier weaker suffix match for judge payloads', () => {
+        const sanitized = sanitizeFindingForJudge(
+            makeProduced({
+                id: 'canonical-exact-source-preferred',
+                file: 'a.ts',
+                sources: [
+                    { path: 'a.ts', lineStart: 50, lineEnd: 50 },
+                    {
+                        path: 'packages/feature/src/a.ts',
+                        lineStart: 10,
+                        lineEnd: 10,
+                    },
+                ],
+            }),
+            [
+                { path: 'a.ts', lineStart: 50, lineEnd: 50 },
+                {
+                    path: 'packages/feature/src/a.ts',
+                    lineStart: 10,
+                    lineEnd: 10,
+                },
+            ],
+            '/tmp/workspace',
+            'packages/feature/src/a.ts'
+        );
+
+        expect(sanitized).toMatchObject({
+            file: 'packages/feature/src/a.ts',
+            lineRange: [10, 10],
+            sources: [
+                {
+                    path: 'packages/feature/src/a.ts',
+                    lineStart: 10,
+                    lineEnd: 10,
+                },
+                {
+                    path: 'a.ts',
+                    lineStart: 50,
+                    lineEnd: 50,
+                },
+            ],
+        });
     });
 
     it('preserves earlier classified findings and marks the remainder invalid when classification aborts mid-run', async () => {
@@ -1190,7 +1926,7 @@ index 1234567..89abcde 100644
         });
     });
 
-    it('passes a sanitized fallback finding to the auxiliary judge after invalid sources are discarded', async () => {
+    it('passes a sanitized finding to the auxiliary judge after invalid sources are discarded', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
                 if (args.includes('--name-only')) {
@@ -1222,6 +1958,7 @@ index 1234567..89abcde 100644
                     id: 'sanitized-judge-payload',
                     file: './src/a.ts',
                     sources: [
+                        { path: './src/a.ts', lineStart: 10, lineEnd: 10 },
                         { path: './src/a.ts', lineStart: 0, lineEnd: 0 },
                         { path: './src/a.ts', lineStart: 12, lineEnd: 10 },
                     ],
@@ -1245,6 +1982,52 @@ index 1234567..89abcde 100644
                 }),
             })
         );
+    });
+
+    it('skips malformed source entries during resolution classification without crashing path normalization', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+index 1234567..89abcde 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -10,1 +10,2 @@
+-dangerous();
++safe();
++return;
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [
+                makeProduced({
+                    id: 'malformed-sources-sanitized',
+                    sources: asRecordedFindingSources([
+                        null,
+                        { path: 42, lineStart: 10, lineEnd: 10 },
+                        { path: 'src/a.ts', lineStart: 10, lineEnd: 10 },
+                    ]),
+                }),
+            ],
+            match: emptyMatch(),
+        });
+
+        expect(summary.findings).toEqual([
+            expect.objectContaining({
+                findingId: 'malformed-sources-sanitized',
+                verdict: 'resolved',
+                path: 'src/a.ts',
+                method: 'source-overlap',
+            }),
+        ]);
     });
 
     it('treats an overlapping deletion-only hunk as resolved even when another hunk in the file adds lines elsewhere', async () => {
@@ -1319,6 +2102,52 @@ index 1234567..89abcde 100644
             }),
         ]);
         expect(Number.isNaN(summary.resolutionRate)).toBe(true);
+    });
+
+    it('treats explicit auxiliary-judge-unavailable rejections as judge-unavailable warnings', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                if (args.includes('--name-only')) {
+                    return createMockGitDiffProcess('src/a.ts\n');
+                }
+                if (args.includes('--name-status')) {
+                    return createMockGitDiffProcess('');
+                }
+                return createMockGitDiffProcess(`diff --git a/src/a.ts b/src/a.ts
+index 1234567..89abcde 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -9,0 +10,2 @@
++if (!value) {
++}
+`);
+            }
+        );
+
+        const summary = await classifyResolution({
+            fixture: makeRealFixture(),
+            produced: [makeProduced({ id: 'judge-unavailable-prefix' })],
+            match: emptyMatch(),
+            judgeClient: {
+                judge: vi
+                    .fn()
+                    .mockRejectedValue(
+                        new Error(
+                            'Auxiliary judge unavailable: deadline budget too small.'
+                        )
+                    ),
+            },
+        });
+
+        expect(summary.total).toBe(0);
+        expect(summary.skipped).toBe(1);
+        expect(summary.warnings).toEqual([
+            expect.objectContaining({
+                findingId: 'judge-unavailable-prefix',
+                kind: 'judge-unavailable',
+                message: expect.stringContaining('deadline budget too small.'),
+            }),
+        ]);
     });
 
     it('treats mixed valid and invalid sources as inconclusive when the valid ranges do not overlap a touched hunk', async () => {
@@ -1546,11 +2375,7 @@ index 1234567..89abcde 100644
     });
 
     it('uses a targeted diff for the original path when rename+edit changes are missing from --name-only', async () => {
-        const judge = vi.fn().mockResolvedValue({
-            verdict: 'resolved',
-            reason: 'Rename-and-edit diff still touched the cited code.',
-            modelId: 'copilot/gpt-5-mini',
-        });
+        const judge = vi.fn();
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
                 if (args.includes('--name-only')) {
@@ -1596,16 +2421,11 @@ index 1234567..89abcde 100644
             judgeClient: { judge },
         });
 
-        expect(judge).toHaveBeenCalledTimes(1);
-        expect(judge).toHaveBeenCalledWith(
-            expect.objectContaining({
-                diffText: expect.stringContaining('b/src/new-name.ts'),
-            })
-        );
+        expect(judge).not.toHaveBeenCalled();
         expect(summary.findings[0]).toMatchObject({
             findingId: 'rename-edit-old-path',
             verdict: 'resolved',
-            method: 'judge',
+            method: 'source-overlap',
             path: 'src/old-name.ts',
         });
     });

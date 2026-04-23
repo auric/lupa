@@ -1,12 +1,17 @@
-import type { RecordedFinding } from '../../types/findingTypes';
 import { LINE_HINT_TOLERANCE } from './constants';
-import type { ExpectedFinding, MatchedPair, MatchResult } from './types';
+import { normalizeWorkspaceRelativePath } from '../headlessShared';
+import type {
+    ExpectedFinding,
+    HarnessRecordedFinding,
+    MatchedPair,
+    MatchResult,
+} from './types';
 
 type MatchReason = 'category' | 'severity' | 'both';
 
 interface Candidate {
     index: number;
-    finding: RecordedFinding;
+    finding: HarnessRecordedFinding;
     reason: MatchReason;
     distance: number;
 }
@@ -27,21 +32,31 @@ interface Candidate {
  * and precision/recall/F1 where empty-both yields 1/1/1 and empty-produced-with-expected yields 0/0/0.
  */
 export function matchFindings(
-    produced: readonly RecordedFinding[],
-    expected: readonly ExpectedFinding[]
+    produced: readonly HarnessRecordedFinding[],
+    expected: readonly ExpectedFinding[],
+    workspaceRoot?: string
 ): MatchResult {
-    const remaining: (RecordedFinding | null)[] = produced.slice();
+    const remaining: (HarnessRecordedFinding | null)[] = produced.slice();
     const matched: MatchedPair[] = [];
     const missedExpected: ExpectedFinding[] = [];
 
     for (const exp of expected) {
+        const normalizedExpectedPath = normalizeWorkspaceRelativePath(
+            exp.path,
+            workspaceRoot
+        );
         const candidates: Candidate[] = [];
         for (let i = 0; i < remaining.length; i++) {
             const cand = remaining[i];
             if (!cand) {
                 continue;
             }
-            if (cand.file !== exp.path) {
+            if (
+                !pathsEqualForComparison(
+                    normalizeWorkspaceRelativePath(cand.file, workspaceRoot),
+                    normalizedExpectedPath
+                )
+            ) {
                 continue;
             }
             const distance = lineDistance(cand.lineRange, exp.lineHint);
@@ -80,8 +95,8 @@ export function matchFindings(
         remaining[best.index] = null;
     }
 
-    const falsePositives: RecordedFinding[] = remaining.filter(
-        (r): r is RecordedFinding => r !== null
+    const falsePositives: HarnessRecordedFinding[] = remaining.filter(
+        (r): r is HarnessRecordedFinding => r !== null
     );
 
     const producedCount = produced.length;
@@ -116,7 +131,7 @@ function lineDistance(
 }
 
 function passesMustMention(
-    finding: RecordedFinding,
+    finding: HarnessRecordedFinding,
     mustMention: readonly string[]
 ): boolean {
     if (mustMention.length === 0) {
@@ -151,4 +166,15 @@ function compareCandidates(a: Candidate, b: Candidate): number {
         return a.distance - b.distance;
     }
     return a.index - b.index;
+}
+
+function pathsEqualForComparison(leftPath: string, rightPath: string): boolean {
+    return (
+        normalizePathComparisonKey(leftPath) ===
+        normalizePathComparisonKey(rightPath)
+    );
+}
+
+function normalizePathComparisonKey(filePath: string): string {
+    return process.platform === 'win32' ? filePath.toLowerCase() : filePath;
 }
