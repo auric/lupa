@@ -420,6 +420,7 @@ function writeSentinel(exitCode: number, error: string | undefined): void {
     if (!sentinelPath) {
         return;
     }
+    let wroteTmp = false;
     const tmpPath = `${sentinelPath}.tmp`;
     try {
         assertSafeFilePath(sentinelPath, 'sentinelPath', [
@@ -430,6 +431,7 @@ function writeSentinel(exitCode: number, error: string | undefined): void {
             tmpPath,
             JSON.stringify({ exitCode, error: error ?? null }, null, 2)
         );
+        wroteTmp = true;
         // Rename is atomic on the same filesystem. If sentinelPath is on a
         // different filesystem than the tmp file (rare — the launcher
         // controls LUPA_HEADLESS_SENTINEL and colocates it with the tmp),
@@ -439,10 +441,12 @@ function writeSentinel(exitCode: number, error: string | undefined): void {
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         process.stderr.write(`Failed to write headless sentinel: ${msg}\n`);
-        try {
-            fs.unlinkSync(tmpPath);
-        } catch {
-            // tmp may not exist if writeFileSync failed before creating it
+        if (wroteTmp) {
+            try {
+                fs.unlinkSync(tmpPath);
+            } catch {
+                // tmp may not exist if writeFileSync failed before creating it
+            }
         }
     }
 }

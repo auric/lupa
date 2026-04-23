@@ -164,7 +164,8 @@ function aggregateResolutionRateBySeverity(
         for (const run of runs) {
             if (run.resolutionWarning) {
                 if (
-                    run.result?.findings.some(
+                    !run.result ||
+                    run.result.findings.some(
                         (finding) => finding.severity === severity
                     )
                 ) {
@@ -219,9 +220,7 @@ function withResolutionStatusCounts(
     noFindingsCount: number
 ): AggregateStats {
     const stats = meanStddev(values);
-    stats.invalidCount = invalidCount;
-    stats.noFindingsCount = noFindingsCount;
-    return stats;
+    return { ...stats, invalidCount, noFindingsCount };
 }
 
 function groupBy<T, K>(

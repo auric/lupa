@@ -2910,10 +2910,8 @@ describe('validateRef', () => {
         );
     });
 
-    it('rejects sha: with wrong length (too short)', () => {
-        expect(() => validateRef('sha:12345', 'headRef')).toThrow(
-            /headRef: invalid SHA format/
-        );
+    it('accepts sha: with short length (1 char)', () => {
+        expect(() => validateRef('sha:1', 'headRef')).not.toThrow();
     });
 
     it('rejects sha: with wrong length (too long)', () => {

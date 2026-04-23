@@ -50,13 +50,12 @@ export async function runHeadlessResolutionJudge(
             )
         );
     }
-    const payload = await readPayload(opts.payloadPath);
-    const normalizedRequestedIdentifier = normalizeModelIdentifier(
-        opts.modelIdentifier
-    );
-    const cancellationToken = deadlineCancellationSource.token;
-
     try {
+        const payload = await readPayload(opts.payloadPath);
+        const normalizedRequestedIdentifier = normalizeModelIdentifier(
+            opts.modelIdentifier
+        );
+        const cancellationToken = deadlineCancellationSource.token;
         const model = await awaitWithinHeadlessBudget(
             services.copilotModelManager.selectModel({
                 identifier: opts.modelIdentifier,
