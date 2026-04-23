@@ -118,6 +118,39 @@ describe('resolveDiff', () => {
         ]);
     });
 
+    it('rejects refs starting with "-" to prevent argument injection', async () => {
+        await expect(
+            resolveDiff(
+                {
+                    workspaceRoot: '/w',
+                    baseRef: '--output=/evil',
+                    headRef: 'main',
+                },
+                services
+            )
+        ).rejects.toThrow(/baseRef: starts with '-'/);
+
+        await expect(
+            resolveDiff(
+                { workspaceRoot: '/w', baseRef: 'main', headRef: '-c' },
+                services
+            )
+        ).rejects.toThrow(/headRef: starts with '-'/);
+    });
+
+    it('rejects sha:-prefixed refs whose body starts with "-"', async () => {
+        await expect(
+            resolveDiff(
+                {
+                    workspaceRoot: '/w',
+                    baseRef: 'sha:--evil',
+                    headRef: 'sha:abc',
+                },
+                services
+            )
+        ).rejects.toThrow(/baseRef: starts with '-'/);
+    });
+
     it('surfaces git errors', async () => {
         mockGitRun({ stdout: '', stderr: 'unknown revision', exitCode: 128 });
 

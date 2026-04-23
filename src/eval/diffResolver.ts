@@ -66,6 +66,8 @@ export async function resolveDiff(
         );
     }
 
+    validateGitRef(opts.baseRef, 'baseRef');
+    validateGitRef(opts.headRef, 'headRef');
     return runGitDiffRefs(
         opts.workspaceRoot,
         stripShaPrefix(opts.baseRef),
@@ -79,6 +81,17 @@ function stripShaPrefix(ref: string): string {
     return ref.startsWith(SHA_REF_PREFIX)
         ? ref.slice(SHA_REF_PREFIX.length)
         : ref;
+}
+
+function validateGitRef(ref: string, fieldName: string): void {
+    const body = ref.startsWith(SHA_REF_PREFIX)
+        ? ref.slice(SHA_REF_PREFIX.length)
+        : ref;
+    if (body.startsWith('-')) {
+        throw new Error(
+            `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
+        );
+    }
 }
 
 function spawnGit(
