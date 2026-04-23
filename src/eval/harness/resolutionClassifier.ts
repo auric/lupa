@@ -20,7 +20,6 @@ import {
     normalizeWorkspaceRelativePath,
     requireRemainingHeadlessBudgetMs,
 } from '../headlessShared';
-import { AUXILIARY_JUDGE_UNAVAILABLE_PREFIX } from './constants';
 
 const GIT_DIFF_TIMEOUT_MS = 15_000;
 
@@ -276,7 +275,7 @@ async function classifyRealFinding(
 
     try {
         const judged = await judgeClient.judge({
-            finding: sanitizeFindingForJudge(
+            finding: reorderSourcesForJudge(
                 finding,
                 comparable.sources,
                 fixture.workspaceRoot,
@@ -301,14 +300,14 @@ async function classifyRealFinding(
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (message.startsWith(AUXILIARY_JUDGE_UNAVAILABLE_PREFIX)) {
+        if ((error as any).code === 'JUDGE_UNAVAILABLE') {
             return {
                 kind: 'warning',
                 warning: createResolutionWarning(
                     finding,
                     lineCheck.path,
                     'judge-unavailable',
-                    `${sourceFallbackContext}${lineCheck.reason} ${message.slice(AUXILIARY_JUDGE_UNAVAILABLE_PREFIX.length).trim()} Excluding this finding from semantic resolution metrics.`
+                    `${sourceFallbackContext}${lineCheck.reason} ${message.trim()} Excluding this finding from semantic resolution metrics.`
                 ),
             };
         }
@@ -389,15 +388,32 @@ async function checkRealFindingPaths(
     const ambiguousResults: LineCheckResult[] = [];
     const touchedWithoutOverlap: string[] = [];
 
-    for (const [findingPath, pathSources] of sourcesByPath.entries()) {
-        const diffLookup = await getDiffForPath(
+    const pathEntries = Array.from(sourcesByPath.entries());
+    const diffPromises = pathEntries.map(([findingPath]) =>
+        getDiffForPath(
             fixture,
             findingPath,
             cache,
             changedPathsCache,
             timeoutMs,
             deadlineAt
-        );
+        )
+    );
+    const settledDiffs = await Promise.allSettled(diffPromises);
+
+    for (let i = 0; i < pathEntries.length; i++) {
+        const entry = pathEntries[i];
+        const settled = settledDiffs[i];
+        if (
+            entry === undefined ||
+            settled === undefined ||
+            settled.status === 'rejected'
+        ) {
+            continue;
+        }
+        const [findingPath, pathSources] = entry;
+        const diffLookup = settled.value;
+
         if (diffLookup.ambiguityReason) {
             ambiguousResults.push({
                 verdict: 'ambiguous',
@@ -545,7 +561,7 @@ function getPrimaryFindingPath(
     );
 }
 
-export function sanitizeFindingForJudge(
+export function reorderSourcesForJudge(
     finding: HarnessRecordedFinding,
     comparableSources: readonly FindingSource[],
     workspaceRoot: string | undefined,

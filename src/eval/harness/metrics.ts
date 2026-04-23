@@ -85,6 +85,11 @@ function aggregateModel(
     };
 }
 
+/**
+ * Computes mean and population standard deviation.
+ *
+ * Returns `NaN` for both `mean` and `stddev` when the input array is empty.
+ */
 export function meanStddev(values: readonly number[]): AggregateStats {
     const n = values.length;
     if (n === 0) {
@@ -124,6 +129,14 @@ export function meanStddev(values: readonly number[]): AggregateStats {
     };
 }
 
+/**
+ * Computes aggregate resolution rate over a set of runs.
+ *
+ * Runs without resolution data map to `NaN`. These values are filtered out
+ * via `Number.isFinite` before computing aggregates. Consequently, the
+ * resolution rate may be based on fewer data points than precision/recall/f1,
+ * which fall back to `0` for missing data rather than `NaN`.
+ */
 function aggregateResolutionRate(runs: readonly SingleRun[]): AggregateStats {
     const values: number[] = [];
     let invalidCount = 0;

@@ -41,8 +41,6 @@ export const DEFAULT_AUXILIARY_MODEL = 'copilot/gpt-5-mini';
 export const DEFAULT_TIMEOUT_MS = 600_000;
 
 export const LINE_HINT_TOLERANCE = 5;
-export const AUXILIARY_JUDGE_UNAVAILABLE_PREFIX =
-    'Auxiliary judge unavailable:';
 
 export const LAUNCHER_SCRIPT = path.resolve(
     REPO_ROOT,

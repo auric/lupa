@@ -478,9 +478,11 @@ export async function main(
                                     const judgeBudget =
                                         createAuxiliaryJudgeBudget(deadlineAt);
                                     if (!judgeBudget) {
-                                        throw new Error(
-                                            `Auxiliary judge unavailable: remaining eval timeout budget is below the auxiliary judge minimum of ${MIN_AUXILIARY_JUDGE_TIMEOUT_MS}ms`
+                                        const err = new Error(
+                                            `remaining eval timeout budget is below the auxiliary judge minimum of ${MIN_AUXILIARY_JUDGE_TIMEOUT_MS}ms`
                                         );
+                                        (err as any).code = 'JUDGE_UNAVAILABLE';
+                                        throw err;
                                     }
                                     const judged = await invokeResolutionJudge({
                                         workspaceRoot: fixture.workspaceRoot,

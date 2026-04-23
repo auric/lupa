@@ -2,6 +2,7 @@ import * as child_process from 'node:child_process';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { IServiceRegistry } from '../services/serviceManager';
+import { Log } from '../services/loggingService';
 import { getErrorMessage } from '../utils/errorUtils';
 
 const DIR_REF_PREFIX = 'dir:';
@@ -17,6 +18,7 @@ export interface DiffResolveOptions {
 
 const DEFAULT_DIFF_TIMEOUT_MS = 30_000;
 const GIT_POST_KILL_RETRY_MS = 2_000;
+const GIT_POST_KILL_MAX_RETRIES = 5;
 
 /**
  * Resolve a raw unified diff between baseRef and headRef.
@@ -93,6 +95,7 @@ function spawnGit(
         let closed = false;
         let cancellation: vscode.Disposable | undefined;
         let postKillHandle: NodeJS.Timeout | undefined;
+        let killRetryCount = 0;
         const clearSettlingResources = () => {
             clearTimeout(timeoutHandle);
             cancellation?.dispose();
@@ -121,6 +124,14 @@ function spawnGit(
                 return;
             }
 
+            if (killRetryCount >= GIT_POST_KILL_MAX_RETRIES) {
+                Log.warn(
+                    `git process could not be killed after ${GIT_POST_KILL_MAX_RETRIES} retries (${GIT_POST_KILL_MAX_RETRIES * GIT_POST_KILL_RETRY_MS}ms)`
+                );
+                return;
+            }
+
+            killRetryCount++;
             postKillHandle = setTimeout(() => {
                 postKillHandle = undefined;
                 keepKillingUntilClose();
