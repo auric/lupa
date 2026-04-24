@@ -208,9 +208,11 @@ export async function awaitWithinHeadlessBudget<T>(
         opts.deadlineAt
     );
     if (remainingMs <= 0) {
-        Promise.resolve(opts.onBudgetExceeded?.()).catch(() => {
-            /* ignore callback errors — primary timeout must always throw */
-        });
+        Promise.resolve()
+            .then(() => opts.onBudgetExceeded?.())
+            .catch(() => {
+                /* ignore callback errors — primary timeout must always throw */
+            });
         throw createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase);
     }
 
@@ -247,9 +249,11 @@ export async function awaitWithinHeadlessBudget<T>(
             reject(
                 createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase)
             );
-            Promise.resolve(opts.onBudgetExceeded?.()).catch(() => {
-                /* ignore callback errors — primary timeout already rejected */
-            });
+            Promise.resolve()
+                .then(() => opts.onBudgetExceeded?.())
+                .catch(() => {
+                    /* ignore callback errors — primary timeout already rejected */
+                });
         }, remainingMs);
     });
     timeoutPromise.catch(() => {});
