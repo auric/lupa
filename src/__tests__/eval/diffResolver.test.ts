@@ -99,7 +99,7 @@ describe('resolveDiff', () => {
         expect(diff).toBe('RAW_DIFF');
         const [cmd, args, opts] = spawnMock.mock.calls[0]!;
         expect(cmd).toBe('git');
-        expect(args).toEqual(['diff', '--', 'abc', 'def']);
+        expect(args).toEqual(['diff', '--no-ext-diff', 'abc', 'def']);
         expect((opts as { cwd: string }).cwd).toBe('/w');
     });
 
@@ -113,7 +113,7 @@ describe('resolveDiff', () => {
 
         expect(spawnMock.mock.calls[0]![1]).toEqual([
             'diff',
-            '--',
+            '--no-ext-diff',
             'main',
             'feature',
         ]);

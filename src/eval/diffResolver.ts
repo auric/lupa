@@ -244,7 +244,7 @@ async function runGitDiffRefs(
 ): Promise<string> {
     return spawnGit(
         cwd,
-        ['diff', '--', base, compare],
+        ['diff', '--no-ext-diff', base, compare],
         timeoutMs,
         cancellationToken
     );
