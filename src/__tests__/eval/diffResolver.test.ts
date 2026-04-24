@@ -404,6 +404,6 @@ describe('resolveDiff', () => {
                 },
                 services
             )
-        ).rejects.toThrow(/dir: paths must not escape the workspace/);
+        ).rejects.toThrow(/dir: ref contains '\.\.' which is not allowed/);
     });
 });

@@ -66,6 +66,12 @@ export function createHeadlessDeadline(timeoutMs: number): number {
     return Date.now() + timeoutMs;
 }
 
+/**
+ * Returns the remaining budget in milliseconds.
+ *
+ * When `deadlineAt` is undefined, the function returns the full `timeoutMs`
+ * regardless of elapsed time. This is a deliberate conservative fallback.
+ */
 export function getRemainingHeadlessBudgetMs(
     timeoutMs: number,
     deadlineAt: number | undefined,
@@ -88,6 +94,12 @@ export function formatHeadlessCancellationMessage(phase: string): string {
     return `Headless run cancelled ${phase}.`;
 }
 
+/**
+ * Validates a ref string.
+ *
+ * SHA validation only accepts SHA-1 hashes (up to 40 hex chars).
+ * SHA-256 repositories (64 hex chars) are not supported.
+ */
 export function validateRef(ref: string, fieldName: string): void {
     if (typeof ref !== 'string' || ref.length === 0) {
         throw new Error(`${fieldName}: must be a non-empty string`);
@@ -121,6 +133,11 @@ export function validateRef(ref: string, fieldName: string): void {
             return;
         }
         if (ref.startsWith('dir:')) {
+            if (body.includes('..')) {
+                throw new Error(
+                    `${fieldName}: dir: ref contains '..' which is not allowed — got '${ref}'`
+                );
+            }
             return;
         }
         return;

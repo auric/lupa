@@ -54,6 +54,8 @@ function aggregateModel(
         ok.map((r) => r.match?.recall ?? 0).filter(isFinite)
     );
     const f1 = meanStddev(ok.map((r) => r.match?.f1 ?? 0).filter(isFinite));
+    // Runs without resolution data map to NaN and are excluded from the
+    // aggregate via isFinite filtering inside aggregateResolutionRate.
     const resolutionRate = aggregateResolutionRate(ok);
     const iterations = meanStddev(
         ok.map((r) => r.result?.telemetry.iterations ?? 0)

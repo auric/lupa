@@ -1099,6 +1099,20 @@ export class ConversationRunner {
                 }
                 disposable?.dispose();
             });
+
+            // Handle the race where cancellation happens between the early
+            // check and listener registration. If the callback fired
+            // synchronously, `disposable` was undefined inside it, so we
+            // dispose it here to prevent a listener leak.
+            if (token.isCancellationRequested) {
+                clearTimeout(timer);
+                clearTimeout(cleanupTimer);
+                if (!resolved) {
+                    resolved = true;
+                    resolve();
+                }
+                disposable?.dispose();
+            }
         });
     }
 
