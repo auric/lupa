@@ -34,6 +34,18 @@ export interface ResolutionJudgeClient {
     judge(payload: ResolutionJudgePayload): Promise<ResolutionJudgeResult>;
 }
 
+interface ResolutionJudgeError extends Error {
+    code: string;
+}
+
+function isResolutionJudgeError(err: unknown): err is ResolutionJudgeError {
+    return (
+        err instanceof Error &&
+        'code' in err &&
+        typeof (err as ResolutionJudgeError).code === 'string'
+    );
+}
+
 interface ClassifyResolutionOptions {
     fixture: LoadedFixture;
     produced: readonly HarnessRecordedFinding[];
@@ -321,7 +333,10 @@ async function classifyRealFinding(
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if ((error as any).code === 'JUDGE_UNAVAILABLE') {
+        if (
+            isResolutionJudgeError(error) &&
+            error.code === 'JUDGE_UNAVAILABLE'
+        ) {
             return {
                 kind: 'warning',
                 warning: createResolutionWarning(

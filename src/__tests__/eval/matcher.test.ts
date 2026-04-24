@@ -2620,7 +2620,12 @@ index 1234567..89abcde 100644
                 expect(mockedExecFileSync).toHaveBeenCalledWith(
                     'taskkill',
                     ['/F', '/T', '/PID', '123'],
-                    { stdio: 'ignore', windowsHide: true }
+                    {
+                        stdio: 'ignore',
+                        windowsHide: true,
+                        timeout: 10_000,
+                        killSignal: 'SIGKILL',
+                    }
                 );
                 expect(kill).not.toHaveBeenCalled();
             } else {

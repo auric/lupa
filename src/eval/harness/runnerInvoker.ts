@@ -539,6 +539,8 @@ function killTree(child: ChildProcess): void {
             execFileSync('taskkill', ['/F', '/T', '/PID', String(child.pid)], {
                 stdio: 'ignore',
                 windowsHide: true,
+                timeout: 10_000,
+                killSignal: 'SIGKILL',
             });
         } catch {
             try {
