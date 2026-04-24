@@ -154,10 +154,15 @@ async function runWithinLauncherDeadline(args, phase, work) {
     });
 
     try {
-        return await Promise.race([
-            Promise.resolve().then(() => work(abortController.signal)),
-            deadlineExceeded,
-        ]);
+        const workPromise = Promise.resolve()
+            .then(() => work(abortController.signal))
+            .catch((err) => {
+                if (err === deadlineError || abortController.signal.aborted) {
+                    return;
+                }
+                throw err;
+            });
+        return await Promise.race([workPromise, deadlineExceeded]);
     } finally {
         if (timeoutHandle) {
             clearTimeout(timeoutHandle);
@@ -401,6 +406,8 @@ function killProcessTree(child) {
             execFileSync('taskkill', ['/F', '/T', '/PID', String(child.pid)], {
                 stdio: 'ignore',
                 windowsHide: true,
+                timeout: 10_000,
+                killSignal: 'SIGKILL',
             });
         } catch {
             child.kill('SIGKILL');

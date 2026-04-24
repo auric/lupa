@@ -88,6 +88,27 @@ export function formatHeadlessCancellationMessage(phase: string): string {
     return `Headless run cancelled ${phase}.`;
 }
 
+function validateRefBody(body: string, fieldName: string, ref: string): void {
+    if (body.startsWith('-')) {
+        throw new Error(
+            `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
+        );
+    }
+    if (body.includes('..')) {
+        throw new Error(
+            `${fieldName}: contains '..' range operator — got '${ref}'`
+        );
+    }
+    for (let i = 0; i < body.length; i++) {
+        const code = body.charCodeAt(i);
+        if (code <= 0x1f || code === 0x20) {
+            throw new Error(
+                `${fieldName}: contains whitespace or control characters — got '${ref}'`
+            );
+        }
+    }
+}
+
 export function validateRef(ref: string, fieldName: string): void {
     if (typeof ref !== 'string' || ref.length === 0) {
         throw new Error(`${fieldName}: must be a non-empty string`);
@@ -105,10 +126,24 @@ export function validateRef(ref: string, fieldName: string): void {
                 `${fieldName}: empty body after scheme — got '${ref}'`
             );
         }
-        // NOTE: This regex limits SHAs to 40 hex chars (SHA-1).
-        // If Git SHA-256 repos become common, increase the limit to 64.
-        if (ref.startsWith('sha:') && !/^[0-9a-fA-F]{1,40}$/.test(body)) {
-            throw new Error(`${fieldName}: invalid SHA format — got '${ref}'`);
+        if (ref.startsWith('sha:')) {
+            if (body.startsWith('-')) {
+                throw new Error(
+                    `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
+                );
+            }
+            // NOTE: This regex limits SHAs to 40 hex chars (SHA-1).
+            // If Git SHA-256 repos become common, increase the limit to 64.
+            if (!/^[0-9a-fA-F]{1,40}$/.test(body)) {
+                throw new Error(
+                    `${fieldName}: invalid SHA format — got '${ref}'`
+                );
+            }
+            return;
+        }
+        if (ref.startsWith('dir:')) {
+            validateRefBody(body, fieldName, ref);
+            return;
         }
         return;
     }

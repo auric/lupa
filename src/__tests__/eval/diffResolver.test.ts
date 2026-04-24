@@ -99,7 +99,7 @@ describe('resolveDiff', () => {
         expect(diff).toBe('RAW_DIFF');
         const [cmd, args, opts] = spawnMock.mock.calls[0]!;
         expect(cmd).toBe('git');
-        expect(args).toEqual(['diff', 'abc', 'def']);
+        expect(args).toEqual(['diff', '--', 'abc', 'def']);
         expect((opts as { cwd: string }).cwd).toBe('/w');
     });
 
@@ -113,6 +113,7 @@ describe('resolveDiff', () => {
 
         expect(spawnMock.mock.calls[0]![1]).toEqual([
             'diff',
+            '--',
             'main',
             'feature',
         ]);
@@ -161,7 +162,7 @@ describe('resolveDiff', () => {
                 },
                 services
             )
-        ).rejects.toThrow(/baseRef: empty ref body — got 'sha:'/);
+        ).rejects.toThrow(/baseRef: empty body after scheme — got 'sha:'/);
     });
 
     it('surfaces git errors', async () => {
@@ -382,5 +383,27 @@ describe('resolveDiff', () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it('rejects empty plain refs', async () => {
+        await expect(
+            resolveDiff(
+                { workspaceRoot: '/w', baseRef: '', headRef: 'main' },
+                services
+            )
+        ).rejects.toThrow(/baseRef: must be a non-empty string/);
+    });
+
+    it('rejects dir: refs that escape the workspace', async () => {
+        await expect(
+            resolveDiff(
+                {
+                    workspaceRoot: '/w',
+                    baseRef: 'dir:/w/base/../../etc',
+                    headRef: 'dir:/w/head',
+                },
+                services
+            )
+        ).rejects.toThrow(/dir: paths must not escape the workspace/);
     });
 });

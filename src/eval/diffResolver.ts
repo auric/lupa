@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import type { IServiceRegistry } from '../services/serviceManager';
 import { Log } from '../services/loggingService';
 import { getErrorMessage } from '../utils/errorUtils';
+import { validateRef } from './headlessShared';
 
 const DIR_REF_PREFIX = 'dir:';
 const SHA_REF_PREFIX = 'sha:';
@@ -66,8 +67,8 @@ export async function resolveDiff(
         );
     }
 
-    validateGitRef(opts.baseRef, 'baseRef');
-    validateGitRef(opts.headRef, 'headRef');
+    validateRef(opts.baseRef, 'baseRef');
+    validateRef(opts.headRef, 'headRef');
     return runGitDiffRefs(
         opts.workspaceRoot,
         stripShaPrefix(opts.baseRef),
@@ -81,20 +82,6 @@ function stripShaPrefix(ref: string): string {
     return ref.startsWith(SHA_REF_PREFIX)
         ? ref.slice(SHA_REF_PREFIX.length)
         : ref;
-}
-
-function validateGitRef(ref: string, fieldName: string): void {
-    const body = ref.startsWith(SHA_REF_PREFIX)
-        ? ref.slice(SHA_REF_PREFIX.length)
-        : ref;
-    if (body.length === 0) {
-        throw new Error(`${fieldName}: empty ref body — got '${ref}'`);
-    }
-    if (body.startsWith('-')) {
-        throw new Error(
-            `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
-        );
-    }
 }
 
 function spawnGit(
@@ -229,6 +216,11 @@ async function runGitDiffNoIndex(
 ): Promise<string> {
     const baseRel = toPosixRelative(cwd, basePath);
     const headRel = toPosixRelative(cwd, headPath);
+    if (baseRel.startsWith('..') || headRel.startsWith('..')) {
+        throw new Error(
+            `dir: paths must not escape the workspace (got '${baseRel}' / '${headRel}')`
+        );
+    }
     const stdout = await spawnGit(
         cwd,
         ['diff', '--no-index', '--', baseRel, headRel],
@@ -245,7 +237,12 @@ async function runGitDiffRefs(
     timeoutMs: number,
     cancellationToken?: vscode.CancellationToken
 ): Promise<string> {
-    return spawnGit(cwd, ['diff', base, compare], timeoutMs, cancellationToken);
+    return spawnGit(
+        cwd,
+        ['diff', '--', base, compare],
+        timeoutMs,
+        cancellationToken
+    );
 }
 
 function toPosixRelative(cwd: string, target: string): string {
