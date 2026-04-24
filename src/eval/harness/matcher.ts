@@ -1,5 +1,6 @@
 import { LINE_HINT_TOLERANCE } from './constants';
 import { normalizeWorkspaceRelativePath } from '../headlessShared';
+import { pathsEqualForComparison } from './pathUtils';
 import type {
     ExpectedFinding,
     HarnessRecordedFinding,
@@ -166,15 +167,4 @@ function compareCandidates(a: Candidate, b: Candidate): number {
         return a.distance - b.distance;
     }
     return a.index - b.index;
-}
-
-function pathsEqualForComparison(leftPath: string, rightPath: string): boolean {
-    return (
-        normalizePathComparisonKey(leftPath) ===
-        normalizePathComparisonKey(rightPath)
-    );
-}
-
-function normalizePathComparisonKey(filePath: string): string {
-    return process.platform === 'win32' ? filePath.toLowerCase() : filePath;
 }

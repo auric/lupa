@@ -21,6 +21,11 @@ import {
     requireRemainingHeadlessBudgetMs,
     validateRef,
 } from '../headlessShared';
+import {
+    pathMatchesCitedSuffix,
+    pathsEqualForComparison,
+    pathsMatchBySuffix,
+} from './pathUtils';
 
 const GIT_DIFF_TIMEOUT_MS = 15_000;
 
@@ -1431,15 +1436,6 @@ function renameEntryMatchesBySuffix(
     );
 }
 
-function pathsMatchBySuffix(leftPath: string, rightPath: string): boolean {
-    const normalizedLeftPath = normalizePathComparisonKey(leftPath);
-    const normalizedRightPath = normalizePathComparisonKey(rightPath);
-    return (
-        normalizedLeftPath === normalizedRightPath ||
-        normalizedLeftPath.endsWith(`/${normalizedRightPath}`)
-    );
-}
-
 function findMatchingDiffFile(
     parsed: Array<{ filePath: string; originalHeader: string }>,
     findingPath: string
@@ -1526,20 +1522,6 @@ function getDiffCandidatePaths(file: {
     return [...candidates];
 }
 
-function pathsEqualForComparison(leftPath: string, rightPath: string): boolean {
-    return (
-        normalizePathComparisonKey(leftPath) ===
-        normalizePathComparisonKey(rightPath)
-    );
-}
-
-function pathMatchesCitedSuffix(
-    candidatePath: string,
-    citedPath: string
-): boolean {
-    return pathsMatchBySuffix(candidatePath, citedPath);
-}
-
 function pathRequiresLiteralGitPath(filePath: string): boolean {
     return (
         filePath.includes('*') ||
@@ -1551,10 +1533,6 @@ function pathRequiresLiteralGitPath(filePath: string): boolean {
         filePath.includes('(') ||
         filePath.includes(')')
     );
-}
-
-function normalizePathComparisonKey(filePath: string): string {
-    return process.platform === 'win32' ? filePath.toLowerCase() : filePath;
 }
 
 function summarizeResolution(
