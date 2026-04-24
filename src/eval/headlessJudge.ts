@@ -38,6 +38,12 @@ export async function runHeadlessResolutionJudge(
     opts: HeadlessResolutionJudgeOptions,
     services: IServiceRegistry
 ): Promise<ResolutionJudgeResult> {
+    if (
+        opts.payloadPath.includes('\0') ||
+        opts.payloadPath.split(/[\\/]/).includes('..')
+    ) {
+        throw new Error(`Invalid payload path: ${opts.payloadPath}`);
+    }
     const deadlineCancellationSource = new vscode.CancellationTokenSource();
     const cancellationDisposable =
         opts.cancellationToken.onCancellationRequested(() => {

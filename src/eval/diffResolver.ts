@@ -49,6 +49,9 @@ export async function resolveDiff(
         throw new vscode.CancellationError();
     }
 
+    validateRef(opts.baseRef, 'baseRef');
+    validateRef(opts.headRef, 'headRef');
+
     const baseIsDir = opts.baseRef.startsWith(DIR_REF_PREFIX);
     const headIsDir = opts.headRef.startsWith(DIR_REF_PREFIX);
     if (baseIsDir !== headIsDir) {
@@ -66,9 +69,6 @@ export async function resolveDiff(
             opts.cancellationToken
         );
     }
-
-    validateRef(opts.baseRef, 'baseRef');
-    validateRef(opts.headRef, 'headRef');
     return runGitDiffRefs(
         opts.workspaceRoot,
         stripShaPrefix(opts.baseRef),
@@ -216,7 +216,12 @@ async function runGitDiffNoIndex(
 ): Promise<string> {
     const baseRel = toPosixRelative(cwd, basePath);
     const headRel = toPosixRelative(cwd, headPath);
-    if (baseRel.startsWith('..') || headRel.startsWith('..')) {
+    if (
+        baseRel.startsWith('..') ||
+        headRel.startsWith('..') ||
+        path.isAbsolute(baseRel) ||
+        path.isAbsolute(headRel)
+    ) {
         throw new Error(
             `dir: paths must not escape the workspace (got '${baseRel}' / '${headRel}')`
         );

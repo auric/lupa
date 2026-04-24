@@ -80,7 +80,7 @@ describe('resolveDiff', () => {
     it('throws when baseRef is a dir: path but headRef is a git ref', async () => {
         await expect(
             resolveDiff(
-                { workspaceRoot: '/w', baseRef: 'dir:/a', headRef: 'main' },
+                { workspaceRoot: '/w', baseRef: 'dir:a', headRef: 'main' },
                 services
             )
         ).rejects.toThrow(
@@ -190,8 +190,8 @@ describe('resolveDiff', () => {
         const diff = await resolveDiff(
             {
                 workspaceRoot: '/w',
-                baseRef: 'dir:/w/base',
-                headRef: 'dir:/w/head',
+                baseRef: 'dir:base',
+                headRef: 'dir:head',
             },
             services
         );
@@ -219,8 +219,8 @@ describe('resolveDiff', () => {
         const diff = await resolveDiff(
             {
                 workspaceRoot: '/w',
-                baseRef: 'dir:/w/base dir',
-                headRef: 'dir:/w/head dir',
+                baseRef: 'dir:base dir',
+                headRef: 'dir:head dir',
             },
             services
         );
@@ -254,8 +254,8 @@ describe('resolveDiff', () => {
         const diff = await resolveDiff(
             {
                 workspaceRoot: '/w',
-                baseRef: 'dir:/w/base',
-                headRef: 'dir:/w/head',
+                baseRef: 'dir:base',
+                headRef: 'dir:head',
             },
             services
         );
@@ -279,8 +279,8 @@ describe('resolveDiff', () => {
         const diff = await resolveDiff(
             {
                 workspaceRoot: '/w',
-                baseRef: 'dir:/w/base',
-                headRef: 'dir:/w/head',
+                baseRef: 'dir:base',
+                headRef: 'dir:head',
             },
             services
         );
@@ -399,8 +399,8 @@ describe('resolveDiff', () => {
             resolveDiff(
                 {
                     workspaceRoot: '/w',
-                    baseRef: 'dir:/w/base/../../etc',
-                    headRef: 'dir:/w/head',
+                    baseRef: 'dir:base/../../etc',
+                    headRef: 'dir:head',
                 },
                 services
             )

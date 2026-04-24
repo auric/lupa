@@ -88,27 +88,6 @@ export function formatHeadlessCancellationMessage(phase: string): string {
     return `Headless run cancelled ${phase}.`;
 }
 
-function validateRefBody(body: string, fieldName: string, ref: string): void {
-    if (body.startsWith('-')) {
-        throw new Error(
-            `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
-        );
-    }
-    if (body.includes('..')) {
-        throw new Error(
-            `${fieldName}: contains '..' range operator — got '${ref}'`
-        );
-    }
-    for (let i = 0; i < body.length; i++) {
-        const code = body.charCodeAt(i);
-        if (code <= 0x1f || code === 0x20) {
-            throw new Error(
-                `${fieldName}: contains whitespace or control characters — got '${ref}'`
-            );
-        }
-    }
-}
-
 export function validateRef(ref: string, fieldName: string): void {
     if (typeof ref !== 'string' || ref.length === 0) {
         throw new Error(`${fieldName}: must be a non-empty string`);
@@ -142,7 +121,6 @@ export function validateRef(ref: string, fieldName: string): void {
             return;
         }
         if (ref.startsWith('dir:')) {
-            validateRefBody(body, fieldName, ref);
             return;
         }
         return;

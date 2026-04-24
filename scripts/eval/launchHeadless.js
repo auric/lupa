@@ -154,15 +154,11 @@ async function runWithinLauncherDeadline(args, phase, work) {
     });
 
     try {
-        const workPromise = Promise.resolve()
-            .then(() => work(abortController.signal))
-            .catch((err) => {
-                if (err === deadlineError || abortController.signal.aborted) {
-                    return;
-                }
-                throw err;
-            });
-        return await Promise.race([workPromise, deadlineExceeded]);
+        const workPromise = Promise.resolve().then(() =>
+            work(abortController.signal)
+        );
+        workPromise.catch(() => {});
+        return await Promise.race([deadlineExceeded, workPromise]);
     } finally {
         if (timeoutHandle) {
             clearTimeout(timeoutHandle);

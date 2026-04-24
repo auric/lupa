@@ -168,7 +168,7 @@ export async function runHeadless(
             }
         );
 
-        if (result.error) {
+        if (result.error !== undefined && result.error.length > 0) {
             throw new Error(result.error);
         }
         if (result.wasCancelled) {

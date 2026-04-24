@@ -19,6 +19,7 @@ import {
     isWorkspaceRelativePath,
     normalizeWorkspaceRelativePath,
     requireRemainingHeadlessBudgetMs,
+    validateRef,
 } from '../headlessShared';
 
 const GIT_DIFF_TIMEOUT_MS = 15_000;
@@ -1113,14 +1114,6 @@ async function getChangedPaths(
     return changedPaths;
 }
 
-function validateGitRef(ref: string, label: string): void {
-    if (ref.startsWith('-')) {
-        throw new Error(
-            `Invalid ${label}: "${ref}" starts with '-', which is not allowed`
-        );
-    }
-}
-
 function runGitDiffForPath(
     workspaceRoot: string,
     headRef: string,
@@ -1130,8 +1123,8 @@ function runGitDiffForPath(
 ): Promise<string> {
     const fromRef = stripRefPrefix(headRef);
     const toRef = stripRefPrefix(mergeRef);
-    validateGitRef(fromRef, 'headRef');
-    validateGitRef(toRef, 'mergeRef');
+    validateRef(fromRef, 'headRef');
+    validateRef(toRef, 'mergeRef');
     const gitPath = repoPath ? normalizePath(repoPath) : undefined;
     const gitPathArg = gitPath
         ? pathRequiresLiteralGitPath(gitPath)
@@ -1197,8 +1190,8 @@ function runGitDiffNameOnly(
     toRef: string,
     timeoutMs: number
 ): Promise<string> {
-    validateGitRef(fromRef, 'fromRef');
-    validateGitRef(toRef, 'toRef');
+    validateRef(fromRef, 'fromRef');
+    validateRef(toRef, 'toRef');
     return new Promise((resolve, reject) => {
         const proc = spawn(
             'git',
@@ -1326,8 +1319,8 @@ function runGitDiffNameStatus(
     toRef: string,
     timeoutMs: number
 ): Promise<string> {
-    validateGitRef(fromRef, 'fromRef');
-    validateGitRef(toRef, 'toRef');
+    validateRef(fromRef, 'fromRef');
+    validateRef(toRef, 'toRef');
     return new Promise((resolve, reject) => {
         const proc = spawn(
             'git',
