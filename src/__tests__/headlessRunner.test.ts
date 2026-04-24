@@ -822,6 +822,40 @@ describe('runHeadless', () => {
 });
 
 describe('runHeadlessResolutionJudge', () => {
+    it('rejects payload paths containing null bytes', async () => {
+        const services = makeServices({});
+        await expect(
+            runHeadlessResolutionJudge(
+                {
+                    workspaceRoot: '/ws',
+                    modelIdentifier: 'copilot/gpt-4.1',
+                    timeoutMs: 60_000,
+                    payloadPath: '/tmp/payload\0.json',
+                    cancellationToken: new vscode.CancellationTokenSource()
+                        .token,
+                },
+                services
+            )
+        ).rejects.toThrow(/Invalid payload path/);
+    });
+
+    it('rejects payload paths containing .. segments', async () => {
+        const services = makeServices({});
+        await expect(
+            runHeadlessResolutionJudge(
+                {
+                    workspaceRoot: '/ws',
+                    modelIdentifier: 'copilot/gpt-4.1',
+                    timeoutMs: 60_000,
+                    payloadPath: '/tmp/../etc/passwd',
+                    cancellationToken: new vscode.CancellationTokenSource()
+                        .token,
+                },
+                services
+            )
+        ).rejects.toThrow(/Invalid payload path/);
+    });
+
     function writePayloadFile(
         overrides?: Partial<{
             title: string;
