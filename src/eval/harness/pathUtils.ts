@@ -9,7 +9,8 @@ export function pathsEqualForComparison(
 }
 
 export function normalizePathComparisonKey(filePath: string): string {
-    const normalized = filePath.replace(/\\/g, '/');
+    const normalized =
+        process.platform === 'win32' ? filePath.replace(/\\/g, '/') : filePath;
     return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
@@ -22,6 +23,9 @@ export function pathsMatchBySuffix(
         /^\//,
         ''
     );
+    if (normalizedRightPath.length === 0) {
+        return false;
+    }
     return (
         normalizedLeftPath === normalizedRightPath ||
         normalizedLeftPath.endsWith(`/${normalizedRightPath}`)

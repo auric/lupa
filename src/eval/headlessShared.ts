@@ -138,7 +138,8 @@ export function validateRef(ref: string, fieldName: string): void {
                     `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
                 );
             }
-            if (body.includes('..')) {
+            const parts = body.split(/[\\/]/);
+            if (parts.some((p) => p === '..' || p.startsWith('..'))) {
                 throw new Error(
                     `${fieldName}: dir: ref contains '..' which is not allowed — got '${ref}'`
                 );
@@ -207,11 +208,9 @@ export async function awaitWithinHeadlessBudget<T>(
         opts.deadlineAt
     );
     if (remainingMs <= 0) {
-        try {
-            opts.onBudgetExceeded?.();
-        } catch {
+        Promise.resolve(opts.onBudgetExceeded?.()).catch(() => {
             /* ignore callback errors — primary timeout must always throw */
-        }
+        });
         throw createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase);
     }
 
@@ -248,11 +247,9 @@ export async function awaitWithinHeadlessBudget<T>(
             reject(
                 createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase)
             );
-            try {
-                opts.onBudgetExceeded?.();
-            } catch {
+            Promise.resolve(opts.onBudgetExceeded?.()).catch(() => {
                 /* ignore callback errors — primary timeout already rejected */
-            }
+            });
         }, remainingMs);
     });
     timeoutPromise.catch(() => {});
