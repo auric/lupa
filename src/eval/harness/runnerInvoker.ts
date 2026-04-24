@@ -295,12 +295,12 @@ async function ensureHeadCheckout(
             if (postKillTimeoutHandle !== undefined) {
                 clearTimeout(postKillTimeoutHandle);
             }
-            if (timedOut) {
-                reject(createCheckoutTimeoutError(checkoutTimeoutMs, true));
-                return;
-            }
             if (code === 0) {
                 resolve();
+                return;
+            }
+            if (timedOut) {
+                reject(createCheckoutTimeoutError(checkoutTimeoutMs, true));
                 return;
             }
             reject(

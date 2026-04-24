@@ -13,6 +13,10 @@ export function spawnGit(
     cancellationToken?: vscode.CancellationToken
 ): Promise<string> {
     return new Promise((resolve, reject) => {
+        if (cancellationToken?.isCancellationRequested) {
+            reject(new vscode.CancellationError());
+            return;
+        }
         const proc = child_process.spawn('git', args, { cwd });
         let stdout = '';
         let stderr = '';

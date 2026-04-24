@@ -437,14 +437,21 @@ async function checkRealFindingPaths(
     for (let i = 0; i < pathEntries.length; i++) {
         const entry = pathEntries[i];
         const settled = settledDiffs[i];
-        if (
-            entry === undefined ||
-            settled === undefined ||
-            settled.status === 'rejected'
-        ) {
+        if (entry === undefined || settled === undefined) {
             continue;
         }
         const [findingPath, pathSources] = entry;
+        if (settled.status === 'rejected') {
+            ambiguousResults.push({
+                verdict: 'ambiguous',
+                method: usedFallback ? 'line-range-fallback' : 'source-overlap',
+                path: findingPath,
+                canonicalPath: findingPath,
+                reason: `Diff retrieval failed for ${findingPath}: ${settled.reason instanceof Error ? settled.reason.message : String(settled.reason)}`,
+                diffText: '',
+            });
+            continue;
+        }
         const diffLookup = settled.value;
 
         if (diffLookup.ambiguityReason) {
