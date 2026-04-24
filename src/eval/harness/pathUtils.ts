@@ -9,7 +9,8 @@ export function pathsEqualForComparison(
 }
 
 export function normalizePathComparisonKey(filePath: string): string {
-    return process.platform === 'win32' ? filePath.toLowerCase() : filePath;
+    const normalized = filePath.replace(/\\/g, '/');
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
 export function pathsMatchBySuffix(
@@ -17,7 +18,10 @@ export function pathsMatchBySuffix(
     rightPath: string
 ): boolean {
     const normalizedLeftPath = normalizePathComparisonKey(leftPath);
-    const normalizedRightPath = normalizePathComparisonKey(rightPath);
+    const normalizedRightPath = normalizePathComparisonKey(rightPath).replace(
+        /^\//,
+        ''
+    );
     return (
         normalizedLeftPath === normalizedRightPath ||
         normalizedLeftPath.endsWith(`/${normalizedRightPath}`)

@@ -122,6 +122,11 @@ export async function runHeadless(
         // available chat model, which on a Pro install can be a premium-tier
         // model (Claude Sonnet, gpt-5, ...) and burn paid quota without the
         // caller knowing. Eval runs and CI jobs must fail loudly instead.
+        if (!model) {
+            throw new Error(
+                formatHeadlessCancellationMessage('during model selection')
+            );
+        }
         const actualIdentifier = normalizeModelIdentifier(
             `${model.vendor}/${model.id}`
         );
@@ -168,7 +173,7 @@ export async function runHeadless(
             }
         );
 
-        if (result.error !== undefined && result.error.length > 0) {
+        if (result.error) {
             throw new Error(result.error);
         }
         if (result.wasCancelled) {

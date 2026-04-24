@@ -133,6 +133,11 @@ export function validateRef(ref: string, fieldName: string): void {
             return;
         }
         if (ref.startsWith('dir:')) {
+            if (body.startsWith('-')) {
+                throw new Error(
+                    `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
+                );
+            }
             if (body.includes('..')) {
                 throw new Error(
                     `${fieldName}: dir: ref contains '..' which is not allowed — got '${ref}'`
@@ -202,7 +207,11 @@ export async function awaitWithinHeadlessBudget<T>(
         opts.deadlineAt
     );
     if (remainingMs <= 0) {
-        opts.onBudgetExceeded?.();
+        try {
+            opts.onBudgetExceeded?.();
+        } catch {
+            /* ignore callback errors — primary timeout must always throw */
+        }
         throw createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase);
     }
 
@@ -239,7 +248,11 @@ export async function awaitWithinHeadlessBudget<T>(
             reject(
                 createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase)
             );
-            opts.onBudgetExceeded?.();
+            try {
+                opts.onBudgetExceeded?.();
+            } catch {
+                /* ignore callback errors — primary timeout already rejected */
+            }
         }, remainingMs);
     });
     timeoutPromise.catch(() => {});
