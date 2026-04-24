@@ -26,6 +26,9 @@ export interface HeadlessResolutionJudgeOptions {
 }
 
 const MAX_JUDGE_PROMPT_CHARS = 12_000;
+const MAX_JUDGE_PAYLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_JUDGE_SUMMARY_LENGTH = 160;
+const TRUNCATION_SUFFIX = '...';
 
 const SYSTEM_PROMPT =
     'You are classifying whether a code-review finding was actually resolved by a later patch. ' +
@@ -122,6 +125,12 @@ export async function runHeadlessResolutionJudge(
 async function readPayload(
     payloadPath: string
 ): Promise<ResolutionJudgePayload> {
+    const stats = await fs.promises.stat(payloadPath);
+    if (stats.size > MAX_JUDGE_PAYLOAD_BYTES) {
+        throw new Error(
+            `Resolution-judge payload exceeds maximum size of ${MAX_JUDGE_PAYLOAD_BYTES} bytes`
+        );
+    }
     let raw: string;
     try {
         raw = await fs.promises.readFile(payloadPath, 'utf8');
@@ -257,10 +266,11 @@ function parseJudgeResponse(
 
 function summarizeJudgeResponse(content: string): string {
     const normalized = content.replace(/\s+/gu, ' ').trim();
-    if (normalized.length <= 160) {
+    if (normalized.length <= MAX_JUDGE_SUMMARY_LENGTH) {
         return normalized;
     }
-    return `${normalized.slice(0, 157)}...`;
+    const truncateAt = MAX_JUDGE_SUMMARY_LENGTH - TRUNCATION_SUFFIX.length;
+    return `${normalized.slice(0, truncateAt)}${TRUNCATION_SUFFIX}`;
 }
 
 function getPromptLocation(

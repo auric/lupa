@@ -90,6 +90,8 @@ const execFileAsync = promisify(execFile);
 const MIN_HEADLESS_RUN_TIMEOUT_MS = 10_000;
 export const MIN_AUXILIARY_JUDGE_TIMEOUT_MS = 10_000;
 export const MAX_AUXILIARY_JUDGE_TIMEOUT_MS = 120_000;
+const MAX_STDOUT_BUFFER_BYTES = 1_024 * 1_024;
+const MAX_ERROR_DISPLAY_LENGTH = 200;
 
 interface AuxiliaryJudgeBudget {
     timeoutMs: number;
@@ -259,7 +261,7 @@ async function execCapture(
 ): Promise<{ stdout: string }> {
     const { stdout } = await execFileAsync(cmd, [...args], {
         encoding: 'utf8',
-        maxBuffer: 1024 * 1024,
+        maxBuffer: MAX_STDOUT_BUFFER_BYTES,
     });
     return { stdout };
 }
@@ -538,7 +540,10 @@ export async function main(
                                 `in ${(single.durationMs / 1000).toFixed(1)}s\n`
                         );
                     } else {
-                        const msg = (single.errorMessage ?? '').slice(0, 200);
+                        const msg = (single.errorMessage ?? '').slice(
+                            0,
+                            MAX_ERROR_DISPLAY_LENGTH
+                        );
                         process.stderr.write(
                             `[eval] fail  ${progress} — ${msg}\n`
                         );

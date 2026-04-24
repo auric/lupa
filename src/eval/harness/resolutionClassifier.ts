@@ -1547,7 +1547,9 @@ function pathRequiresLiteralGitPath(filePath: string): boolean {
         filePath.includes('[') ||
         filePath.includes('{') ||
         filePath.includes('}') ||
-        filePath.includes('\\')
+        filePath.includes('\\') ||
+        filePath.includes('(') ||
+        filePath.includes(')')
     );
 }
 
