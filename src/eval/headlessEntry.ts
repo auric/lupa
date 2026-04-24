@@ -556,9 +556,10 @@ export async function runHeadlessFromEnv(
             }
             if (models.length === 0) {
                 throw new Error(
-                    `Requested model ${requestedIdentifier} was not available during exact-model preflight (${modelPreflightTimeoutMs}ms). If this is the first run, ` +
-                        'approve the "Allow Lupa to use Copilot?" prompt in the spawned window. ' +
-                        'Otherwise re-run `npm run headless:setup` and complete the model sign-in/setup.'
+                    `Requested model ${requestedIdentifier} was not available during exact-model preflight (${modelPreflightTimeoutMs}ms). ` +
+                        `If this is the first run, approve the "Allow Lupa to use Copilot?" prompt in the spawned window. ` +
+                        `Otherwise re-run \`npm run headless:setup\` and complete the model sign-in/setup. ` +
+                        `Note: model identifiers are case-sensitive (vendor is lowercased, model ID is preserved).`
                 );
             }
 
