@@ -148,7 +148,7 @@ export function validateRef(ref: string, fieldName: string): void {
         }
         return;
     }
-    if (!hasScheme && ref.includes('..')) {
+    if (ref.includes('..')) {
         throw new Error(
             `${fieldName}: contains '..' range operator — got '${ref}'`
         );

@@ -309,8 +309,17 @@ function getPromptLocation(
 }
 
 function unwrapCodeFence(content: string): string {
-    const match = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    return match?.[1]?.trim() ?? content;
+    // Prefer explicitly tagged json fences to avoid matching explanatory
+    // text fences that may appear before the actual JSON payload.
+    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/i);
+    if (jsonMatch?.[1]) {
+        return jsonMatch[1].trim();
+    }
+    const genericMatch = content.match(/```\s*([\s\S]*?)\s*```/);
+    if (genericMatch?.[1]) {
+        return genericMatch[1].trim();
+    }
+    return content;
 }
 
 function isPromptSource(

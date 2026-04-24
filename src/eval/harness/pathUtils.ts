@@ -8,6 +8,13 @@ export function pathsEqualForComparison(
     );
 }
 
+/**
+ * Normalizes a path for case-insensitive comparison on Windows.
+ *
+ * NOTE: This does NOT collapse `.`, `..`, or multiple slashes.
+ * Callers should pre-normalize inputs (e.g. via `normalizeWorkspaceRelativePath`)
+ * before passing them here.
+ */
 export function normalizePathComparisonKey(filePath: string): string {
     const normalized =
         process.platform === 'win32' ? filePath.replace(/\\/g, '/') : filePath;
