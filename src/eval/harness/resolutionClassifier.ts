@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process';
 import type { FindingSource, RecordedFinding } from '../../types/findingTypes';
+import { spawnGit } from './spawnGit';
 import { DiffUtils } from '../../utils/diffUtils';
 import type {
     HarnessRecordedFinding,
@@ -407,6 +407,8 @@ async function checkRealFindingPaths(
     const sourcesByPath = groupSourcesByPath(sources);
     const ambiguousResults: LineCheckResult[] = [];
     const touchedWithoutOverlap: string[] = [];
+
+    await getChangedPaths(fixture, changedPathsCache, timeoutMs, deadlineAt);
 
     const pathEntries = Array.from(sourcesByPath.entries());
     const diffPromises = pathEntries.map(([findingPath]) =>
@@ -1139,54 +1141,7 @@ function runGitDiffForPath(
     const args = gitPath
         ? ['diff', '--no-ext-diff', `${fromRef}..${toRef}`, '--', gitPathArg!]
         : ['diff', '--no-ext-diff', `${fromRef}..${toRef}`];
-    const commandLabel = gitPath
-        ? `git diff ${fromRef}..${toRef} -- ${gitPath}`
-        : `git diff ${fromRef}..${toRef}`;
-    return new Promise((resolve, reject) => {
-        const proc = spawn('git', args, {
-            cwd: workspaceRoot,
-            stdio: 'pipe',
-        });
-        let stdout = '';
-        let stderr = '';
-        let settled = false;
-        const timeoutHandle = setTimeout(() => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            proc.kill('SIGKILL');
-            reject(new Error(`${commandLabel} timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-        proc.stdout.on('data', (chunk) => {
-            stdout += chunk.toString();
-        });
-        proc.stderr.on('data', (chunk) => {
-            stderr += chunk.toString();
-        });
-        proc.on('error', (error) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            clearTimeout(timeoutHandle);
-            reject(error);
-        });
-        proc.on('close', (code) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            clearTimeout(timeoutHandle);
-            if (code === 0 || code === 1) {
-                resolve(stdout);
-                return;
-            }
-            reject(
-                new Error(`${commandLabel} failed (${code}): ${stderr.trim()}`)
-            );
-        });
-    });
+    return spawnGit(workspaceRoot, args, timeoutMs);
 }
 
 function runGitDiffNameOnly(
@@ -1197,61 +1152,11 @@ function runGitDiffNameOnly(
 ): Promise<string> {
     validateRef(fromRef, 'fromRef');
     validateRef(toRef, 'toRef');
-    return new Promise((resolve, reject) => {
-        const proc = spawn(
-            'git',
-            ['diff', '--no-ext-diff', '--name-only', `${fromRef}..${toRef}`],
-            {
-                cwd: workspaceRoot,
-                stdio: 'pipe',
-            }
-        );
-        let stdout = '';
-        let stderr = '';
-        let settled = false;
-        const timeoutHandle = setTimeout(() => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            proc.kill('SIGKILL');
-            reject(
-                new Error(
-                    `git diff --name-only ${fromRef}..${toRef} timed out after ${timeoutMs}ms`
-                )
-            );
-        }, timeoutMs);
-        proc.stdout.on('data', (chunk) => {
-            stdout += chunk.toString();
-        });
-        proc.stderr.on('data', (chunk) => {
-            stderr += chunk.toString();
-        });
-        proc.on('error', (error) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            clearTimeout(timeoutHandle);
-            reject(error);
-        });
-        proc.on('close', (code) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            clearTimeout(timeoutHandle);
-            if (code === 0 || code === 1) {
-                resolve(stdout);
-                return;
-            }
-            reject(
-                new Error(
-                    `git diff --name-only ${fromRef}..${toRef} failed (${code}): ${stderr.trim()}`
-                )
-            );
-        });
-    });
+    return spawnGit(
+        workspaceRoot,
+        ['diff', '--no-ext-diff', '--name-only', `${fromRef}..${toRef}`],
+        timeoutMs
+    );
 }
 
 async function pathHasPureRenameOrMove(
@@ -1326,67 +1231,17 @@ function runGitDiffNameStatus(
 ): Promise<string> {
     validateRef(fromRef, 'fromRef');
     validateRef(toRef, 'toRef');
-    return new Promise((resolve, reject) => {
-        const proc = spawn(
-            'git',
-            [
-                'diff',
-                '--no-ext-diff',
-                '--name-status',
-                '--find-renames=100%',
-                `${fromRef}..${toRef}`,
-            ],
-            {
-                cwd: workspaceRoot,
-                stdio: 'pipe',
-            }
-        );
-        let stdout = '';
-        let stderr = '';
-        let settled = false;
-        const timeoutHandle = setTimeout(() => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            proc.kill('SIGKILL');
-            reject(
-                new Error(
-                    `git diff --name-status --find-renames=100% ${fromRef}..${toRef} timed out after ${timeoutMs}ms`
-                )
-            );
-        }, timeoutMs);
-        proc.stdout.on('data', (chunk) => {
-            stdout += chunk.toString();
-        });
-        proc.stderr.on('data', (chunk) => {
-            stderr += chunk.toString();
-        });
-        proc.on('error', (error) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            clearTimeout(timeoutHandle);
-            reject(error);
-        });
-        proc.on('close', (code) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            clearTimeout(timeoutHandle);
-            if (code === 0 || code === 1) {
-                resolve(stdout);
-                return;
-            }
-            reject(
-                new Error(
-                    `git diff --name-status --find-renames=100% ${fromRef}..${toRef} failed (${code}): ${stderr.trim()}`
-                )
-            );
-        });
-    });
+    return spawnGit(
+        workspaceRoot,
+        [
+            'diff',
+            '--no-ext-diff',
+            '--name-status',
+            '--find-renames=100%',
+            `${fromRef}..${toRef}`,
+        ],
+        timeoutMs
+    );
 }
 
 function stripRefPrefix(ref: string): string {
