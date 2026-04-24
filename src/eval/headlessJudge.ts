@@ -309,17 +309,41 @@ function getPromptLocation(
 }
 
 function unwrapCodeFence(content: string): string {
-    // Prefer explicitly tagged json fences to avoid matching explanatory
-    // text fences that may appear before the actual JSON payload.
-    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/i);
-    if (jsonMatch?.[1]) {
-        return jsonMatch[1].trim();
+    // Prefer explicitly tagged json fences. Match from the first opening
+    // ```json to the LAST closing ``` so that nested triple-backticks
+    // inside JSON string values do not prematurely terminate the match.
+    const jsonOpen = content.match(/```json\s*/i);
+    if (jsonOpen) {
+        const openIndex = jsonOpen.index!;
+        const afterOpen = openIndex + jsonOpen[0].length;
+        const lastClose = content.lastIndexOf('```');
+        if (lastClose > afterOpen) {
+            const candidate = content.slice(afterOpen, lastClose).trim();
+            if (looksLikeJsonObject(candidate)) {
+                return candidate;
+            }
+        }
     }
-    const genericMatch = content.match(/```\s*([\s\S]*?)\s*```/);
-    if (genericMatch?.[1]) {
-        return genericMatch[1].trim();
+
+    // Same fallback for generic fences.
+    const genericOpen = content.match(/```\s*/);
+    if (genericOpen) {
+        const openIndex = genericOpen.index!;
+        const afterOpen = openIndex + genericOpen[0].length;
+        const lastClose = content.lastIndexOf('```');
+        if (lastClose > afterOpen) {
+            const candidate = content.slice(afterOpen, lastClose).trim();
+            if (looksLikeJsonObject(candidate)) {
+                return candidate;
+            }
+        }
     }
+
     return content;
+}
+
+function looksLikeJsonObject(str: string): boolean {
+    return str.startsWith('{') && str.endsWith('}');
 }
 
 function isPromptSource(
