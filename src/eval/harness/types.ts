@@ -118,8 +118,6 @@ export interface ResolutionBucket {
 }
 
 export interface ResolutionSummary extends ResolutionBucket {
-    attempted: number;
-    skipped: number;
     bySeverity: Partial<Record<FindingSeverity, ResolutionBucket>>;
     findings: FindingResolution[];
     warnings: ResolutionWarning[];

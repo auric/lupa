@@ -1,4 +1,5 @@
 import type { FindingSource, RecordedFinding } from '../../types/findingTypes';
+import type { DiffHunk } from '../../types/contextTypes';
 import { spawnGit } from './spawnGit';
 import { DiffUtils } from '../../utils/diffUtils';
 import type {
@@ -1299,20 +1300,9 @@ function renameEntryMatchesBySuffix(
 }
 
 function findMatchingDiffFile(
-    parsed: Array<{ filePath: string; originalHeader: string }>,
+    parsed: DiffHunk[],
     findingPath: string
-):
-    | {
-          filePath: string;
-          originalHeader: string;
-          hunks: Array<{
-              oldStart: number;
-              oldLines: number;
-              newLines: number;
-              parsedLines: Array<{ type: 'added' | 'removed' | 'context' }>;
-          }>;
-      }
-    | undefined {
+): DiffHunk | undefined {
     const normalizedFindingPath = normalizePath(findingPath);
     const exactMatches = parsed.filter((file) =>
         getDiffCandidatePaths(file).some((candidatePath) =>
@@ -1320,16 +1310,7 @@ function findMatchingDiffFile(
         )
     );
     if (exactMatches.length === 1) {
-        return exactMatches[0] as {
-            filePath: string;
-            originalHeader: string;
-            hunks: Array<{
-                oldStart: number;
-                oldLines: number;
-                newLines: number;
-                parsedLines: Array<{ type: 'added' | 'removed' | 'context' }>;
-            }>;
-        };
+        return exactMatches[0];
     }
 
     if (!isWorkspaceRelativePath(normalizedFindingPath)) {
@@ -1346,18 +1327,7 @@ function findMatchingDiffFile(
         return undefined;
     }
 
-    return suffixMatches[0] as {
-        filePath: string;
-        originalHeader: string;
-        hunks: Array<{
-            oldStart: number;
-            oldLines: number;
-            newLines: number;
-            parsedLines: Array<{
-                type: 'added' | 'removed' | 'context';
-            }>;
-        }>;
-    };
+    return suffixMatches[0];
 }
 
 function getDiffCandidatePaths(file: {

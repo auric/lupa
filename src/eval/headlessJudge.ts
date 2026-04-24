@@ -319,7 +319,7 @@ function unwrapCodeFence(content: string): string {
         const lastClose = content.lastIndexOf('```');
         if (lastClose > afterOpen) {
             const candidate = content.slice(afterOpen, lastClose).trim();
-            if (looksLikeJsonObject(candidate)) {
+            if (isValidJson(candidate)) {
                 return candidate;
             }
         }
@@ -333,7 +333,7 @@ function unwrapCodeFence(content: string): string {
         const lastClose = content.lastIndexOf('```');
         if (lastClose > afterOpen) {
             const candidate = content.slice(afterOpen, lastClose).trim();
-            if (looksLikeJsonObject(candidate)) {
+            if (isValidJson(candidate)) {
                 return candidate;
             }
         }
@@ -342,8 +342,13 @@ function unwrapCodeFence(content: string): string {
     return content;
 }
 
-function looksLikeJsonObject(str: string): boolean {
-    return str.startsWith('{') && str.endsWith('}');
+function isValidJson(str: string): boolean {
+    try {
+        JSON.parse(str);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 function isPromptSource(
