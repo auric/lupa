@@ -152,7 +152,7 @@ async function readPayload(
             `Failed to read resolution-judge payload at ${payloadPath}: ${error instanceof Error ? error.message : String(error)}`
         );
     }
-    if (raw.length > MAX_JUDGE_PAYLOAD_BYTES) {
+    if (Buffer.byteLength(raw, 'utf8') > MAX_JUDGE_PAYLOAD_BYTES) {
         throw new Error(
             `Resolution-judge payload exceeds maximum size of ${MAX_JUDGE_PAYLOAD_BYTES} bytes`
         );

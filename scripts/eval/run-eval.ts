@@ -302,10 +302,13 @@ async function relocateReports(
     outDir: string,
     paths: { jsonPath: string; markdownPath: string }
 ): Promise<{ jsonPath: string; markdownPath: string }> {
-    if (
-        path.resolve(outDir).toLowerCase() ===
-        path.resolve(RESULTS_ROOT).toLowerCase()
-    ) {
+    const resolvedOut = path.resolve(outDir);
+    const resolvedRoot = path.resolve(RESULTS_ROOT);
+    const samePath =
+        process.platform === 'win32'
+            ? resolvedOut.toLowerCase() === resolvedRoot.toLowerCase()
+            : resolvedOut === resolvedRoot;
+    if (samePath) {
         return paths;
     }
     await fs.mkdir(outDir, { recursive: true });
