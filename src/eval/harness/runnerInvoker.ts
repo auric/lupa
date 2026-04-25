@@ -139,10 +139,12 @@ export async function invokeHeadless(
         let stderr = '';
         let stdout = '';
         let outputBytes = 0;
+        let outputLimitExceeded = false;
         const MAX_LAUNCHER_OUTPUT_BYTES = 50 * 1024 * 1024;
         child.stdout?.on('data', (d) => {
             outputBytes += d.length;
             if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
+                outputLimitExceeded = true;
                 child.kill('SIGKILL');
                 return;
             }
@@ -151,6 +153,7 @@ export async function invokeHeadless(
         child.stderr?.on('data', (d) => {
             outputBytes += d.length;
             if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
+                outputLimitExceeded = true;
                 child.kill('SIGKILL');
                 return;
             }
@@ -187,7 +190,9 @@ export async function invokeHeadless(
         }
 
         let error: string;
-        if (watchdogFired) {
+        if (outputLimitExceeded) {
+            error = `Launcher output exceeded ${MAX_LAUNCHER_OUTPUT_BYTES} bytes and was killed`;
+        } else if (watchdogFired) {
             error = `Launcher killed by harness watchdog after ${watchdogMs}ms`;
         } else if (exitCode !== 0 && parsed.ok && parsed.result.completed) {
             error = `Launcher exited ${exitCode} after writing a completed analysis result; treating the run as failed so the parsed result is preserved only as error context; stderr tail: ${tailStderr(stderr, stdout)}`;
@@ -477,6 +482,11 @@ export async function invokeResolutionJudge(
         if (watchdogFired) {
             throw new Error(
                 `Resolution judge launcher killed by harness watchdog after ${watchdogMs}ms`
+            );
+        }
+        if (outputLimitExceeded) {
+            throw new Error(
+                `Resolution judge launcher output exceeded ${MAX_LAUNCHER_OUTPUT_BYTES} bytes and was killed`
             );
         }
         if (exitCode !== 0 && parsed.ok) {
