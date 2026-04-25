@@ -89,7 +89,7 @@ describe('resolveDiff', () => {
     });
 
     it('strips sha: prefix before invoking git diff', async () => {
-        mockGitRun({ stdout: 'RAW_DIFF', exitCode: 1 });
+        mockGitRun({ stdout: 'RAW_DIFF', exitCode: 0 });
 
         const diff = await resolveDiff(
             { workspaceRoot: '/w', baseRef: 'sha:abc', headRef: 'sha:def' },
@@ -104,7 +104,7 @@ describe('resolveDiff', () => {
     });
 
     it('passes plain refs through unchanged', async () => {
-        mockGitRun({ stdout: 'ABC_DIFF', exitCode: 1 });
+        mockGitRun({ stdout: 'ABC_DIFF', exitCode: 0 });
 
         await resolveDiff(
             { workspaceRoot: '/w', baseRef: 'main', headRef: 'feature' },

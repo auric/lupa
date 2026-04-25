@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ModelRequestHandler } from '../models/modelRequestHandler';
 import type { IServiceRegistry } from '../services/serviceManager';
@@ -46,6 +47,11 @@ export async function runHeadlessResolutionJudge(
         opts.payloadPath.split(/[\\/]/).includes('..')
     ) {
         throw new Error(`Invalid payload path: ${opts.payloadPath}`);
+    }
+    if (!path.isAbsolute(opts.payloadPath)) {
+        throw new Error(
+            `payloadPath must be an absolute path, got: ${opts.payloadPath}`
+        );
     }
     const deadlineCancellationSource = new vscode.CancellationTokenSource();
     const cancellationDisposable =

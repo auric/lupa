@@ -3,7 +3,6 @@ import type { IServiceRegistry } from '../services/serviceManager';
 import { DiffUtils } from '../utils/diffUtils';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { RecordedFinding } from '../types/findingTypes';
-import { isCancellationError } from '../utils/asyncUtils';
 import { resolveDiff } from './diffResolver';
 import {
     awaitWithinHeadlessBudget,
@@ -69,28 +68,20 @@ export async function runHeadless(
     }
 
     try {
-        let diffText: string;
-        try {
-            diffText = await resolveDiff(
-                {
-                    workspaceRoot: opts.workspaceRoot,
-                    baseRef: opts.baseRef,
-                    headRef: opts.headRef,
-                    timeoutMs: requireRemainingHeadlessBudgetMs(
-                        opts.timeoutMs,
-                        opts.deadlineAt,
-                        'during diff resolution'
-                    ),
-                    cancellationToken,
-                },
-                services
-            );
-        } catch (err) {
-            if (isCancellationError(err)) {
-                throw new vscode.CancellationError();
-            }
-            throw err;
-        }
+        const diffText = await resolveDiff(
+            {
+                workspaceRoot: opts.workspaceRoot,
+                baseRef: opts.baseRef,
+                headRef: opts.headRef,
+                timeoutMs: requireRemainingHeadlessBudgetMs(
+                    opts.timeoutMs,
+                    opts.deadlineAt,
+                    'during diff resolution'
+                ),
+                cancellationToken,
+            },
+            services
+        );
         if (!diffText.trim()) {
             throw new Error(
                 `No diff produced for ${opts.baseRef}..${opts.headRef}`

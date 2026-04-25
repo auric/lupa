@@ -93,6 +93,8 @@ export function spawnGit(
             keepKillingUntilClose();
             reject(new vscode.CancellationError());
         });
+        proc.stdout.on('error', () => {});
+        proc.stderr.on('error', () => {});
         proc.stdout.on('data', (d) => {
             outputBytes += d.length;
             if (outputBytes > MAX_GIT_OUTPUT_BYTES) {
