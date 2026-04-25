@@ -87,9 +87,7 @@ export async function runHeadless(
             );
         } catch (err) {
             if (isCancellationError(err)) {
-                throw new Error(
-                    formatHeadlessCancellationMessage('during diff resolution')
-                );
+                throw new vscode.CancellationError();
             }
             throw err;
         }

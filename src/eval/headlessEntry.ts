@@ -584,6 +584,8 @@ export async function runHeadlessFromEnv(
                     )
                 );
                 if (args.out) {
+                    const outDir = path.dirname(args.out);
+                    fs.mkdirSync(outDir, { recursive: true });
                     fs.writeFileSync(args.out, JSON.stringify(result, null, 2));
                 }
                 if (!result.completed) {

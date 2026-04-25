@@ -138,8 +138,24 @@ export async function invokeHeadless(
         });
         let stderr = '';
         let stdout = '';
-        child.stdout?.on('data', (d) => (stdout += d.toString()));
-        child.stderr?.on('data', (d) => (stderr += d.toString()));
+        let outputBytes = 0;
+        const MAX_LAUNCHER_OUTPUT_BYTES = 50 * 1024 * 1024;
+        child.stdout?.on('data', (d) => {
+            outputBytes += d.length;
+            if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
+                child.kill('SIGKILL');
+                return;
+            }
+            stdout += d.toString();
+        });
+        child.stderr?.on('data', (d) => {
+            outputBytes += d.length;
+            if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
+                child.kill('SIGKILL');
+                return;
+            }
+            stderr += d.toString();
+        });
 
         let watchdogFired = false;
         watchdog = setTimeout(() => {

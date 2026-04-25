@@ -207,6 +207,10 @@ export async function awaitWithinHeadlessBudget<T>(
         opts.timeoutMs,
         opts.deadlineAt
     );
+    if (opts.cancellationToken?.isCancellationRequested) {
+        throw createHeadlessBudgetCancellationError(opts.phase);
+    }
+
     if (remainingMs <= 0) {
         Promise.resolve()
             .then(() => opts.onBudgetExceeded?.())
@@ -236,11 +240,6 @@ export async function awaitWithinHeadlessBudget<T>(
         });
         cancellationPromise.catch(() => {});
         racers.push(cancellationPromise);
-
-        if (opts.cancellationToken.isCancellationRequested) {
-            cancellationDisposable?.dispose();
-            throw createHeadlessBudgetCancellationError(opts.phase);
-        }
     }
 
     const timeoutPromise = new Promise<never>((_, reject) => {

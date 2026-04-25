@@ -79,8 +79,7 @@ export type ResolutionMethod =
     | 'label-override'
     | 'source-overlap'
     | 'line-range-fallback'
-    | 'judge'
-    | 'judge-unavailable';
+    | 'judge';
 
 export interface FindingResolution {
     findingId: string;

@@ -5,12 +5,14 @@ import { getErrorMessage } from '../../utils/errorUtils';
 
 const GIT_POST_KILL_RETRY_MS = 2_000;
 const GIT_POST_KILL_MAX_RETRIES = 5;
+const MAX_GIT_OUTPUT_BYTES = 50 * 1024 * 1024;
 
 export function spawnGit(
     cwd: string,
     args: string[],
     timeoutMs: number,
-    cancellationToken?: vscode.CancellationToken
+    cancellationToken?: vscode.CancellationToken,
+    acceptableExitCodes: readonly number[] = [0]
 ): Promise<string> {
     return new Promise((resolve, reject) => {
         if (cancellationToken?.isCancellationRequested) {
@@ -20,6 +22,7 @@ export function spawnGit(
         const proc = child_process.spawn('git', args, { cwd });
         let stdout = '';
         let stderr = '';
+        let outputBytes = 0;
         let settled = false;
         let closed = false;
         let cancellation: vscode.Disposable | undefined;
@@ -90,8 +93,40 @@ export function spawnGit(
             keepKillingUntilClose();
             reject(new vscode.CancellationError());
         });
-        proc.stdout.on('data', (d) => (stdout += d.toString()));
-        proc.stderr.on('data', (d) => (stderr += d.toString()));
+        proc.stdout.on('data', (d) => {
+            outputBytes += d.length;
+            if (outputBytes > MAX_GIT_OUTPUT_BYTES) {
+                if (!settled) {
+                    settled = true;
+                    clearSettlingResources();
+                    keepKillingUntilClose();
+                    reject(
+                        new Error(
+                            `git ${args.join(' ')} output exceeded ${MAX_GIT_OUTPUT_BYTES} bytes`
+                        )
+                    );
+                }
+                return;
+            }
+            stdout += d.toString();
+        });
+        proc.stderr.on('data', (d) => {
+            outputBytes += d.length;
+            if (outputBytes > MAX_GIT_OUTPUT_BYTES) {
+                if (!settled) {
+                    settled = true;
+                    clearSettlingResources();
+                    keepKillingUntilClose();
+                    reject(
+                        new Error(
+                            `git ${args.join(' ')} output exceeded ${MAX_GIT_OUTPUT_BYTES} bytes`
+                        )
+                    );
+                }
+                return;
+            }
+            stderr += d.toString();
+        });
         proc.on('error', (error) => {
             cleanupAfterClose();
             if (settled) {
@@ -106,7 +141,7 @@ export function spawnGit(
                 return;
             }
             settled = true;
-            if (code === 0 || code === 1) {
+            if (code !== null && acceptableExitCodes.includes(code)) {
                 resolve(stdout);
             } else {
                 reject(

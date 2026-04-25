@@ -114,7 +114,8 @@ async function runGitDiffNoIndex(
         cwd,
         ['diff', '--no-index', '--', baseRel, headRel],
         timeoutMs,
-        cancellationToken
+        cancellationToken,
+        [0, 1]
     );
     return stripFixturePrefixes(stdout, baseRel, headRel);
 }
@@ -130,7 +131,8 @@ async function runGitDiffRefs(
         cwd,
         ['diff', '--no-ext-diff', base, compare],
         timeoutMs,
-        cancellationToken
+        cancellationToken,
+        [0, 1]
     );
 }
 
