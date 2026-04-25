@@ -315,15 +315,22 @@ function getPromptLocation(
 }
 
 function unwrapCodeFence(content: string): string {
-    // Prefer explicitly tagged json fences. Match from the first opening
-    // ```json to the LAST closing ``` so that nested triple-backticks
-    // inside JSON string values do not prematurely terminate the match.
+    // Prefer explicitly tagged json fences. Try first-close first (simple
+    // single-block response), then last-close (nested triple-backticks
+    // inside JSON string values).
     const jsonOpen = content.match(/```json\s*/i);
     if (jsonOpen) {
         const openIndex = jsonOpen.index!;
         const afterOpen = openIndex + jsonOpen[0].length;
+        const firstClose = content.indexOf('```', afterOpen);
+        if (firstClose > afterOpen) {
+            const candidate = content.slice(afterOpen, firstClose).trim();
+            if (isValidJson(candidate)) {
+                return candidate;
+            }
+        }
         const lastClose = content.lastIndexOf('```');
-        if (lastClose > afterOpen) {
+        if (lastClose > afterOpen && lastClose !== firstClose) {
             const candidate = content.slice(afterOpen, lastClose).trim();
             if (isValidJson(candidate)) {
                 return candidate;
@@ -336,8 +343,15 @@ function unwrapCodeFence(content: string): string {
     if (genericOpen) {
         const openIndex = genericOpen.index!;
         const afterOpen = openIndex + genericOpen[0].length;
+        const firstClose = content.indexOf('```', afterOpen);
+        if (firstClose > afterOpen) {
+            const candidate = content.slice(afterOpen, firstClose).trim();
+            if (isValidJson(candidate)) {
+                return candidate;
+            }
+        }
         const lastClose = content.lastIndexOf('```');
-        if (lastClose > afterOpen) {
+        if (lastClose > afterOpen && lastClose !== firstClose) {
             const candidate = content.slice(afterOpen, lastClose).trim();
             if (isValidJson(candidate)) {
                 return candidate;

@@ -95,8 +95,11 @@ export function spawnGit(
         });
         proc.stdout.on('error', () => {});
         proc.stderr.on('error', () => {});
+        proc.stdout.setEncoding?.('utf8');
+        proc.stderr.setEncoding?.('utf8');
         proc.stdout.on('data', (d) => {
-            outputBytes += d.length;
+            outputBytes +=
+                typeof d === 'string' ? Buffer.byteLength(d, 'utf8') : d.length;
             if (outputBytes > MAX_GIT_OUTPUT_BYTES) {
                 if (!settled) {
                     settled = true;
@@ -110,10 +113,11 @@ export function spawnGit(
                 }
                 return;
             }
-            stdout += d.toString();
+            stdout += d;
         });
         proc.stderr.on('data', (d) => {
-            outputBytes += d.length;
+            outputBytes +=
+                typeof d === 'string' ? Buffer.byteLength(d, 'utf8') : d.length;
             if (outputBytes > MAX_GIT_OUTPUT_BYTES) {
                 if (!settled) {
                     settled = true;
@@ -127,7 +131,7 @@ export function spawnGit(
                 }
                 return;
             }
-            stderr += d.toString();
+            stderr += d;
         });
         proc.on('error', (error) => {
             cleanupAfterClose();

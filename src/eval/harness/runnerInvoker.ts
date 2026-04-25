@@ -427,10 +427,12 @@ export async function invokeResolutionJudge(
         let stderr = '';
         let stdout = '';
         let outputBytes = 0;
+        let outputLimitExceeded = false;
         const MAX_LAUNCHER_OUTPUT_BYTES = 50 * 1024 * 1024;
         child.stdout?.on('data', (d) => {
             outputBytes += d.length;
             if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
+                outputLimitExceeded = true;
                 child.kill('SIGKILL');
                 return;
             }
@@ -439,6 +441,7 @@ export async function invokeResolutionJudge(
         child.stderr?.on('data', (d) => {
             outputBytes += d.length;
             if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
+                outputLimitExceeded = true;
                 child.kill('SIGKILL');
                 return;
             }
