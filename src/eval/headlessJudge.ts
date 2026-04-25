@@ -284,7 +284,11 @@ function summarizeJudgeResponse(content: string): string {
         return normalized;
     }
     const truncateAt = MAX_JUDGE_SUMMARY_LENGTH - TRUNCATION_SUFFIX.length;
-    return `${normalized.slice(0, truncateAt)}${TRUNCATION_SUFFIX}`;
+    const chars = Array.from(normalized);
+    if (chars.length <= truncateAt) {
+        return normalized;
+    }
+    return `${chars.slice(0, truncateAt).join('')}${TRUNCATION_SUFFIX}`;
 }
 
 function getPromptLocation(

@@ -2612,7 +2612,7 @@ index 1234567..89abcde 100644
                 ['checkout', '--force', 'deadbeef'],
                 expect.objectContaining({
                     cwd: '/tmp/workspace',
-                    stdio: 'pipe',
+                    stdio: ['ignore', 'ignore', 'pipe'],
                     detached: process.platform !== 'win32',
                 })
             );

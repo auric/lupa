@@ -62,19 +62,18 @@ export interface InvokeResolutionJudgeResult {
 export async function invokeHeadless(
     opts: InvokeHeadlessOptions
 ): Promise<InvokeHeadlessResult> {
-    validateRef(opts.baseRef, 'baseRef');
-    validateRef(opts.headRef, 'headRef');
-    if (opts.timeoutMs < MIN_TIMEOUT_MS) {
-        throw new Error(
-            `invokeHeadless: timeoutMs must be >= ${MIN_TIMEOUT_MS} (got ${opts.timeoutMs})`
-        );
-    }
-
     const startedAt = Date.now();
     let tmpDir: string | undefined;
 
     let watchdog: NodeJS.Timeout | undefined;
     try {
+        validateRef(opts.baseRef, 'baseRef');
+        validateRef(opts.headRef, 'headRef');
+        if (opts.timeoutMs < MIN_TIMEOUT_MS) {
+            throw new Error(
+                `invokeHeadless: timeoutMs must be >= ${MIN_TIMEOUT_MS} (got ${opts.timeoutMs})`
+            );
+        }
         // Kind-B (sha:) fixtures are cloned --no-checkout for speed, but
         // Lupa's tools need a working tree to read files. Check out the head
         // SHA before spawning VS Code so get_file_diff and friends have real
@@ -163,9 +162,13 @@ export async function invokeHeadless(
         let watchdogFired = false;
         watchdog = setTimeout(() => {
             watchdogFired = true;
-            process.stderr.write(
-                `[harness] watchdog: killing launcher after ${watchdogMs}ms\n`
-            );
+            try {
+                process.stderr.write(
+                    `[harness] watchdog: killing launcher after ${watchdogMs}ms\n`
+                );
+            } catch {
+                /* stderr may be closed */
+            }
             killTree(child);
         }, watchdogMs);
 
@@ -230,9 +233,13 @@ export async function invokeHeadless(
             await fs
                 .rm(tmpDir, { recursive: true, force: true })
                 .catch((err) => {
-                    process.stderr.write(
-                        `[harness] warn: failed to remove temp dir ${tmpDir}: ${err instanceof Error ? err.message : String(err)}\n`
-                    );
+                    try {
+                        process.stderr.write(
+                            `[harness] warn: failed to remove temp dir ${tmpDir}: ${err instanceof Error ? err.message : String(err)}\n`
+                        );
+                    } catch {
+                        /* stderr may be closed */
+                    }
                 });
         }
     }
@@ -268,7 +275,7 @@ async function ensureHeadCheckout(
     await new Promise<void>((resolve, reject) => {
         const proc = spawn('git', ['checkout', '--force', sha], {
             cwd: workspaceRoot,
-            stdio: 'pipe',
+            stdio: ['ignore', 'ignore', 'pipe'],
             detached: process.platform !== 'win32',
         });
         let stderr = '';
@@ -457,9 +464,13 @@ export async function invokeResolutionJudge(
         let watchdogFired = false;
         watchdog = setTimeout(() => {
             watchdogFired = true;
-            process.stderr.write(
-                `[harness] watchdog: killing resolution judge launcher after ${watchdogMs}ms\n`
-            );
+            try {
+                process.stderr.write(
+                    `[harness] watchdog: killing resolution judge launcher after ${watchdogMs}ms\n`
+                );
+            } catch {
+                /* stderr may be closed */
+            }
             killTree(child);
         }, watchdogMs);
 

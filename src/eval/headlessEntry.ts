@@ -468,7 +468,11 @@ function writeSentinel(exitCode: number, error: string | undefined): void {
         fs.renameSync(tmpPath, sentinelPath);
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`Failed to write headless sentinel: ${msg}\n`);
+        try {
+            process.stderr.write(`Failed to write headless sentinel: ${msg}\n`);
+        } catch {
+            /* stderr may be closed */
+        }
         if (wroteTmp) {
             try {
                 fs.unlinkSync(tmpPath);
@@ -612,12 +616,16 @@ export async function runHeadlessFromEnv(
                     );
                 }
                 if (!args.silent) {
-                    process.stdout.write(
-                        `Analysis complete: ${result.findings.length} findings, ` +
-                            `${result.telemetry.iterations} iterations, ` +
-                            `${result.telemetry.toolCalls} tool calls, ` +
-                            `${result.telemetry.durationMs}ms\n`
-                    );
+                    try {
+                        process.stdout.write(
+                            `Analysis complete: ${result.findings.length} findings, ` +
+                                `${result.telemetry.iterations} iterations, ` +
+                                `${result.telemetry.toolCalls} tool calls, ` +
+                                `${result.telemetry.durationMs}ms\n`
+                        );
+                    } catch {
+                        /* stdout may be closed */
+                    }
                 }
             } else {
                 const result = await awaitWithCancellation(
@@ -644,9 +652,13 @@ export async function runHeadlessFromEnv(
                     fs.writeFileSync(args.out, JSON.stringify(result, null, 2));
                 }
                 if (!args.silent) {
-                    process.stdout.write(
-                        `Resolution judge complete: ${result.verdict} (${result.modelId})\n`
-                    );
+                    try {
+                        process.stdout.write(
+                            `Resolution judge complete: ${result.verdict} (${result.modelId})\n`
+                        );
+                    } catch {
+                        /* stdout may be closed */
+                    }
                 }
             }
         } finally {

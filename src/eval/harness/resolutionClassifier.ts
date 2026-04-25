@@ -1387,7 +1387,7 @@ function summarizeResolution(
     attempted: number,
     warnings: readonly ResolutionWarning[]
 ): ResolutionSummary {
-    const bySeverity: ResolutionSummary['bySeverity'] = {};
+    const bySeverity: ResolutionSummary['bySeverity'] = Object.create(null);
     let resolved = 0;
     let unresolved = 0;
     let disputed = 0;
