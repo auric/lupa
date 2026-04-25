@@ -441,9 +441,20 @@ function writeSentinel(exitCode: number, error: string | undefined): void {
     let wroteTmp = false;
     const tmpPath = `${sentinelPath}.tmp`;
     try {
-        const allowedRoots = [process.cwd(), os.tmpdir()];
-        assertSafeFilePath(sentinelPath, 'sentinelPath', allowedRoots);
-        assertSafeFilePath(tmpPath, 'tmpPath', allowedRoots);
+        // Sentinel paths are set by the launcher via env var and are
+        // considered trusted (the launcher controls the temp directory).
+        // Only validate basic safety: absolute path with no '..' segments.
+        if (!path.isAbsolute(sentinelPath)) {
+            throw new Error(`sentinelPath must be absolute: ${sentinelPath}`);
+        }
+        if (sentinelPath.split(/[\\/]/).includes('..')) {
+            throw new Error(
+                `sentinelPath contains '..' segment: ${sentinelPath}`
+            );
+        }
+        if (tmpPath.split(/[\\/]/).includes('..')) {
+            throw new Error(`tmpPath contains '..' segment: ${tmpPath}`);
+        }
         fs.writeFileSync(
             tmpPath,
             JSON.stringify({ exitCode, error: error ?? null }, null, 2)
@@ -666,10 +677,15 @@ function sentinelExists(): boolean {
         return false;
     }
     try {
-        assertSafeFilePath(sentinelPath, 'sentinelPath', [
-            process.cwd(),
-            os.tmpdir(),
-        ]);
+        // Sentinel paths are set by the launcher via env var and are
+        // considered trusted (the launcher controls the temp directory).
+        // Only validate basic safety: absolute path with no '..' segments.
+        if (!path.isAbsolute(sentinelPath)) {
+            return false;
+        }
+        if (sentinelPath.split(/[\\/]/).includes('..')) {
+            return false;
+        }
         return fs.statSync(sentinelPath).isFile();
     } catch {
         return false;

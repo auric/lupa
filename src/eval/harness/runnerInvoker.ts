@@ -184,7 +184,8 @@ export async function invokeHeadless(
             exitCode === 0 &&
             parsed.ok &&
             parsed.result.completed &&
-            !watchdogFired
+            !watchdogFired &&
+            !outputLimitExceeded
         ) {
             return { ok: true, result: parsed.result, durationMs };
         }
@@ -475,7 +476,12 @@ export async function invokeResolutionJudge(
             outPath,
             getResolutionJudgeResultValidationError
         );
-        if (exitCode === 0 && parsed.ok && !watchdogFired) {
+        if (
+            exitCode === 0 &&
+            parsed.ok &&
+            !watchdogFired &&
+            !outputLimitExceeded
+        ) {
             return { result: parsed.result, durationMs };
         }
 
