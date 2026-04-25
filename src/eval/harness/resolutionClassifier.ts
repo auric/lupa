@@ -597,8 +597,16 @@ function getComparableSources(
         sources: [
             {
                 path: normalizePath(finding.file, workspaceRoot),
-                lineStart: finding.lineRange[0],
-                lineEnd: finding.lineRange[1],
+                lineStart:
+                    Array.isArray(finding.lineRange) &&
+                    finding.lineRange.length >= 2
+                        ? finding.lineRange[0]
+                        : 0,
+                lineEnd:
+                    Array.isArray(finding.lineRange) &&
+                    finding.lineRange.length >= 2
+                        ? finding.lineRange[1]
+                        : 0,
             },
         ],
         usedFallback: true,

@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ModelRequestHandler } from '../models/modelRequestHandler';
@@ -51,6 +52,18 @@ export async function runHeadlessResolutionJudge(
     if (!path.isAbsolute(opts.payloadPath)) {
         throw new Error(
             `payloadPath must be an absolute path, got: ${opts.payloadPath}`
+        );
+    }
+    const resolvedPayload = path.resolve(opts.payloadPath);
+    const resolvedWorkspace = path.resolve(opts.workspaceRoot);
+    const relToWorkspace = path.relative(resolvedWorkspace, resolvedPayload);
+    const relToTmp = path.relative(os.tmpdir(), resolvedPayload);
+    if (
+        (relToWorkspace.startsWith('..') || path.isAbsolute(relToWorkspace)) &&
+        (relToTmp.startsWith('..') || path.isAbsolute(relToTmp))
+    ) {
+        throw new Error(
+            `payloadPath must be within workspaceRoot or temp directory: ${opts.payloadPath}`
         );
     }
     const deadlineCancellationSource = new vscode.CancellationTokenSource();
@@ -131,18 +144,17 @@ export async function runHeadlessResolutionJudge(
 async function readPayload(
     payloadPath: string
 ): Promise<ResolutionJudgePayload> {
-    const stats = await fs.promises.stat(payloadPath);
-    if (stats.size > MAX_JUDGE_PAYLOAD_BYTES) {
-        throw new Error(
-            `Resolution-judge payload exceeds maximum size of ${MAX_JUDGE_PAYLOAD_BYTES} bytes`
-        );
-    }
     let raw: string;
     try {
         raw = await fs.promises.readFile(payloadPath, 'utf8');
     } catch (error) {
         throw new Error(
             `Failed to read resolution-judge payload at ${payloadPath}: ${error instanceof Error ? error.message : String(error)}`
+        );
+    }
+    if (raw.length > MAX_JUDGE_PAYLOAD_BYTES) {
+        throw new Error(
+            `Resolution-judge payload exceeds maximum size of ${MAX_JUDGE_PAYLOAD_BYTES} bytes`
         );
     }
 
@@ -280,14 +292,11 @@ function parseJudgeResponse(
 
 function summarizeJudgeResponse(content: string): string {
     const normalized = content.replace(/\s+/gu, ' ').trim();
-    if (normalized.length <= MAX_JUDGE_SUMMARY_LENGTH) {
+    const chars = Array.from(normalized);
+    if (chars.length <= MAX_JUDGE_SUMMARY_LENGTH) {
         return normalized;
     }
     const truncateAt = MAX_JUDGE_SUMMARY_LENGTH - TRUNCATION_SUFFIX.length;
-    const chars = Array.from(normalized);
-    if (chars.length <= truncateAt) {
-        return normalized;
-    }
     return `${chars.slice(0, truncateAt).join('')}${TRUNCATION_SUFFIX}`;
 }
 

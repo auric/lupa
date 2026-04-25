@@ -143,8 +143,14 @@ export async function invokeHeadless(
         child.stdout?.on('data', (d) => {
             outputBytes += d.length;
             if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
-                outputLimitExceeded = true;
-                child.kill('SIGKILL');
+                if (!outputLimitExceeded) {
+                    outputLimitExceeded = true;
+                    try {
+                        child.kill('SIGKILL');
+                    } catch {
+                        /* already gone */
+                    }
+                }
                 return;
             }
             stdout += d.toString();
@@ -152,8 +158,14 @@ export async function invokeHeadless(
         child.stderr?.on('data', (d) => {
             outputBytes += d.length;
             if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
-                outputLimitExceeded = true;
-                child.kill('SIGKILL');
+                if (!outputLimitExceeded) {
+                    outputLimitExceeded = true;
+                    try {
+                        child.kill('SIGKILL');
+                    } catch {
+                        /* already gone */
+                    }
+                }
                 return;
             }
             stderr += d.toString();
@@ -445,8 +457,14 @@ export async function invokeResolutionJudge(
         child.stdout?.on('data', (d) => {
             outputBytes += d.length;
             if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
-                outputLimitExceeded = true;
-                child.kill('SIGKILL');
+                if (!outputLimitExceeded) {
+                    outputLimitExceeded = true;
+                    try {
+                        child.kill('SIGKILL');
+                    } catch {
+                        /* already gone */
+                    }
+                }
                 return;
             }
             stdout += d.toString();
@@ -454,8 +472,14 @@ export async function invokeResolutionJudge(
         child.stderr?.on('data', (d) => {
             outputBytes += d.length;
             if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
-                outputLimitExceeded = true;
-                child.kill('SIGKILL');
+                if (!outputLimitExceeded) {
+                    outputLimitExceeded = true;
+                    try {
+                        child.kill('SIGKILL');
+                    } catch {
+                        /* already gone */
+                    }
+                }
                 return;
             }
             stderr += d.toString();
@@ -529,9 +553,13 @@ export async function invokeResolutionJudge(
             clearTimeout(watchdog);
         }
         await fs.rm(tmpDir, { recursive: true, force: true }).catch((err) => {
-            process.stderr.write(
-                `[harness] warn: failed to remove temp dir ${tmpDir}: ${err instanceof Error ? err.message : String(err)}\n`
-            );
+            try {
+                process.stderr.write(
+                    `[harness] warn: failed to remove temp dir ${tmpDir}: ${err instanceof Error ? err.message : String(err)}\n`
+                );
+            } catch {
+                /* stderr may be closed */
+            }
         });
     }
 }

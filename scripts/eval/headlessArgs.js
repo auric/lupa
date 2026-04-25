@@ -141,7 +141,7 @@ function requireValue(argv, index, flag) {
 
 function parseIntFlag(raw, flag) {
     const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n) || String(n) !== raw.trim()) {
+    if (!Number.isFinite(n) || !/^[-+]?\d+$/.test(raw.trim())) {
         throw new HeadlessArgError(`${flag} must be an integer (got ${raw})`);
     }
     return n;

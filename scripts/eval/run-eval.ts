@@ -302,7 +302,10 @@ async function relocateReports(
     outDir: string,
     paths: { jsonPath: string; markdownPath: string }
 ): Promise<{ jsonPath: string; markdownPath: string }> {
-    if (path.resolve(outDir) === path.resolve(RESULTS_ROOT)) {
+    if (
+        path.resolve(outDir).toLowerCase() ===
+        path.resolve(RESULTS_ROOT).toLowerCase()
+    ) {
         return paths;
     }
     await fs.mkdir(outDir, { recursive: true });
@@ -621,12 +624,13 @@ if (isDirectExecution()) {
         .then((code) => process.exit(code))
         .catch((err: unknown) => {
             if (err instanceof CliError) {
-                process.stderr.write(err.message + '\n\n' + USAGE);
-                process.exit(2);
+                process.stderr.write(err.message + '\n\n' + USAGE, () =>
+                    process.exit(2)
+                );
+                return;
             }
             const msg =
                 err instanceof Error ? (err.stack ?? err.message) : String(err);
-            process.stderr.write(msg + '\n');
-            process.exit(1);
+            process.stderr.write(msg + '\n', () => process.exit(1));
         });
 }
