@@ -1438,7 +1438,9 @@ function summarizeResolution(
         disputed,
         noise,
         resolutionRate:
-            metricStatus === 'valid' ? resolved / total : Number.NaN,
+            metricStatus === 'valid' && total > 0
+                ? resolved / total
+                : Number.NaN,
         metricStatus,
         bySeverity,
         findings: [...findings],
@@ -1487,7 +1489,7 @@ function finalizeBucket(bucket: ResolutionBucket): void {
         bucket.skipped
     );
     bucket.resolutionRate =
-        bucket.metricStatus === 'valid'
+        bucket.metricStatus === 'valid' && bucket.total > 0
             ? bucket.resolved / bucket.total
             : Number.NaN;
 }

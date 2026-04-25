@@ -441,10 +441,9 @@ function writeSentinel(exitCode: number, error: string | undefined): void {
     let wroteTmp = false;
     const tmpPath = `${sentinelPath}.tmp`;
     try {
-        assertSafeFilePath(sentinelPath, 'sentinelPath', [
-            process.cwd(),
-            os.tmpdir(),
-        ]);
+        const allowedRoots = [process.cwd(), os.tmpdir()];
+        assertSafeFilePath(sentinelPath, 'sentinelPath', allowedRoots);
+        assertSafeFilePath(tmpPath, 'tmpPath', allowedRoots);
         fs.writeFileSync(
             tmpPath,
             JSON.stringify({ exitCode, error: error ?? null }, null, 2)
