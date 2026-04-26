@@ -71,8 +71,11 @@ export function createHeadlessDeadline(timeoutMs: number): number {
 /**
  * Returns the remaining budget in milliseconds.
  *
- * When `deadlineAt` is undefined, the function returns the full `timeoutMs`
- * regardless of elapsed time. This is a deliberate conservative fallback.
+ * When `deadlineAt` is set, the function returns `deadlineAt - now` so that
+ * sequential budget phases share a single diminishing deadline. When
+ * `deadlineAt` is undefined, the function returns the full `timeoutMs`
+ * regardless of elapsed time. This is a deliberate conservative fallback for
+ * callers that do not compute a shared deadline.
  */
 export function getRemainingHeadlessBudgetMs(
     timeoutMs: number,
