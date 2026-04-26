@@ -1513,9 +1513,10 @@ function finalizeBucket(bucket: ResolutionBucket): void {
         bucket.attempted,
         bucket.skipped
     );
+    const realFindings = bucket.resolved + bucket.unresolved + bucket.disputed;
     bucket.resolutionRate =
-        bucket.metricStatus === 'valid' && bucket.total > 0
-            ? bucket.resolved / bucket.total
+        bucket.metricStatus === 'valid' && realFindings > 0
+            ? bucket.resolved / realFindings
             : Number.NaN;
 }
 

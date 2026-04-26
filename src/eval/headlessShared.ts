@@ -147,7 +147,7 @@ export function validateRef(ref: string, fieldName: string): void {
                 );
             }
             const parts = body.split(/[\\/]/);
-            if (parts.some((p) => p === '..' || p.startsWith('..'))) {
+            if (parts.some((p) => p === '..')) {
                 throw new Error(
                     `${fieldName}: dir: ref contains '..' which is not allowed — got '${ref}'`
                 );
@@ -220,11 +220,11 @@ export async function awaitWithinHeadlessBudget<T>(
     }
 
     if (remainingMs <= 0) {
-        Promise.resolve()
-            .then(() => opts.onBudgetExceeded?.())
-            .catch(() => {
-                /* ignore callback errors — primary timeout must always throw */
-            });
+        try {
+            opts.onBudgetExceeded?.();
+        } catch {
+            /* ignore callback errors — primary timeout must always throw */
+        }
         throw createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase);
     }
 
@@ -253,14 +253,14 @@ export async function awaitWithinHeadlessBudget<T>(
     const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
             budgetExceeded = true;
+            try {
+                opts.onBudgetExceeded?.();
+            } catch {
+                /* ignore callback errors — primary timeout already rejected */
+            }
             reject(
                 createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase)
             );
-            Promise.resolve()
-                .then(() => opts.onBudgetExceeded?.())
-                .catch(() => {
-                    /* ignore callback errors — primary timeout already rejected */
-                });
         }, remainingMs);
     });
     timeoutPromise.catch(() => {});
