@@ -57,47 +57,48 @@ export async function runHeadlessResolutionJudge(
             )
         );
     }
-    if (
-        opts.payloadPath.includes('\0') ||
-        opts.payloadPath.split(/[\\/]/).includes('..')
-    ) {
-        throw new Error(`Invalid payload path: ${opts.payloadPath}`);
-    }
-    if (!path.isAbsolute(opts.payloadPath)) {
-        throw new Error(
-            `payloadPath must be an absolute path, got: ${opts.payloadPath}`
-        );
-    }
-    // Resolve symlinks to prevent path traversal via symlink outside bounds.
-    let realPayload: string;
     try {
-        realPayload = await fs.promises.realpath(opts.payloadPath);
-    } catch {
-        realPayload = path.resolve(opts.payloadPath);
-    }
-    let realWorkspace: string;
-    try {
-        realWorkspace = await fs.promises.realpath(opts.workspaceRoot);
-    } catch {
-        realWorkspace = path.resolve(opts.workspaceRoot);
-    }
-    let realTmp: string;
-    try {
-        realTmp = await fs.promises.realpath(os.tmpdir());
-    } catch {
-        realTmp = path.resolve(os.tmpdir());
-    }
-    const relToWorkspace = path.relative(realWorkspace, realPayload);
-    const relToTmp = path.relative(realTmp, realPayload);
-    if (
-        (relToWorkspace.startsWith('..') || path.isAbsolute(relToWorkspace)) &&
-        (relToTmp.startsWith('..') || path.isAbsolute(relToTmp))
-    ) {
-        throw new Error(
-            `payloadPath must be within workspaceRoot or temp directory: ${opts.payloadPath}`
-        );
-    }
-    try {
+        if (
+            opts.payloadPath.includes('\0') ||
+            opts.payloadPath.split(/[\\/]/).includes('..')
+        ) {
+            throw new Error(`Invalid payload path: ${opts.payloadPath}`);
+        }
+        if (!path.isAbsolute(opts.payloadPath)) {
+            throw new Error(
+                `payloadPath must be an absolute path, got: ${opts.payloadPath}`
+            );
+        }
+        // Resolve symlinks to prevent path traversal via symlink outside bounds.
+        let realPayload: string;
+        try {
+            realPayload = await fs.promises.realpath(opts.payloadPath);
+        } catch {
+            realPayload = path.resolve(opts.payloadPath);
+        }
+        let realWorkspace: string;
+        try {
+            realWorkspace = await fs.promises.realpath(opts.workspaceRoot);
+        } catch {
+            realWorkspace = path.resolve(opts.workspaceRoot);
+        }
+        let realTmp: string;
+        try {
+            realTmp = await fs.promises.realpath(os.tmpdir());
+        } catch {
+            realTmp = path.resolve(os.tmpdir());
+        }
+        const relToWorkspace = path.relative(realWorkspace, realPayload);
+        const relToTmp = path.relative(realTmp, realPayload);
+        if (
+            (relToWorkspace.startsWith('..') ||
+                path.isAbsolute(relToWorkspace)) &&
+            (relToTmp.startsWith('..') || path.isAbsolute(relToTmp))
+        ) {
+            throw new Error(
+                `payloadPath must be within workspaceRoot or temp directory: ${opts.payloadPath}`
+            );
+        }
         const payload = await readPayload(opts.payloadPath);
         const normalizedRequestedIdentifier = normalizeModelIdentifier(
             opts.modelIdentifier

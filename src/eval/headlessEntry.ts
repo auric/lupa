@@ -413,15 +413,11 @@ async function awaitWithCancellation<T>(
     }
 
     return await new Promise<T>((resolve, reject) => {
+        promise.catch(() => {});
         const subscription = token.onCancellationRequested(() => {
             subscription.dispose();
             reject(new Error(timeoutMessage));
         });
-        if (token.isCancellationRequested) {
-            subscription.dispose();
-            reject(new Error(timeoutMessage));
-            return;
-        }
         promise.then(
             (value) => {
                 subscription.dispose();
