@@ -19,7 +19,10 @@ export function spawnGit(
             reject(new vscode.CancellationError());
             return;
         }
-        const proc = child_process.spawn('git', args, { cwd });
+        const proc = child_process.spawn('git', args, {
+            cwd,
+            detached: process.platform !== 'win32',
+        });
         let stdout = '';
         let stderr = '';
         let outputBytes = 0;
@@ -46,6 +49,13 @@ export function spawnGit(
                 return;
             }
 
+            if (process.platform !== 'win32' && proc.pid) {
+                try {
+                    process.kill(-proc.pid, 'SIGKILL');
+                } catch {
+                    // already gone
+                }
+            }
             try {
                 proc.kill('SIGKILL');
             } catch {

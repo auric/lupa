@@ -1448,6 +1448,11 @@ function summarizeResolution(
     }
 
     const total = findings.length;
+    // Exclude noise from the resolution rate denominator because noise
+    // findings are false positives, not real code-review items that need
+    // to be resolved. Resolution rate should measure only the real
+    // findings (resolved + unresolved + disputed).
+    const realFindings = resolved + unresolved + disputed;
     const metricStatus = getResolutionMetricStatus(attempted, warnings.length);
     return {
         attempted,
@@ -1458,8 +1463,8 @@ function summarizeResolution(
         disputed,
         noise,
         resolutionRate:
-            metricStatus === 'valid' && total > 0
-                ? resolved / total
+            metricStatus === 'valid' && realFindings > 0
+                ? resolved / realFindings
                 : Number.NaN,
         metricStatus,
         bySeverity,

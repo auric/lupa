@@ -99,8 +99,8 @@ export function formatHeadlessCancellationMessage(phase: string): string {
 /**
  * Validates a ref string.
  *
- * SHA validation only accepts SHA-1 hashes (up to 40 hex chars).
- * SHA-256 repositories (64 hex chars) are not supported.
+ * SHA validation accepts SHA-1 (up to 40 hex chars) and SHA-256
+ * (up to 64 hex chars) formats.
  */
 const MAX_REF_LENGTH = 4096;
 
