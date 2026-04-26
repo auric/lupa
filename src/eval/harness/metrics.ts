@@ -58,13 +58,15 @@ function aggregateModel(
     // aggregate via isFinite filtering inside aggregateResolutionRate.
     const resolutionRate = aggregateResolutionRate(ok);
     const iterations = meanStddev(
-        ok.map((r) => r.result?.telemetry.iterations ?? 0)
+        ok.map((r) => r.result?.telemetry.iterations ?? 0).filter(isFinite)
     );
     const promptTokens = meanStddev(
-        ok.map((r) => r.result?.telemetry.promptTokens ?? 0)
+        ok.map((r) => r.result?.telemetry.promptTokens ?? 0).filter(isFinite)
     );
     const completionTokens = meanStddev(
-        ok.map((r) => r.result?.telemetry.completionTokens ?? 0)
+        ok
+            .map((r) => r.result?.telemetry.completionTokens ?? 0)
+            .filter(isFinite)
     );
     // TODO(quest-8.1): plumb token costs once AnalysisEngine exposes them
     const costUsd = meanStddev(ok.map(() => 0));
@@ -191,7 +193,7 @@ function aggregateResolutionRateBySeverity(
                 continue;
             }
 
-            const bucket = run.resolution?.bySeverity[severity];
+            const bucket = run.resolution?.bySeverity?.[severity];
             const status = bucket?.metricStatus ?? 'no-findings';
             if (status === 'valid') {
                 const rate = bucket?.resolutionRate ?? Number.NaN;

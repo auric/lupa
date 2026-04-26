@@ -121,6 +121,12 @@ export function validateRef(ref: string, fieldName: string): void {
             `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
         );
     }
+
+    // Block null bytes early (they truncate paths in C libraries).
+    if (ref.includes('\0')) {
+        throw new Error(`${fieldName}: contains null byte — got '${ref}'`);
+    }
+
     const hasScheme = ref.startsWith('dir:') || ref.startsWith('sha:');
     if (hasScheme) {
         const body = ref.slice(ref.indexOf(':') + 1);
@@ -149,13 +155,18 @@ export function validateRef(ref: string, fieldName: string): void {
                     `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
                 );
             }
+            // Reject absolute paths in dir: scheme.
+            if (path.isAbsolute(body)) {
+                throw new Error(
+                    `${fieldName}: dir: body must be a relative path — got '${ref}'`
+                );
+            }
             const parts = body.split(/[\\/]/);
             if (parts.some((p) => p === '..')) {
                 throw new Error(
                     `${fieldName}: dir: ref contains '..' which is not allowed — got '${ref}'`
                 );
             }
-            return;
         }
         return;
     }

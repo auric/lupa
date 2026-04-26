@@ -131,7 +131,8 @@ async function runGitDiffRefs(
         cwd,
         ['diff', '--no-ext-diff', base, compare],
         timeoutMs,
-        cancellationToken
+        cancellationToken,
+        [0, 1]
     );
 }
 
