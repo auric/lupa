@@ -43,29 +43,6 @@ export async function runHeadlessResolutionJudge(
     opts: HeadlessResolutionJudgeOptions,
     services: IServiceRegistry
 ): Promise<ResolutionJudgeResult> {
-    if (
-        opts.payloadPath.includes('\0') ||
-        opts.payloadPath.split(/[\\/]/).includes('..')
-    ) {
-        throw new Error(`Invalid payload path: ${opts.payloadPath}`);
-    }
-    if (!path.isAbsolute(opts.payloadPath)) {
-        throw new Error(
-            `payloadPath must be an absolute path, got: ${opts.payloadPath}`
-        );
-    }
-    const resolvedPayload = path.resolve(opts.payloadPath);
-    const resolvedWorkspace = path.resolve(opts.workspaceRoot);
-    const relToWorkspace = path.relative(resolvedWorkspace, resolvedPayload);
-    const relToTmp = path.relative(os.tmpdir(), resolvedPayload);
-    if (
-        (relToWorkspace.startsWith('..') || path.isAbsolute(relToWorkspace)) &&
-        (relToTmp.startsWith('..') || path.isAbsolute(relToTmp))
-    ) {
-        throw new Error(
-            `payloadPath must be within workspaceRoot or temp directory: ${opts.payloadPath}`
-        );
-    }
     const deadlineCancellationSource = new vscode.CancellationTokenSource();
     const cancellationDisposable =
         opts.cancellationToken.onCancellationRequested(() => {
@@ -78,6 +55,46 @@ export async function runHeadlessResolutionJudge(
             formatHeadlessCancellationMessage(
                 'before resolution judging started'
             )
+        );
+    }
+    if (
+        opts.payloadPath.includes('\0') ||
+        opts.payloadPath.split(/[\\/]/).includes('..')
+    ) {
+        throw new Error(`Invalid payload path: ${opts.payloadPath}`);
+    }
+    if (!path.isAbsolute(opts.payloadPath)) {
+        throw new Error(
+            `payloadPath must be an absolute path, got: ${opts.payloadPath}`
+        );
+    }
+    // Resolve symlinks to prevent path traversal via symlink outside bounds.
+    let realPayload: string;
+    try {
+        realPayload = await fs.promises.realpath(opts.payloadPath);
+    } catch {
+        realPayload = path.resolve(opts.payloadPath);
+    }
+    let realWorkspace: string;
+    try {
+        realWorkspace = await fs.promises.realpath(opts.workspaceRoot);
+    } catch {
+        realWorkspace = path.resolve(opts.workspaceRoot);
+    }
+    let realTmp: string;
+    try {
+        realTmp = await fs.promises.realpath(os.tmpdir());
+    } catch {
+        realTmp = path.resolve(os.tmpdir());
+    }
+    const relToWorkspace = path.relative(realWorkspace, realPayload);
+    const relToTmp = path.relative(realTmp, realPayload);
+    if (
+        (relToWorkspace.startsWith('..') || path.isAbsolute(relToWorkspace)) &&
+        (relToTmp.startsWith('..') || path.isAbsolute(relToTmp))
+    ) {
+        throw new Error(
+            `payloadPath must be within workspaceRoot or temp directory: ${opts.payloadPath}`
         );
     }
     try {
@@ -331,44 +348,26 @@ function unwrapCodeFence(content: string): string {
     // Prefer explicitly tagged json fences. Try first-close first (simple
     // single-block response), then last-close (nested triple-backticks
     // inside JSON string values).
-    const jsonOpen = content.match(/```json\s*/i);
-    if (jsonOpen) {
-        const openIndex = jsonOpen.index!;
-        const afterOpen = openIndex + jsonOpen[0].length;
-        const firstClose = content.indexOf('```', afterOpen);
-        if (firstClose > afterOpen) {
-            const candidate = content.slice(afterOpen, firstClose).trim();
-            if (isValidJson(candidate)) {
-                return candidate;
-            }
+    // Try json-tagged fences first, then generic fences.
+    for (const pattern of [/```\s*json\s*/i, /```\s*/]) {
+        const match = content.match(pattern);
+        if (!match) {
+            continue;
         }
-        const lastClose = content.lastIndexOf('```');
-        if (lastClose > afterOpen && lastClose !== firstClose) {
-            const candidate = content.slice(afterOpen, lastClose).trim();
+        const openIndex = match.index!;
+        const afterOpen = openIndex + match[0].length;
+        // Iterate over all fence closings and return the first valid JSON.
+        let searchFrom = afterOpen;
+        while (true) {
+            const closeIndex = content.indexOf('```', searchFrom);
+            if (closeIndex === -1) {
+                break;
+            }
+            const candidate = content.slice(afterOpen, closeIndex).trim();
             if (isValidJson(candidate)) {
                 return candidate;
             }
-        }
-    }
-
-    // Same fallback for generic fences.
-    const genericOpen = content.match(/```\s*/);
-    if (genericOpen) {
-        const openIndex = genericOpen.index!;
-        const afterOpen = openIndex + genericOpen[0].length;
-        const firstClose = content.indexOf('```', afterOpen);
-        if (firstClose > afterOpen) {
-            const candidate = content.slice(afterOpen, firstClose).trim();
-            if (isValidJson(candidate)) {
-                return candidate;
-            }
-        }
-        const lastClose = content.lastIndexOf('```');
-        if (lastClose > afterOpen && lastClose !== firstClose) {
-            const candidate = content.slice(afterOpen, lastClose).trim();
-            if (isValidJson(candidate)) {
-                return candidate;
-            }
+            searchFrom = closeIndex + 3;
         }
     }
 

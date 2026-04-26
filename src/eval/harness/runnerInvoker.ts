@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
-import { spawn, type ChildProcess, execFileSync } from 'node:child_process';
+import { spawn, type ChildProcess, execFile } from 'node:child_process';
 import {
     getHeadlessAnalysisResultValidationError,
     type HarnessHeadlessAnalysisResult,
@@ -140,7 +140,11 @@ export async function invokeHeadless(
         let outputBytes = 0;
         let outputLimitExceeded = false;
         const MAX_LAUNCHER_OUTPUT_BYTES = 50 * 1024 * 1024;
+        let watchdogFired = false;
         child.stdout?.on('data', (d) => {
+            if (watchdogFired) {
+                return;
+            }
             outputBytes += d.length;
             if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
                 if (!outputLimitExceeded) {
@@ -156,6 +160,9 @@ export async function invokeHeadless(
             stdout += d.toString();
         });
         child.stderr?.on('data', (d) => {
+            if (watchdogFired) {
+                return;
+            }
             outputBytes += d.length;
             if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
                 if (!outputLimitExceeded) {
@@ -171,7 +178,6 @@ export async function invokeHeadless(
             stderr += d.toString();
         });
 
-        let watchdogFired = false;
         watchdog = setTimeout(() => {
             watchdogFired = true;
             try {
@@ -181,7 +187,7 @@ export async function invokeHeadless(
             } catch {
                 /* stderr may be closed */
             }
-            killTree(child);
+            void killTree(child);
         }, watchdogMs);
 
         const exitCode = await new Promise<number>((resolve) => {
@@ -232,7 +238,9 @@ export async function invokeHeadless(
             result,
         };
         if (opts.bailOnError) {
-            throw new Error(error);
+            const err = new Error(error);
+            (err as unknown as Record<string, unknown>).partialResult = result;
+            throw err;
         }
         return outcome;
     } catch (error) {
@@ -294,12 +302,14 @@ async function ensureHeadCheckout(
         let settled = false;
         let timedOut = false;
         let postKillTimeoutHandle: NodeJS.Timeout | undefined;
+        const MAX_CHECKOUT_STDERR_BYTES = 1 * 1024 * 1024;
+        let checkoutStderrBytes = 0;
         const timeoutHandle = setTimeout(() => {
             if (settled) {
                 return;
             }
             timedOut = true;
-            killTree(proc);
+            void killTree(proc);
             postKillTimeoutHandle = setTimeout(() => {
                 if (settled) {
                     return;
@@ -311,7 +321,12 @@ async function ensureHeadCheckout(
             postKillTimeoutHandle.unref?.();
         }, checkoutTimeoutMs);
         timeoutHandle.unref?.();
-        proc.stderr?.on('data', (d) => (stderr += d.toString()));
+        proc.stderr?.on('data', (d) => {
+            checkoutStderrBytes += d.length;
+            if (checkoutStderrBytes <= MAX_CHECKOUT_STDERR_BYTES) {
+                stderr += d.toString();
+            }
+        });
         proc.on('error', (error) => {
             if (settled) {
                 return;
@@ -454,7 +469,11 @@ export async function invokeResolutionJudge(
         let outputBytes = 0;
         let outputLimitExceeded = false;
         const MAX_LAUNCHER_OUTPUT_BYTES = 50 * 1024 * 1024;
+        let watchdogFired = false;
         child.stdout?.on('data', (d) => {
+            if (watchdogFired) {
+                return;
+            }
             outputBytes += d.length;
             if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
                 if (!outputLimitExceeded) {
@@ -470,6 +489,9 @@ export async function invokeResolutionJudge(
             stdout += d.toString();
         });
         child.stderr?.on('data', (d) => {
+            if (watchdogFired) {
+                return;
+            }
             outputBytes += d.length;
             if (outputBytes > MAX_LAUNCHER_OUTPUT_BYTES) {
                 if (!outputLimitExceeded) {
@@ -485,7 +507,6 @@ export async function invokeResolutionJudge(
             stderr += d.toString();
         });
 
-        let watchdogFired = false;
         watchdog = setTimeout(() => {
             watchdogFired = true;
             try {
@@ -495,7 +516,7 @@ export async function invokeResolutionJudge(
             } catch {
                 /* stderr may be closed */
             }
-            killTree(child);
+            void killTree(child);
         }, watchdogMs);
 
         const exitCode = await new Promise<number>((resolve) => {
@@ -620,17 +641,23 @@ function registerPosixKillCleanup(child: ChildProcess): void {
     posixKillCleanupRegistered.add(child);
 }
 
-function killTree(child: ChildProcess): void {
+async function killTree(child: ChildProcess): Promise<void> {
     if (!child.pid) {
         return;
     }
     if (process.platform === 'win32') {
         try {
-            execFileSync('taskkill', ['/F', '/T', '/PID', String(child.pid)], {
-                stdio: 'ignore',
-                windowsHide: true,
-                timeout: 10_000,
-                killSignal: 'SIGKILL',
+            await new Promise<void>((resolve) => {
+                execFile(
+                    'taskkill',
+                    ['/F', '/T', '/PID', String(child.pid)],
+                    {
+                        windowsHide: true,
+                        timeout: 10_000,
+                        killSignal: 'SIGKILL',
+                    },
+                    () => resolve()
+                );
             });
         } catch {
             try {
@@ -681,6 +708,13 @@ function handleInvokeHeadlessError(
     error: unknown
 ): InvokeHeadlessResult {
     const message = error instanceof Error ? error.message : String(error);
+    const partialResult =
+        error instanceof Error
+            ? (((error as unknown as Record<string, unknown>).partialResult as
+                  | HarnessHeadlessAnalysisResult
+                  | null
+                  | undefined) ?? null)
+            : null;
     if (opts.bailOnError) {
         throw new Error(message, { cause: error });
     }
@@ -688,6 +722,6 @@ function handleInvokeHeadlessError(
         ok: false,
         error: message,
         durationMs: Date.now() - startedAt,
-        result: null,
+        result: partialResult,
     };
 }

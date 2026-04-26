@@ -153,10 +153,13 @@ function validateHeadlessArgs(raw: unknown): HeadlessArgs {
     const seedRaw = o.seed;
     if (
         seedRaw !== undefined &&
-        (typeof seedRaw !== 'number' || !Number.isFinite(seedRaw))
+        (typeof seedRaw !== 'number' ||
+            !Number.isFinite(seedRaw) ||
+            !Number.isInteger(seedRaw) ||
+            seedRaw < 0)
     ) {
         throw new Error(
-            `${LUPA_HEADLESS_ARGS_ENV}.seed must be a number or undefined`
+            `${LUPA_HEADLESS_ARGS_ENV}.seed must be a non-negative integer or undefined`
         );
     }
     const outRaw = o.out;
@@ -259,9 +262,8 @@ async function waitForCopilotModels(
         probeId: number
     ): Promise<vscode.LanguageModelChat[]> => {
         try {
-            const requestedModels = findRequestedModels(
-                await selectRequestedVendorModels()
-            );
+            const vendorModels = await selectRequestedVendorModels();
+            const requestedModels = findRequestedModels(vendorModels ?? []);
             if (probeId > latestCompletedProbeId) {
                 latestCompletedProbeId = probeId;
                 lastProbeError = undefined;
@@ -441,20 +443,11 @@ function writeSentinel(exitCode: number, error: string | undefined): void {
     let wroteTmp = false;
     const tmpPath = `${sentinelPath}.tmp`;
     try {
-        // Sentinel paths are set by the launcher via env var and are
-        // considered trusted (the launcher controls the temp directory).
-        // Only validate basic safety: absolute path with no '..' segments.
-        if (!path.isAbsolute(sentinelPath)) {
-            throw new Error(`sentinelPath must be absolute: ${sentinelPath}`);
-        }
-        if (sentinelPath.split(/[\\/]/).includes('..')) {
-            throw new Error(
-                `sentinelPath contains '..' segment: ${sentinelPath}`
-            );
-        }
-        if (tmpPath.split(/[\\/]/).includes('..')) {
-            throw new Error(`tmpPath contains '..' segment: ${tmpPath}`);
-        }
+        // Restrict sentinel paths to known safe roots (launcher-controlled).
+        assertSafeFilePath(sentinelPath, 'sentinelPath', [
+            process.cwd(),
+            os.tmpdir(),
+        ]);
         fs.writeFileSync(
             tmpPath,
             JSON.stringify({ exitCode, error: error ?? null }, null, 2)
@@ -670,7 +663,11 @@ export async function runHeadlessFromEnv(
     } catch (err) {
         exitCode = 1;
         errorMsg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`Headless run failed: ${errorMsg}\n`);
+        try {
+            process.stderr.write(`Headless run failed: ${errorMsg}\n`);
+        } catch {
+            /* stderr may be closed */
+        }
     } finally {
         writeSentinel(exitCode, errorMsg);
         try {

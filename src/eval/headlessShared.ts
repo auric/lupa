@@ -35,11 +35,13 @@ export function normalizeWorkspaceRelativePath(
     if (workspaceRoot && isAbsolutePathLike(trimmed)) {
         const relativePath = path.relative(workspaceRoot, trimmed);
         if (
-            relativePath.length > 0 &&
-            !isAbsolutePathLike(relativePath) &&
-            !relativePath.startsWith('..')
+            relativePath.length === 0 ||
+            (!isAbsolutePathLike(relativePath) &&
+                !relativePath.startsWith('..'))
         ) {
-            return normalizePosixPath(relativePath);
+            return normalizePosixPath(
+                relativePath.length === 0 ? '.' : relativePath
+            );
         }
     }
 
@@ -100,9 +102,16 @@ export function formatHeadlessCancellationMessage(phase: string): string {
  * SHA validation only accepts SHA-1 hashes (up to 40 hex chars).
  * SHA-256 repositories (64 hex chars) are not supported.
  */
+const MAX_REF_LENGTH = 4096;
+
 export function validateRef(ref: string, fieldName: string): void {
     if (typeof ref !== 'string' || ref.length === 0) {
         throw new Error(`${fieldName}: must be a non-empty string`);
+    }
+    if (ref.length > MAX_REF_LENGTH) {
+        throw new Error(
+            `${fieldName}: exceeds maximum length of ${MAX_REF_LENGTH} characters`
+        );
     }
     if (ref.startsWith('-')) {
         throw new Error(
@@ -123,9 +132,8 @@ export function validateRef(ref: string, fieldName: string): void {
                     `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
                 );
             }
-            // NOTE: This regex limits SHAs to 40 hex chars (SHA-1).
-            // If Git SHA-256 repos become common, increase the limit to 64.
-            if (!/^[0-9a-fA-F]{1,40}$/.test(body)) {
+            // Accepts SHA-1 (40 hex chars) and SHA-256 (64 hex chars).
+            if (!/^[0-9a-fA-F]{1,64}$/.test(body)) {
                 throw new Error(
                     `${fieldName}: invalid SHA format — got '${ref}'`
                 );

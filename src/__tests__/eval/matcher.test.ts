@@ -1,16 +1,16 @@
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-const { mockedSpawn, mockedExecSync, mockedExecFileSync } = vi.hoisted(() => ({
+const { mockedSpawn, mockedExecSync, mockedExecFile } = vi.hoisted(() => ({
     mockedSpawn: vi.fn(),
     mockedExecSync: vi.fn(),
-    mockedExecFileSync: vi.fn(),
+    mockedExecFile: vi.fn(),
 }));
 
 vi.mock('node:child_process', () => ({
     spawn: mockedSpawn,
     execSync: mockedExecSync,
-    execFileSync: mockedExecFileSync,
+    execFile: mockedExecFile,
 }));
 
 import { matchFindings } from '../../eval/harness/matcher';
@@ -373,7 +373,7 @@ describe('classifyResolutionForRun', () => {
     beforeEach(() => {
         mockedSpawn.mockReset();
         mockedExecSync.mockReset();
-        mockedExecFileSync.mockReset();
+        mockedExecFile.mockReset();
     });
 
     it('forwards the absolute deadline to the analysis launcher', async () => {
@@ -2617,15 +2617,15 @@ index 1234567..89abcde 100644
                 })
             );
             if (process.platform === 'win32') {
-                expect(mockedExecFileSync).toHaveBeenCalledWith(
+                expect(mockedExecFile).toHaveBeenCalledWith(
                     'taskkill',
                     ['/F', '/T', '/PID', '123'],
                     {
-                        stdio: 'ignore',
                         windowsHide: true,
                         timeout: 10_000,
                         killSignal: 'SIGKILL',
-                    }
+                    },
+                    expect.any(Function)
                 );
                 expect(kill).not.toHaveBeenCalled();
             } else {
@@ -2961,7 +2961,7 @@ describe('validateRef', () => {
     it('rejects sha: with wrong length (too long)', () => {
         expect(() =>
             validateRef(
-                'sha:12345678901234567890123456789012345678901',
+                'sha:12345678901234567890123456789012345678901234567890123456789012345',
                 'headRef'
             )
         ).toThrow(/headRef: invalid SHA format/);

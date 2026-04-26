@@ -427,17 +427,23 @@ async function checkRealFindingPaths(
     await getChangedPaths(fixture, changedPathsCache, timeoutMs, deadlineAt);
 
     const pathEntries = Array.from(sourcesByPath.entries());
-    const diffPromises = pathEntries.map(([findingPath]) =>
-        getDiffForPath(
-            fixture,
-            findingPath,
-            cache,
-            changedPathsCache,
-            timeoutMs,
-            deadlineAt
-        )
-    );
-    const settledDiffs = await Promise.allSettled(diffPromises);
+    const MAX_CONCURRENT_DIFFS = 5;
+    const settledDiffs: PromiseSettledResult<DiffLookupResult>[] = [];
+    for (let i = 0; i < pathEntries.length; i += MAX_CONCURRENT_DIFFS) {
+        const batch = pathEntries
+            .slice(i, i + MAX_CONCURRENT_DIFFS)
+            .map(([findingPath]) =>
+                getDiffForPath(
+                    fixture,
+                    findingPath,
+                    cache,
+                    changedPathsCache,
+                    timeoutMs,
+                    deadlineAt
+                )
+            );
+        settledDiffs.push(...(await Promise.allSettled(batch)));
+    }
     const allRejected =
         settledDiffs.length > 0 &&
         settledDiffs.every((s) => s.status === 'rejected');
@@ -1276,7 +1282,10 @@ function runGitDiffNameStatus(
 }
 
 function stripRefPrefix(ref: string): string {
-    return ref.startsWith('sha:') ? ref.slice('sha:'.length) : ref;
+    if (ref.startsWith('sha:') || ref.startsWith('dir:')) {
+        return ref.slice(ref.indexOf(':') + 1);
+    }
+    return ref;
 }
 
 function normalizePath(filePath: string): string;
@@ -1386,7 +1395,10 @@ function pathRequiresLiteralGitPath(filePath: string): boolean {
         filePath.includes('}') ||
         filePath.includes('\\') ||
         filePath.includes('(') ||
-        filePath.includes(')')
+        filePath.includes(')') ||
+        filePath.includes('!') ||
+        filePath.includes('^') ||
+        filePath.includes(':')
     );
 }
 

@@ -1565,7 +1565,7 @@ describe('runHeadlessFromEnv', () => {
         const sentinel = await runWithRawArgs(
             JSON.stringify({
                 workspace: '/ws',
-                base: 'sha:12345678901234567890123456789012345678901',
+                base: 'sha:12345678901234567890123456789012345678901234567890123456789012345',
                 head: 'feature/x',
                 model: 'copilot/gpt-4.1',
                 timeoutMs: 60_000,
