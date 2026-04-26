@@ -1208,10 +1208,9 @@ export class ConversationRunner {
             const request = toolRequests[i]!;
             const toolCallId = toolCall.id || `tool_call_${i}`;
 
-            const baseContent =
-                result.success && result.result
-                    ? result.result
-                    : `Error: ${result.error || 'Unknown error'}`;
+            const baseContent = result.success
+                ? (result.result ?? 'Error: Unknown error')
+                : `Error: ${result.error || 'Unknown error'}`;
 
             // Check if this tool signals completion via metadata flag.
             // Design: isCompletion is a boolean signal; the actual content comes from
@@ -1219,7 +1218,7 @@ export class ConversationRunner {
             // This separation allows tools to signal completion while keeping content
             // in the standard result.result location for consistency.
             if (result.success && result.metadata?.isCompletion) {
-                finalReview = result.result;
+                finalReview = result.result ?? '';
             }
 
             // Get context status suffix if handler provides it

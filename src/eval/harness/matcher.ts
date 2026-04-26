@@ -61,7 +61,7 @@ export function matchFindings(
                 continue;
             }
             const distance = lineDistance(cand.lineRange, exp.lineHint);
-            if (distance > LINE_HINT_TOLERANCE) {
+            if (!Number.isFinite(distance) || distance > LINE_HINT_TOLERANCE) {
                 continue;
             }
             const categoryMatch = cand.category === exp.category;

@@ -23,7 +23,7 @@ const USAGE =
  *
  * @param {string[]} argv Raw argument tokens (excluding node/script).
  * @returns {{mode:'analysis'|'resolution-judge', workspace:string, model:string,
- *   base?:string, head?:string, seed?:number, payload?:string,
+ *   base:string|null, head:string|null, seed:number, payload:string|null,
  *   timeoutMs:number, deadlineAt:number|null, out:string|null, silent:boolean}}
  */
 function parseHeadlessArgs(argv) {

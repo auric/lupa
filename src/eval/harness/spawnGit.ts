@@ -108,6 +108,9 @@ export function spawnGit(
         proc.stdout.setEncoding?.('utf8');
         proc.stderr.setEncoding?.('utf8');
         proc.stdout.on('data', (d) => {
+            if (settled) {
+                return;
+            }
             outputBytes +=
                 typeof d === 'string' ? Buffer.byteLength(d, 'utf8') : d.length;
             if (outputBytes > MAX_GIT_OUTPUT_BYTES) {
@@ -126,6 +129,9 @@ export function spawnGit(
             stdout += d;
         });
         proc.stderr.on('data', (d) => {
+            if (settled) {
+                return;
+            }
             outputBytes +=
                 typeof d === 'string' ? Buffer.byteLength(d, 'utf8') : d.length;
             if (outputBytes > MAX_GIT_OUTPUT_BYTES) {

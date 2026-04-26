@@ -475,11 +475,14 @@ export async function main(
                       };
                 if (single.ok && single.result && single.match) {
                     try {
+                        const remainingTimeoutMs = deadlineAt
+                            ? Math.max(0, deadlineAt - Date.now())
+                            : Math.max(0, args.timeoutMs - r.durationMs);
                         single.resolution = await classifyResolutionForRun({
                             fixture,
                             produced: single.result.findings,
                             match: single.match,
-                            timeoutMs: args.timeoutMs,
+                            timeoutMs: remainingTimeoutMs,
                             deadlineAt,
                             judgeClient: {
                                 judge: async (payload) => {
