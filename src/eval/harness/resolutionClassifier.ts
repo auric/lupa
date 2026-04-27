@@ -1178,6 +1178,8 @@ function runGitDiffForPath(
     const args = gitPath
         ? ['diff', '--no-ext-diff', `${fromRef}..${toRef}`, '--', gitPathArg!]
         : ['diff', '--no-ext-diff', `${fromRef}..${toRef}`];
+    // `git diff A..B` returns 0 on success regardless of whether differences
+    // exist, so the default acceptableExitCodes of [0] is correct here.
     return spawnGit(workspaceRoot, args, timeoutMs);
 }
 
@@ -1189,6 +1191,8 @@ function runGitDiffNameOnly(
 ): Promise<string> {
     validateRef(fromRef, 'fromRef');
     validateRef(toRef, 'toRef');
+    // `git diff A..B` returns 0 on success regardless of whether differences
+    // exist, so the default acceptableExitCodes of [0] is correct here.
     return spawnGit(
         workspaceRoot,
         ['diff', '--no-ext-diff', '--name-only', `${fromRef}..${toRef}`],
@@ -1268,6 +1272,8 @@ function runGitDiffNameStatus(
 ): Promise<string> {
     validateRef(fromRef, 'fromRef');
     validateRef(toRef, 'toRef');
+    // `git diff A..B` returns 0 on success regardless of whether differences
+    // exist, so the default acceptableExitCodes of [0] is correct here.
     return spawnGit(
         workspaceRoot,
         [
