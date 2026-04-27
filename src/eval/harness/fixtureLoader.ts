@@ -65,8 +65,8 @@ export async function loadFixtures(opts: {
                 kind: 'synthetic',
                 labels,
                 workspaceRoot: fixtureDir,
-                baseRef: 'dir:' + baseDir,
-                headRef: 'dir:' + headDir,
+                baseRef: 'dir:' + path.relative(fixtureDir, baseDir),
+                headRef: 'dir:' + path.relative(fixtureDir, headDir),
                 mergeRef: undefined,
             });
         }
