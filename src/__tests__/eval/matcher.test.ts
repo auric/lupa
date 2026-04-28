@@ -401,6 +401,7 @@ describe('classifyResolutionForRun', () => {
                         modelId: 'copilot/gpt-5-mini',
                         seed: 7,
                         completed: true,
+                        wasTruncated: false,
                     })
                 );
                 return createMockLauncherProcess(0);
@@ -559,6 +560,7 @@ describe('classifyResolutionForRun', () => {
                         modelId: 'copilot/gpt-5-mini',
                         seed: 7,
                         completed: true,
+                        wasTruncated: false,
                     })
                 );
                 return createMockLauncherProcess(1);
@@ -731,6 +733,7 @@ describe('classifyResolutionForRun', () => {
                         modelId: 'copilot/gpt-5-mini',
                         seed: 7,
                         completed: true,
+                        wasTruncated: false,
                     })
                 );
                 return createMockLauncherProcess(0);
@@ -779,6 +782,7 @@ describe('classifyResolutionForRun', () => {
                         modelId: 'copilot/gpt-5-mini',
                         seed: 7,
                         completed: false,
+                        wasTruncated: false,
                     })
                 );
                 return createMockLauncherProcess(1);
