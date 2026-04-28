@@ -39,6 +39,7 @@ export interface HeadlessAnalysisResult {
     modelId: string;
     seed: number;
     completed: boolean;
+    wasTruncated: boolean;
 }
 
 /**
@@ -184,6 +185,7 @@ export async function runHeadless(
             modelId: actualIdentifier,
             seed: opts.seed,
             completed: result.completed,
+            wasTruncated: result.wasTruncated,
         };
     } finally {
         cancellationDisposable.dispose();

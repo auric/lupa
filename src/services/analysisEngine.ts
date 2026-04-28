@@ -7,6 +7,7 @@ import { TokenValidator } from '../models/tokenValidator';
 import {
     ConversationRunner,
     type ToolCallHandler,
+    type ExitReason,
 } from '../models/conversationRunner';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { DiffHunk } from '../types/contextTypes';
@@ -211,6 +212,8 @@ export class AnalysisEngine implements vscode.Disposable {
         let mainAnalysisWasCancelled = false;
         let mainAnalysisIterationsUsed = 0;
         let wasTruncated = false;
+        let mainAnalysisDegraded = false;
+        let mainAnalysisExitReason: ExitReason | undefined;
 
         try {
             Log.info('Starting analysis with tool-calling support');
@@ -428,6 +431,8 @@ export class AnalysisEngine implements vscode.Disposable {
             wasTruncated =
                 conversationRunner.hitMaxIterations ||
                 conversationRunner.degraded;
+            mainAnalysisDegraded = conversationRunner.degraded;
+            mainAnalysisExitReason = conversationRunner.exitReason;
             const shouldRunPipeline =
                 !conversationRunner.wasCancelled &&
                 !conversationRunner.hitQuotaExhausted &&
@@ -435,6 +440,12 @@ export class AnalysisEngine implements vscode.Disposable {
                 (analysisCompleted || findingStore.size > 0);
 
             if (shouldRunPipeline) {
+                if (wasTruncated) {
+                    Log.info(
+                        `Analysis truncated — running post-analysis pipeline on ${findingStore.size} recorded findings`
+                    );
+                }
+
                 const pipeline = new PostAnalysisPipeline(
                     this.findingValidator
                 );
@@ -464,12 +475,6 @@ export class AnalysisEngine implements vscode.Disposable {
 
                 selfReflectionScores = pipelineResult.selfReflectionScores;
                 stepRecords = pipelineResult.stepRecords;
-
-                if (wasTruncated) {
-                    Log.info(
-                        `Analysis truncated — running post-analysis pipeline on ${findingStore.size} recorded findings`
-                    );
-                }
 
                 output.onProgress(
                     `Analysis complete (${toolCallRecords.length} tool calls)`,
@@ -510,13 +515,15 @@ export class AnalysisEngine implements vscode.Disposable {
             subagentSessionManager.setParentCancellationToken(undefined);
             // Complete root agent lifecycle in recursive state tree.
             // Order matters: error > degraded > findings > quota/rate-limit > cancelled.
+            // Use mainAnalysis* snapshots because the pipeline may have called
+            // conversationRunner.run() again, resetting the runner's flags.
             if (recursiveState) {
                 if (analysisError) {
                     recursiveState.failAgent('root', analysisError);
-                } else if (conversationRunner.degraded) {
+                } else if (mainAnalysisDegraded) {
                     recursiveState.failAgent(
                         'root',
-                        conversationRunner.exitReason ?? 'degraded'
+                        mainAnalysisExitReason ?? 'degraded'
                     );
                 } else if (findingStore.size > 0) {
                     recursiveState.completeAgent('root');

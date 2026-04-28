@@ -261,7 +261,7 @@ function formatToolCallsAsMarkdown(toolCalls: ToolCallsData): string {
     if (toolCalls.wasTruncated) {
         lines.push('');
         lines.push(
-            '> **Truncated:** Analysis stopped at the maximum iteration limit. Results are partial.'
+            '> **Truncated:** Analysis stopped early (iteration limit or degraded state). Results are partial.'
         );
         lines.push('');
     }
