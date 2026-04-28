@@ -86,7 +86,12 @@ export async function loadFixtures(opts: {
             const fullPath = path.resolve(REAL_ROOT, fileName);
             const raw = await readJson(fullPath);
             const labels = validateRealFixture(raw, fullPath);
-            const effectiveMergeSha = labels.mergeSha ?? labels.headSha;
+            if (!labels.mergeSha) {
+                throw new Error(
+                    `Real fixture ${name} is missing mergeSha. Real fixtures require a mergeSha to compute resolution diffs.`
+                );
+            }
+            const effectiveMergeSha = labels.mergeSha;
             const cacheDir = await ensureCachedRepo(labels.repo, [
                 labels.baseSha,
                 labels.headSha,
@@ -167,13 +172,8 @@ function validateRealFixture(obj: unknown, source: string): RealFixtureFile {
     if (typeof headSha !== 'string' || headSha.length === 0) {
         throw new Error(`${source}: 'headSha' must be a non-empty string`);
     }
-    if (
-        mergeSha !== undefined &&
-        (typeof mergeSha !== 'string' || mergeSha.length === 0)
-    ) {
-        throw new Error(
-            `${source}: 'mergeSha' must be a non-empty string when provided`
-        );
+    if (typeof mergeSha !== 'string' || mergeSha.length === 0) {
+        throw new Error(`${source}: 'mergeSha' must be a non-empty string`);
     }
     return { ...base, repo, baseSha, headSha, mergeSha };
 }

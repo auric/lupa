@@ -972,6 +972,7 @@ async function getDiffForPath(
             deadlineAt
         );
         if (fallbackDiff.trim().length > 0) {
+            cache.set(cacheKey, fallbackDiff);
             return {
                 diffText: fallbackDiff,
                 renameCheckPath: normalizePath(normalizedPath),

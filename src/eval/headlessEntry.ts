@@ -408,6 +408,8 @@ async function awaitWithCancellation<T>(
     token: vscode.CancellationToken,
     timeoutMessage: string
 ): Promise<T> {
+    promise.catch(() => {});
+
     if (token.isCancellationRequested) {
         throw new Error(timeoutMessage);
     }

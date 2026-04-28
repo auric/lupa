@@ -76,6 +76,9 @@ export function createHeadlessDeadline(timeoutMs: number): number {
  * `deadlineAt` is undefined, the function returns the full `timeoutMs`
  * regardless of elapsed time. This is a deliberate conservative fallback for
  * callers that do not compute a shared deadline.
+ *
+ * @remarks When deadlineAt is undefined, returns the full timeoutMs. This is a
+ * deliberate conservative fallback for direct callers that omit deadlineAt.
  */
 export function getRemainingHeadlessBudgetMs(
     timeoutMs: number,

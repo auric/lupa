@@ -93,6 +93,7 @@ export function spawnGit(
                 )
             );
         }, timeoutMs);
+        timeoutHandle.unref?.();
 
         cancellation = cancellationToken?.onCancellationRequested(() => {
             if (settled) {
@@ -150,7 +151,9 @@ export function spawnGit(
             stderr += d;
         });
         proc.on('error', (error) => {
-            cleanupAfterClose();
+            if (proc.pid === undefined) {
+                cleanupAfterClose();
+            }
             if (settled) {
                 return;
             }
