@@ -432,16 +432,18 @@ export class AnalysisEngine implements vscode.Disposable {
 
             wasTruncated =
                 conversationRunner.hitMaxIterations ||
-                conversationRunner.degraded;
+                (conversationRunner.degraded &&
+                    !conversationRunner.hitQuotaExhausted &&
+                    !conversationRunner.hitRateLimit);
             mainAnalysisDegraded = conversationRunner.degraded;
             mainAnalysisExitReason = conversationRunner.exitReason;
             mainAnalysisHitQuotaExhausted =
                 conversationRunner.hitQuotaExhausted;
             mainAnalysisHitRateLimit = conversationRunner.hitRateLimit;
             const shouldRunPipeline =
-                !conversationRunner.wasCancelled &&
-                !conversationRunner.hitQuotaExhausted &&
-                !conversationRunner.hitRateLimit &&
+                !mainAnalysisWasCancelled &&
+                !mainAnalysisHitQuotaExhausted &&
+                !mainAnalysisHitRateLimit &&
                 (analysisCompleted || findingStore.size > 0);
 
             if (shouldRunPipeline) {

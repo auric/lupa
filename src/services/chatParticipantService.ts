@@ -609,6 +609,12 @@ export class ChatParticipantService implements vscode.Disposable {
             };
         }
 
+        if (result.wasTruncated) {
+            stream.markdown(
+                `> ${SEVERITY.warning} Analysis stopped early (iteration limit or degraded state). Results are partial.\n\n`
+            );
+        }
+
         streamMarkdownWithAnchors(stream, result.analysisText, gitRootUri);
 
         if (result.selfReflectionScores.length > 0) {
