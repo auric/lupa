@@ -2824,6 +2824,7 @@ index 1234567..89abcde 100644
                 modelId: 'copilot/gpt-5-mini',
                 seed: 0,
                 completed: true,
+                wasTruncated: false,
             },
             match: emptyMatch(),
             resolution: {
@@ -2866,6 +2867,7 @@ index 1234567..89abcde 100644
                 modelId: 'copilot/gpt-5-mini',
                 seed: 1,
                 completed: true,
+                wasTruncated: false,
             },
             match: emptyMatch(),
             resolution: null,

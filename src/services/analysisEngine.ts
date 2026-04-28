@@ -519,12 +519,17 @@ export class AnalysisEngine implements vscode.Disposable {
             // Clear parent cancellation token to release references
             subagentSessionManager.setParentCancellationToken(undefined);
             // Complete root agent lifecycle in recursive state tree.
-            // Order matters: error > degraded > cancelled > findings > quota/rate-limit.
+            // Order matters: error > quota/rate-limit > degraded > cancelled > findings.
             // Use mainAnalysis* snapshots because the pipeline may have called
             // conversationRunner.run() again, resetting the runner's flags.
             if (recursiveState) {
                 if (analysisError) {
                     recursiveState.failAgent('root', analysisError);
+                } else if (
+                    mainAnalysisHitQuotaExhausted ||
+                    mainAnalysisHitRateLimit
+                ) {
+                    recursiveState.completeAgent('root');
                 } else if (mainAnalysisDegraded) {
                     recursiveState.failAgent(
                         'root',
@@ -534,13 +539,8 @@ export class AnalysisEngine implements vscode.Disposable {
                     recursiveState.cancelAgent('root');
                 } else if (findingStore.size > 0) {
                     recursiveState.completeAgent('root');
-                } else if (
-                    mainAnalysisHitQuotaExhausted ||
-                    mainAnalysisHitRateLimit
-                ) {
-                    recursiveState.completeAgent('root');
                 } else {
-                    recursiveState.completeAgent('root');
+                    recursiveState.cancelAgent('root');
                 }
             }
         }
