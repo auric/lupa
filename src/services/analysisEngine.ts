@@ -537,10 +537,8 @@ export class AnalysisEngine implements vscode.Disposable {
                     );
                 } else if (mainAnalysisWasCancelled) {
                     recursiveState.cancelAgent('root');
-                } else if (findingStore.size > 0) {
-                    recursiveState.completeAgent('root');
                 } else {
-                    recursiveState.cancelAgent('root');
+                    recursiveState.completeAgent('root');
                 }
             }
         }
