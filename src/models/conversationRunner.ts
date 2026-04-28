@@ -1074,16 +1074,45 @@ export class ConversationRunner {
             return Promise.resolve();
         }
         return new Promise((resolve) => {
-            const timer = setTimeout(resolve, ms);
-            let cleanupTimer: NodeJS.Timeout | undefined;
-            const disposable = token.onCancellationRequested(() => {
+            let resolved = false;
+            let disposable: vscode.Disposable | undefined;
+
+            const cleanupTimer = setTimeout(() => {
+                disposable?.dispose();
+            }, ms + 1);
+
+            const timer = setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    disposable?.dispose();
+                    resolve();
+                }
+                clearTimeout(cleanupTimer);
+            }, ms);
+
+            disposable = token.onCancellationRequested(() => {
                 clearTimeout(timer);
                 clearTimeout(cleanupTimer);
-                disposable.dispose();
-                resolve();
+                if (!resolved) {
+                    resolved = true;
+                    resolve();
+                }
+                disposable?.dispose();
             });
-            // Clean up listener when timer fires normally
-            cleanupTimer = setTimeout(() => disposable.dispose(), ms + 1);
+
+            // Handle the race where cancellation happens between the early
+            // check and listener registration. If the callback fired
+            // synchronously, `disposable` was undefined inside it, so we
+            // dispose it here to prevent a listener leak.
+            if (token.isCancellationRequested) {
+                clearTimeout(timer);
+                clearTimeout(cleanupTimer);
+                if (!resolved) {
+                    resolved = true;
+                    resolve();
+                }
+                disposable?.dispose();
+            }
         });
     }
 
@@ -1179,10 +1208,9 @@ export class ConversationRunner {
             const request = toolRequests[i]!;
             const toolCallId = toolCall.id || `tool_call_${i}`;
 
-            const baseContent =
-                result.success && result.result
-                    ? result.result
-                    : `Error: ${result.error || 'Unknown error'}`;
+            const baseContent = result.success
+                ? (result.result ?? 'Error: Unknown error')
+                : `Error: ${result.error || 'Unknown error'}`;
 
             // Check if this tool signals completion via metadata flag.
             // Design: isCompletion is a boolean signal; the actual content comes from
@@ -1190,7 +1218,7 @@ export class ConversationRunner {
             // This separation allows tools to signal completion while keeping content
             // in the standard result.result location for consistency.
             if (result.success && result.metadata?.isCompletion) {
-                finalReview = result.result;
+                finalReview = result.result ?? '';
             }
 
             // Get context status suffix if handler provides it

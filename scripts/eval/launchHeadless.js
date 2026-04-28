@@ -15,8 +15,10 @@
  *
  * Usage:
  *   node scripts/eval/launchHeadless.js \
- *     --workspace <path> --base <ref> --head <ref> --model <vendor/id> \
- *     [--seed <n>] [--timeout <ms>] [--out <jsonPath>] [--silent]
+ *     --workspace <path> --model <vendor/id> \
+ *     [--mode analysis --base <ref> --head <ref> --seed <n>] \
+ *     [--mode resolution-judge --payload <jsonPath>] \
+ *     [--timeout <ms>] [--deadline-at <unixMs>] [--out <jsonPath>] [--silent]
  *
  * First-time setup: run `npm run headless:setup` to provision the profile
  * and sign in to Copilot. On the first real run, an "Allow Lupa to use
@@ -29,7 +31,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn, execSync } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 const { downloadAndUnzipVSCode } = require('@vscode/test-electron');
 const { parseHeadlessArgs, HeadlessArgError } = require('./headlessArgs');
 const {
@@ -44,6 +46,154 @@ const {
 
 const WATCHDOG_OVERHEAD_MS = 60_000;
 const WATCHDOG_SIGTERM_GRACE_MS = 5_000;
+const WATCHDOG_POST_SIGNAL_RETRY_MS = WATCHDOG_SIGTERM_GRACE_MS + 2_000;
+const WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS = 20_000;
+const posixKillEscalationHandles = new WeakMap();
+const posixKillCleanupRegistered = new WeakSet();
+
+function ensureLauncherDeadlineAt(args, now = Date.now()) {
+    if (typeof args.deadlineAt === 'number') {
+        return args.deadlineAt;
+    }
+
+    args.deadlineAt = now + args.timeoutMs;
+    return args.deadlineAt;
+}
+
+function createPostSignalWatchdog(onForceKill, onForceExit) {
+    let activeSignal = 'signal';
+    let retryTimeoutHandle;
+    let exitTimeoutHandle;
+
+    const scheduleRetry = () => {
+        retryTimeoutHandle = setTimeout(() => {
+            process.stderr.write(
+                `Post-signal watchdog: VS Code did not exit within ${WATCHDOG_POST_SIGNAL_RETRY_MS}ms after ${activeSignal}; force-killing process tree again.\n`
+            );
+            onForceKill();
+            scheduleRetry();
+        }, WATCHDOG_POST_SIGNAL_RETRY_MS);
+        retryTimeoutHandle.unref?.();
+    };
+
+    const scheduleForcedExit = () => {
+        exitTimeoutHandle = setTimeout(() => {
+            process.stderr.write(
+                `Post-signal watchdog: VS Code still had not exited ${WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS}ms after ${activeSignal}; force-exiting launcher.\n`
+            );
+            if (retryTimeoutHandle) {
+                clearTimeout(retryTimeoutHandle);
+                retryTimeoutHandle = undefined;
+            }
+            exitTimeoutHandle = undefined;
+            onForceKill();
+            onForceExit();
+        }, WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS);
+        exitTimeoutHandle.unref?.();
+    };
+
+    return {
+        arm(signal) {
+            activeSignal = signal;
+            if (!retryTimeoutHandle) {
+                scheduleRetry();
+            }
+            if (!exitTimeoutHandle) {
+                scheduleForcedExit();
+            }
+        },
+        clear() {
+            if (retryTimeoutHandle) {
+                clearTimeout(retryTimeoutHandle);
+                retryTimeoutHandle = undefined;
+            }
+            if (exitTimeoutHandle) {
+                clearTimeout(exitTimeoutHandle);
+                exitTimeoutHandle = undefined;
+            }
+        },
+    };
+}
+
+function requireLauncherDeadlineRemaining(args, phase, now = Date.now()) {
+    const remainingMs = ensureLauncherDeadlineAt(args, now) - now;
+    if (remainingMs <= 0) {
+        throw new Error(`Headless launcher deadline elapsed ${phase}.`);
+    }
+
+    return remainingMs;
+}
+
+function createLauncherDeadlineError(phase) {
+    return new Error(`Headless launcher deadline elapsed ${phase}.`);
+}
+
+function throwIfLauncherDeadlineAborted(signal, phase) {
+    if (!signal?.aborted) {
+        return;
+    }
+
+    if (signal.reason instanceof Error) {
+        throw signal.reason;
+    }
+
+    throw createLauncherDeadlineError(phase);
+}
+
+async function runWithinLauncherDeadline(args, phase, work) {
+    const remainingMs = requireLauncherDeadlineRemaining(args, phase);
+    const deadlineError = createLauncherDeadlineError(phase);
+    const abortController = new AbortController();
+    let timeoutHandle;
+    const deadlineExceeded = new Promise((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+            abortController.abort(deadlineError);
+            reject(deadlineError);
+        }, remainingMs);
+        timeoutHandle.unref?.();
+    });
+
+    try {
+        const workPromise = Promise.resolve().then(() =>
+            work(abortController.signal)
+        );
+        workPromise.catch(() => {});
+        return await Promise.race([deadlineExceeded, workPromise]);
+    } finally {
+        if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+        }
+    }
+}
+
+async function removeFileIfPresent(filePath) {
+    try {
+        await fs.promises.unlink(filePath);
+    } catch (err) {
+        if (!err || err.code !== 'ENOENT') {
+            throw err;
+        }
+    }
+}
+
+async function cleanupSentinelFiles(signal, phase) {
+    throwIfLauncherDeadlineAborted(signal, phase);
+    await removeFileIfPresent(SENTINEL_PATH);
+    throwIfLauncherDeadlineAborted(signal, phase);
+    await removeFileIfPresent(SENTINEL_PATH + '.tmp');
+    throwIfLauncherDeadlineAborted(signal, phase);
+}
+
+function forwardTerminationSignal(sig, state, child, postSignalWatchdog) {
+    state.forwardedSignal = sig;
+    state.forwardedSignalExitCode = sig === 'SIGINT' ? 130 : 143;
+    if (state.watchdog) {
+        clearTimeout(state.watchdog);
+        state.watchdog = undefined;
+    }
+    postSignalWatchdog.arm(sig);
+    killProcessTree(child);
+}
 
 async function main() {
     let args;
@@ -86,30 +236,40 @@ async function main() {
     if (args.out) {
         args.out = path.resolve(args.out);
     }
-
-    const executablePath = await downloadAndUnzipVSCode({
-        version: 'stable',
-        cachePath: VSCODE_CACHE_DIR,
-    });
-
-    // Merge the baseline non-interactive settings into the profile on every
-    // launch so existing profiles pick up new suppressions automatically.
-    ensureProfileSettings();
-
-    try {
-        fs.unlinkSync(SENTINEL_PATH);
-    } catch (err) {
-        if (err && err.code !== 'ENOENT') {
-            throw err;
-        }
+    if (args.payload) {
+        args.payload = path.resolve(args.payload);
     }
-    try {
-        fs.unlinkSync(SENTINEL_PATH + '.tmp');
-    } catch (err) {
-        if (err && err.code !== 'ENOENT') {
-            throw err;
+
+    const executablePath = await runWithinLauncherDeadline(
+        args,
+        'during VS Code download and headless profile setup',
+        async (signal) => {
+            const downloadedExecutablePath = await downloadAndUnzipVSCode({
+                version: 'stable',
+                cachePath: VSCODE_CACHE_DIR,
+            });
+            throwIfLauncherDeadlineAborted(
+                signal,
+                'during VS Code download and headless profile setup'
+            );
+
+            // Merge the baseline non-interactive settings into the profile on
+            // every launch so existing profiles pick up new suppressions
+            // automatically.
+            ensureProfileSettings();
+            throwIfLauncherDeadlineAborted(
+                signal,
+                'during VS Code download and headless profile setup'
+            );
+
+            await cleanupSentinelFiles(
+                signal,
+                'during VS Code download and headless profile setup'
+            );
+
+            return downloadedExecutablePath;
         }
-    }
+    );
 
     const launchArgs = [
         '--user-data-dir=' + USER_DATA_DIR,
@@ -132,6 +292,8 @@ async function main() {
         LUPA_HEADLESS_SENTINEL: SENTINEL_PATH,
     };
 
+    requireLauncherDeadlineRemaining(args, 'before starting VS Code');
+
     const child = spawn(executablePath, launchArgs, {
         env: childEnv,
         stdio: 'inherit',
@@ -143,18 +305,32 @@ async function main() {
         detached: process.platform !== 'win32',
     });
 
+    const signalState = {
+        forwardedSignal: null,
+        forwardedSignalExitCode: undefined,
+        watchdog: undefined,
+    };
+    const postSignalWatchdog = createPostSignalWatchdog(
+        () => killProcessTree(child),
+        () => process.exit(signalState.forwardedSignalExitCode ?? 1)
+    );
+
     // `detached: true` on POSIX puts the child in its own process group, so
     // terminal Ctrl-C no longer reaches it via the TTY foreground pgid — the
     // launcher must forward operator signals explicitly. Harmless on Windows.
     for (const sig of ['SIGINT', 'SIGTERM']) {
         process.on(sig, () => {
-            killProcessTree(child);
-            process.exit(sig === 'SIGINT' ? 130 : 143);
+            forwardTerminationSignal(
+                sig,
+                signalState,
+                child,
+                postSignalWatchdog
+            );
         });
     }
 
-    const watchdogMs = args.timeoutMs + WATCHDOG_OVERHEAD_MS;
-    const watchdog = setTimeout(() => {
+    const watchdogMs = getLauncherWatchdogMs(args);
+    signalState.watchdog = setTimeout(() => {
         process.stderr.write(
             `Watchdog: VS Code did not exit within ${watchdogMs}ms; killing process tree.\n`
         );
@@ -168,9 +344,44 @@ async function main() {
             resolve(1);
         });
     });
-    clearTimeout(watchdog);
+    if (signalState.watchdog) {
+        clearTimeout(signalState.watchdog);
+    }
+    postSignalWatchdog.clear();
 
-    process.exit(readSentinelExitCode(childExitCode));
+    process.exit(
+        signalState.forwardedSignalExitCode ??
+            readSentinelExitCode(childExitCode)
+    );
+}
+
+function getLauncherWatchdogMs(args) {
+    return (
+        Math.max(0, ensureLauncherDeadlineAt(args) - Date.now()) +
+        WATCHDOG_OVERHEAD_MS
+    );
+}
+
+function clearPendingPosixKillEscalation(child) {
+    const handle = posixKillEscalationHandles.get(child);
+    if (!handle) {
+        return;
+    }
+    clearTimeout(handle);
+    posixKillEscalationHandles.delete(child);
+}
+
+function registerPosixKillCleanup(child) {
+    if (posixKillCleanupRegistered.has(child)) {
+        return;
+    }
+
+    const clear = () => {
+        clearPendingPosixKillEscalation(child);
+    };
+    child.on('exit', clear);
+    child.on('close', clear);
+    posixKillCleanupRegistered.add(child);
 }
 
 /**
@@ -188,7 +399,12 @@ function killProcessTree(child) {
     }
     if (process.platform === 'win32') {
         try {
-            execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: 'ignore' });
+            execFileSync('taskkill', ['/F', '/T', '/PID', String(child.pid)], {
+                stdio: 'ignore',
+                windowsHide: true,
+                timeout: 10_000,
+                killSignal: 'SIGKILL',
+            });
         } catch {
             child.kill('SIGKILL');
         }
@@ -213,10 +429,18 @@ function killProcessTree(child) {
             return false;
         }
     };
+    registerPosixKillCleanup(child);
     groupSignal('SIGTERM');
-    setTimeout(() => {
+    if (posixKillEscalationHandles.has(child)) {
+        return;
+    }
+
+    const escalationHandle = setTimeout(() => {
+        posixKillEscalationHandles.delete(child);
         groupSignal('SIGKILL');
-    }, WATCHDOG_SIGTERM_GRACE_MS).unref();
+    }, WATCHDOG_SIGTERM_GRACE_MS);
+    escalationHandle.unref?.();
+    posixKillEscalationHandles.set(child, escalationHandle);
 }
 
 function readSentinelExitCode(childExitCode) {
@@ -249,8 +473,22 @@ function readSentinelExitCode(childExitCode) {
     return typeof parsed.exitCode === 'number' ? parsed.exitCode : 1;
 }
 
-main().catch((err) => {
-    const msg = err && err.message ? err.message : String(err);
-    process.stderr.write(`Headless launcher crashed: ${msg}\n`);
-    process.exit(1);
-});
+if (require.main === module) {
+    main().catch((err) => {
+        const msg = err && err.message ? err.message : String(err);
+        process.stderr.write(`Headless launcher crashed: ${msg}\n`);
+        process.exit(1);
+    });
+}
+
+module.exports = {
+    createPostSignalWatchdog,
+    ensureLauncherDeadlineAt,
+    forwardTerminationSignal,
+    getLauncherWatchdogMs,
+    requireLauncherDeadlineRemaining,
+    runWithinLauncherDeadline,
+    WATCHDOG_POST_SIGNAL_RETRY_MS,
+    WATCHDOG_POST_SIGNAL_EXIT_DEADLINE_MS,
+    WATCHDOG_SIGTERM_GRACE_MS,
+};

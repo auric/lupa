@@ -1,7 +1,8 @@
-import * as child_process from 'node:child_process';
 import * as path from 'node:path';
+import * as vscode from 'vscode';
 import type { IServiceRegistry } from '../services/serviceManager';
-import { getErrorMessage } from '../utils/errorUtils';
+import { validateRef } from './headlessShared';
+import { spawnGit } from './harness/spawnGit';
 
 const DIR_REF_PREFIX = 'dir:';
 const SHA_REF_PREFIX = 'sha:';
@@ -10,7 +11,11 @@ export interface DiffResolveOptions {
     workspaceRoot: string;
     baseRef: string;
     headRef: string;
+    timeoutMs?: number;
+    cancellationToken?: vscode.CancellationToken;
 }
+
+const DEFAULT_DIFF_TIMEOUT_MS = 30_000;
 
 /**
  * Resolve a raw unified diff between baseRef and headRef.
@@ -36,6 +41,13 @@ export async function resolveDiff(
     opts: DiffResolveOptions,
     _services: IServiceRegistry
 ): Promise<string> {
+    if (opts.cancellationToken?.isCancellationRequested) {
+        throw new vscode.CancellationError();
+    }
+
+    validateRef(opts.baseRef, 'baseRef');
+    validateRef(opts.headRef, 'headRef');
+
     const baseIsDir = opts.baseRef.startsWith(DIR_REF_PREFIX);
     const headIsDir = opts.headRef.startsWith(DIR_REF_PREFIX);
     if (baseIsDir !== headIsDir) {
@@ -48,14 +60,17 @@ export async function resolveDiff(
         return runGitDiffNoIndex(
             opts.workspaceRoot,
             opts.baseRef.slice(DIR_REF_PREFIX.length),
-            opts.headRef.slice(DIR_REF_PREFIX.length)
+            opts.headRef.slice(DIR_REF_PREFIX.length),
+            opts.timeoutMs ?? DEFAULT_DIFF_TIMEOUT_MS,
+            opts.cancellationToken
         );
     }
-
     return runGitDiffRefs(
         opts.workspaceRoot,
         stripShaPrefix(opts.baseRef),
-        stripShaPrefix(opts.headRef)
+        stripShaPrefix(opts.headRef),
+        opts.timeoutMs ?? DEFAULT_DIFF_TIMEOUT_MS,
+        opts.cancellationToken
     );
 }
 
@@ -63,31 +78,6 @@ function stripShaPrefix(ref: string): string {
     return ref.startsWith(SHA_REF_PREFIX)
         ? ref.slice(SHA_REF_PREFIX.length)
         : ref;
-}
-
-function spawnGit(cwd: string, args: string[]): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const proc = child_process.spawn('git', args, { cwd });
-        let stdout = '';
-        let stderr = '';
-        proc.stdout.on('data', (d) => (stdout += d.toString()));
-        proc.stderr.on('data', (d) => (stderr += d.toString()));
-        proc.on('error', reject);
-        // `git diff` exits 0 when the trees are identical, 1 when there are
-        // differences, and anything else on real error. Treat 0 and 1 as
-        // success so an empty-diff run doesn't fail the pipeline.
-        proc.on('close', (code) => {
-            if (code === 0 || code === 1) {
-                resolve(stdout);
-            } else {
-                reject(
-                    new Error(
-                        `git ${args.join(' ')} failed (${code}): ${stderr || getErrorMessage(stdout)}`
-                    )
-                );
-            }
-        });
-    });
 }
 
 /**
@@ -104,26 +94,46 @@ function spawnGit(cwd: string, args: string[]): Promise<string> {
 async function runGitDiffNoIndex(
     cwd: string,
     basePath: string,
-    headPath: string
+    headPath: string,
+    timeoutMs: number,
+    cancellationToken?: vscode.CancellationToken
 ): Promise<string> {
     const baseRel = toPosixRelative(cwd, basePath);
     const headRel = toPosixRelative(cwd, headPath);
-    const stdout = await spawnGit(cwd, [
-        'diff',
-        '--no-index',
-        '--',
-        baseRel,
-        headRel,
-    ]);
+    if (
+        baseRel.startsWith('..') ||
+        headRel.startsWith('..') ||
+        path.isAbsolute(baseRel) ||
+        path.isAbsolute(headRel)
+    ) {
+        throw new Error(
+            `dir: paths must not escape the workspace (got '${baseRel}' / '${headRel}')`
+        );
+    }
+    const stdout = await spawnGit(
+        cwd,
+        ['diff', '--no-index', '--', baseRel, headRel],
+        timeoutMs,
+        cancellationToken,
+        [0, 1]
+    );
     return stripFixturePrefixes(stdout, baseRel, headRel);
 }
 
 async function runGitDiffRefs(
     cwd: string,
     base: string,
-    compare: string
+    compare: string,
+    timeoutMs: number,
+    cancellationToken?: vscode.CancellationToken
 ): Promise<string> {
-    return spawnGit(cwd, ['diff', base, compare]);
+    return spawnGit(
+        cwd,
+        ['diff', '--no-ext-diff', base, compare],
+        timeoutMs,
+        cancellationToken,
+        [0, 1]
+    );
 }
 
 function toPosixRelative(cwd: string, target: string): string {
@@ -145,8 +155,24 @@ function stripFixturePrefixes(
     const h = escapeRegex(headRel);
     return diff
         .replace(
-            new RegExp(`^diff --git a/${b}/(\\S+) b/${h}/(\\S+)$`, 'gm'),
+            new RegExp(`^diff --git a/${b}/(.+?) b/${h}/(.+)$`, 'gm'),
             'diff --git a/$1 b/$2'
+        )
+        .replace(
+            new RegExp(`^diff --git a/${h}/(.+?) b/${h}/\\1$`, 'gm'),
+            'diff --git a/dev/null b/$1'
+        )
+        .replace(
+            new RegExp(`^diff --git a/${b}/(.+?) b/${b}/\\1$`, 'gm'),
+            'diff --git a/$1 b/dev/null'
+        )
+        .replace(
+            new RegExp(`^diff --git a/${b}/(.+?) b/(?:/)?dev/null$`, 'gm'),
+            'diff --git a/$1 b/dev/null'
+        )
+        .replace(
+            new RegExp(`^diff --git a/(?:/)?dev/null b/${h}/(.+)$`, 'gm'),
+            'diff --git a/dev/null b/$1'
         )
         .replace(new RegExp(`^--- a/${b}/`, 'gm'), '--- a/')
         .replace(new RegExp(`^\\+\\+\\+ b/${h}/`, 'gm'), '+++ b/');

@@ -2,6 +2,7 @@
     "repo": "axios/axios",
     "baseSha": "ec9d94e9f88da13e9219acadf65061fb38ce080a",
     "headSha": "7d19335e43d6754a1a9a66e424f7f7da259895bf",
+    "mergeSha": "a4230f5581b3f58b6ff531b6dbac377a4fd7942a",
     "intent": "Make transformResponse throw on invalid JSON when transitional.silentJSONParsing is false by dropping the JSONRequested guard on strictJSONParsing. The change was reverted in PR #7298 because it fires for requests that did not opt into JSON parsing via responseType.",
     "expected_findings": [
         {

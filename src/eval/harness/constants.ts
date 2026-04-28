@@ -37,6 +37,7 @@ export const DEFAULT_MODELS = [
     'copilot/gpt-4.1',
     'copilot/gpt-5-mini',
 ] as const;
+export const DEFAULT_AUXILIARY_MODEL = 'copilot/gpt-5-mini';
 export const DEFAULT_TIMEOUT_MS = 600_000;
 
 export const LINE_HINT_TOLERANCE = 5;

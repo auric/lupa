@@ -2,6 +2,7 @@
     "repo": "colinhacks/zod",
     "baseSha": "f52344e76bed0e69175ca8893c84736cf97b5d11",
     "headSha": "0f4ce73ad0c5610c3c53857d05ebae619d229aa3",
+    "mergeSha": "0e803a29344a2f0ee637940cca96be3e6978b22e",
     "intent": "Throw at runtime when .pick() or .omit() is called on an object schema that has refinements, on the grounds that stripping keys can invalidate predicates. The change was reverted the following day because it is an unconditional breaking change for callers whose refinements do not reference the removed keys.",
     "expected_findings": [
         {

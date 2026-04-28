@@ -32,6 +32,38 @@ v3 also removes v2's duplicated body (v2 accidentally concatenated two drafts; v
 
 ---
 
+## Terminology (read this before any other section)
+
+These terms get conflated in the wider RLM literature. Lupa uses them narrowly:
+
+- **Iteration** — one turn of the main Reviewer's ReAct loop: `observe → think → act → observe`. Governed by `maxIterations` in `ConversationRunner`. This is what RLM calls "the main loop"; runaway iterations are prevented by the budget, not by depth.
+- **Recursion** — the Reviewer spawning read-only Investigator subagents (via `run_subagent_batch`). Capped at `maxRecursionDepth = 1` (Quest 12.4). Quest 5.1's "force recursion on volume" means "force the Reviewer to fan out to Investigators when the diff is dense" — not "allow Investigators to spawn nested children."
+- **Subagent / Investigator** — a read-only parallel worker. Sees the shared blackboard (`list_findings`, `list_notes`), can read code (`read_file`, `find_symbol`, `find_usages`, `search_for_pattern`), can think (`sequential_thinking`), can write shared notes (`note`). **Cannot** `record_finding`, `submit_review`, or spawn further subagents. Enforced by Quest 12.3.
+- **Judge / Verifier** — fresh-context per-finding classifier (`keep | downgrade | drop`). Not a subagent — runs inside the post-analysis pipeline, not during investigation.
+- **Compaction** — summarizing older turns (via `compact_history`) to stay inside the context window without losing hypotheses, examined files, or finding IDs. Compaction is how Lupa handles long traces; it is **not** the same as recursion.
+
+When the documents say "recursion", they always mean subagent spawning. When they say "iteration", they always mean the main loop. Any apparent "recursion vs iteration" ambiguity is a mis-read of the terminology — flag it and fix in place rather than refactoring architecture.
+
+## Component mapping (Lupa ↔ RLM reference architecture)
+
+Use this when reading `rlm-tools-deep-dive.md` or the Cognition / AsyncReview material:
+
+| RLM / reference architecture concept | Lupa component (current)                                                                  |
+| ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Core engine / orchestration loop     | `AnalysisOrchestrator` + `AnalysisEngine`                                                 |
+| LM handler / conversation driver     | `ConversationRunner` + `CopilotModelManager`                                              |
+| Tool execution environment           | `ToolExecutor` + per-tool modules under `src/tools/`                                      |
+| Read-only parallel Q&A subagents     | `SubagentRunner` (spawned via `runSubagentBatchTool`)                                     |
+| Context compactor                    | `TokenValidator.cleanupContext` → Quest 6.1 `compact_history`                             |
+| Evidence ledger / blackboard         | `FindingStore` + notes extension (Quest 4.1)                                              |
+| Deterministic synthesis              | `PostAnalysisPipeline` → Quest 12.1 `SynthesisStage`                                      |
+| Fresh-context critic / judge         | `adversarialVerificationStep` → Quest 11.2 `JudgeStage`                                   |
+| Per-repo memory                      | `conventionFileLoader` (Quest 3.3) — committed `CLAUDE.md` / `AGENTS.md` / `.cursorrules` |
+
+The rescue does not introduce a separate "RLM Core" class — it realigns the existing components around the shapes above.
+
+---
+
 ## Evidence base (what to read before starting any Quest)
 
 Living, on-disk. In recommended reading order:
@@ -170,7 +202,8 @@ Done:
 - Unified `extractFilesTouched(toolCalls)` walks every investigation tool's result. Use `normalizeRelativePath` from `utils/investigationAudit.ts`.
 - Coverage-gap callback uses the broader set.
 - `investigatedFiles` set in `ExecutionContext` populated from this broader extractor.
-- Tests for Windows separators, `./` prefix, `..`.
+- **Subagent merge**: after each `run_subagent_batch` returns, every `filesTouched[]` entry from Quest 4.2's `SubagentBatchResult.perAgent[]` is passed through `normalizeRelativePath` and merged into the main analysis's `investigatedFiles`. Without this step Quest 11.3's `PreJudgeGate` rejects every finding whose `sources` reference a file read only by a subagent — which is the whole point of having subagents.
+- Tests for Windows separators, `./` prefix, `..`, **and subagent-filesTouched merge into the main set**.
 
 ### Quest 1.3 — Structured stub returns from every read-only tool _(NEW in v3)_
 
@@ -190,18 +223,20 @@ Done:
 ### Quest 1.4 — Per-analysis file-content cache _(NEW in v3)_
 
 **As** the analysis,
-**I want** repeated `read_file(path)` / `get_file_diff(path)` calls within the same analysis to be served from a content-addressable cache keyed by `(headSha, repoRelativePath)`,
+**I want** repeated `read_file(path)` / `get_file_diff(path)` calls within the same analysis to be served from a content-addressable cache keyed by the full tuple of inputs that affect output,
 **so that** the same file appearing 8× in the context never happens again (Raptor trace pathology) and the iteration budget isn't wasted on re-fetching.
 
 Pattern borrowed from AsyncReview (`MAX_CACHE_ENTRIES = 200`, FIFO, keyed by ref+path).
 
 Done:
 
-- New `src/services/fileContentCache.ts`. Bounded FIFO (configurable; default 200 entries). Keyed by `(headSha, path, range?)`.
+- New `src/services/fileContentCache.ts`. Bounded FIFO (configurable; default 200 entries). Two key shapes, one per tool:
+    - `readFileTool` → `(headSha, path, range?)` — a read at a given sha is a pure function of those three.
+    - `getFileDiffTool` → `(baseSha, headSha, path)` — a diff depends on **both** refs. Keying by `headSha` alone would serve stale diffs if `baseSha` ever varies within an analysis (e.g. a follow-up analysis against a rebased PR that shares `headSha`).
 - `readFileTool` and `getFileDiffTool` consult the cache before re-fetching.
-- Cache instance lifecycle is per-analysis — created in `AnalysisEngine.analyze()`, discarded on exit.
+- Cache instance lifecycle is per-analysis — created in `AnalysisEngine.analyze()`, discarded on exit. (Per-analysis lifecycle means `baseSha` is normally constant within scope; the richer diff key is defence-in-depth for the case where it isn't.)
 - Eviction emits a log line so the telemetry side can see cache pressure.
-- Unit tests cover: exact hit, miss, eviction, different-sha-same-path = miss.
+- Unit tests cover: exact hit, miss, eviction, different-sha-same-path = miss, **different-base-same-head-same-path on diff cache = miss**.
 
 ---
 
@@ -265,27 +300,52 @@ Done:
 ```typescript
 interface PROverview {
     intent: string; // 2-3 sentences
+    prType: // classification drives budget & category emphasis (see below)
+        | 'bug-fix'
+        | 'feature'
+        | 'refactor'
+        | 'dep-update'
+        | 'docs'
+        | 'tests-only'
+        | 'mixed';
     changeShape: {
         // factual, computed — NOT LLM
         fileCount: number;
         addedLines: number;
         removedLines: number;
+        hunkCount: number; // number of diff hunks across all files; source for Quest 5.1's recursion thresholds
         languages: string[];
         primaryDirectories: string[];
     };
     riskHotspots: Array<{ file: string; reason: string }>; // LLM-produced
-    reviewPlan: string[]; // 4-7 bullets
+    reviewPlan: string[]; // 4-7 bullets, shaped by prType
+    categoryEmphasis: string[]; // e.g. ['security', 'dep-compatibility'] for dep-update
 }
 ```
+
+**PR-type classification** (addresses CodeRabbit's "planning layer" pattern at minimal cost — one extra field on an existing model call, not a second round-trip):
+
+| `prType`     | `reviewPlan` emphasis                                                            | `categoryEmphasis`                          | Budget hint                                |
+| ------------ | -------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------ |
+| `bug-fix`    | Verify root cause, look for recurrence in sibling code, check test coverage.     | correctness, tests                          | Standard budget.                           |
+| `feature`    | API design, maintainability, docs, interaction with existing surface.            | architecture, code-quality, tests           | Standard budget.                           |
+| `refactor`   | Behavioural equivalence, perf regressions, public-API drift.                     | correctness, architecture                   | Standard budget; recall-leaning.           |
+| `dep-update` | Breaking changes, security advisories, compatibility, lockfile shape.            | security, dependencies                      | Tighter budget; skip style/SOLID entirely. |
+| `docs`       | Link rot, code-snippet correctness, terminology consistency.                     | docs                                        | Much tighter budget (~30 % of default).    |
+| `tests-only` | Assertion strength, coupling to implementation, missing coverage on prior diffs. | tests                                       | Tighter budget.                            |
+| `mixed`      | Fall back to default; include every category.                                    | (all defaults from externalized checklists) | Standard budget.                           |
 
 Done:
 
 - New `src/services/prOverviewBuilder.ts`. One model call. Returns `PROverview`.
-- Output injected into main system prompt as `<pr_overview>` XML block.
+- Output injected into main system prompt as `<pr_overview>` XML block; `prType` and `categoryEmphasis` consumed by the recursive-root prompt to narrow or widen the checklist selection (Quest 7.3).
 - Output written to the shared blackboard (Phase 4) so subagents see it.
-- Failure mode: log and continue with empty overview.
+- `categoryEmphasis` drives which of `resources/checklists/*.md` the main prompt mentions first (Quest 7.3). Categories not in the list are still available on-demand but not foregrounded.
+- `budgetHint` (derived from `prType`) optionally scales `maxIterations` / `maxLLMCalls` from the calibration profile's default (Quest 5.3 budget surfacing shows the scaled numbers, not the raw ones).
+- Failure mode: log and continue with empty overview + `prType: 'mixed'` (behaves identically to the pre-classification pipeline — the feature is strictly additive).
 - Token budget: overview ≤ 600 tokens. For huge PRs: first 8 K tokens of diff + file list + commit messages.
 - Can use a cheaper `overviewModel` per calibration profile (Phase 10.3).
+- Eval: add `expected_pr_type` to Kind-A fixture schema (Quest 8.1) so classification accuracy is measurable; target ≥ 85 % correct on the 5 fixtures before scaling budgets on it.
 
 ### Quest 3.2 — Mandatory PR narrative in final output
 
@@ -318,12 +378,18 @@ Also support user-defined custom glob patterns via workspace settings (mirrors D
 
 Done:
 
-- New `src/services/conventionFileLoader.ts`. Walks the workspace once at analysis start, hashes each matching file, returns `Array<{relativePath, content, category}>`.
-- Total ingest capped at 20 KB (truncate longest files first, surface truncation in an appended notice).
+- New `src/services/conventionFileLoader.ts`. Walks the workspace once at analysis start, hashes each matching file, returns `Array<{workspaceFolderName, relativePath, content, category}>`.
+- **Multi-root workspace handling**: VS Code workspaces can have N folders (`vscode.workspace.workspaceFolders`). The loader iterates each folder independently — each folder's conventions apply to files in that folder. Dedup key is `(workspaceFolderName, relativePath)`, so a `CLAUDE.md` at the root of two different folders produces two entries (they're different files). The `<convention>` wrappers include the folder name when more than one folder is present: `<convention folder="backend" path="CLAUDE.md">`.
+- Total ingest capped at 20 KB across all folders combined. **Truncation algorithm**:
+    1. Collect all matches into a flat list with `{folder, path, category, sizeBytes}`.
+    2. Sort by `category` priority (repo-root `CLAUDE.md`/`AGENTS.md` > `.cursor/rules/**` > `CONTRIBUTING.md` > everything else), then by size ascending (prefer small files in full over big files truncated).
+    3. Accumulate files in order until the next file would push total over 20 480 bytes.
+    4. For the first file that would exceed, include it truncated to exactly `20 480 - runningTotal` bytes (truncate at a line boundary, not mid-line). Append `... [truncated: N bytes omitted from <path>]`.
+    5. Remaining files dropped with a single aggregated notice: `[N additional convention files omitted: <comma-separated paths>]`.
 - Injected into the system prompt as a `<project_conventions>` XML block, with per-file `<convention path="...">` wrappers.
 - PR-author content (PR title/body/commit messages) stays separately marked (Quest 14.3 trust-boundary tags).
 - Analysis log records which files were ingested for reproducibility.
-- Unit test: verifies matching is case-insensitive and that a 100 KB `CLAUDE.md` is truncated, not dropped.
+- Unit tests: (a) matching is case-insensitive; (b) a 100 KB `CLAUDE.md` is truncated, not dropped; (c) total ingest across all files is ≤ 20 480 bytes, even when individual files would fit but their sum wouldn't; (d) multi-root workspace with two folders each containing `CLAUDE.md` produces two distinct entries with folder-qualified wrappers.
 
 This Quest directly answers the user's "memory per repo" question: convention files committed by the team **are** the per-repo memory.
 
@@ -411,6 +477,8 @@ Replace "1–2 files <30 LOC: review directly" with:
 - `totalChangedLines >= 60 || hunkCount >= 4 || fileCount >= 3` → MUST spawn subagents
 - Spawning unit is **concern**, not file.
 
+All three inputs (`totalChangedLines`, `fileCount`, `hunkCount`) come from `PROverview.changeShape` (Quest 3.1). They are deterministic, computed from the diff parser before the first model call, and surfaced to the prompt as literal numbers — the model doesn't estimate them.
+
 Done:
 
 - Thresholds in `src/models/modelCalibration.ts`, configurable per profile.
@@ -476,6 +544,7 @@ Done:
 - `TokenValidator.cleanupContext` delegates to (or is replaced by) `compact_history`.
 - Trigger thresholds configurable in `workspaceSettingsSchema.ts`.
 - Older models: 60/80/95 thresholds (more aggressive).
+- **Interaction with model-initiated compaction (Quest 6.1)**: if the model called `compact_history` within the last 3 iterations, the system-initiated threshold check is suppressed for the current iteration (it would double-compact and lose the summary the model just produced). Model-initiated takes precedence; system-initiated is the safety net. Both paths share the same compactor implementation; only the trigger differs. Telemetry records `compaction_trigger: 'model' | 'system' | 'suppressed_due_to_recent_model'`.
 
 ### Quest 6.3 — Compact-and-continue at iteration cap
 
@@ -584,7 +653,24 @@ Done:
 
 **Copilot nondeterminism** — the API exposes no seed and no temperature control, so single-run numbers are noisy. Every fixture × model combination runs `N = 3` times (configurable via `--seeds N`). Metrics are reported as mean ± stddev; every eval gate evaluates against the mean.
 
+**Severity-vocabulary timing** — Quest 11.0 (Wave 7) is what formally introduces the `P0 | P1 | P2 | P3` vocabulary to the runtime. Wave 0's fixtures land first. Reconciliation:
+
+- Fixtures MAY be authored with P-levels from day one (they're labels in a JSON file, no runtime dependency).
+- Until Quest 11.0 lands, the harness's matcher normalizes produced findings from whatever the runtime emits today (`low | medium | high | critical`) into P-levels using a lookup table (`critical → P0`, `high → P1`, `medium → P2`, `low → P3`).
+- After Quest 11.0 lands, the runtime emits P-levels directly and the normalizer becomes an identity function (kept as a compatibility shim for one release, then removed).
+- Implementing agents authoring fixtures in Wave 0 should just use P-levels — that's the final state and the normalizer makes the intermediate period work.
+
 **Matcher** — findings are paired to expected by (path exact) × (line within ±5) × (category match or severity match). Unmatched-expected = missed bug (recall hit), unmatched-produced = false positive (precision hit).
+
+**Per-category FP targets** — a single aggregate FP number hides the fact that "wrong about a SQL injection" and "wrong about a variable name" cost the user very differently. The harness reports precision per category and gates on these tiers (mean across seeds, across all fixtures of the relevant `prType`):
+
+| Category tier                             | Target FP rate | Rationale                                                                                                  |
+| ----------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------- |
+| `security`, `correctness`                 | **< 10 %**     | High-cost to be wrong — author loses trust immediately. Judge (Quest 11.2) should be most aggressive here. |
+| `performance`, `concurrency`              | **< 20 %**     | Medium-cost — often context-dependent, author can disagree without losing trust.                           |
+| `style`, `maintainability`, `readability` | **< 30 %**     | Low-cost individually, but high-volume; cap prevents report noise from drowning the serious findings.      |
+
+Targets are aspirational on the 5-fixture harness (too small for < 10 % to be statistically meaningful — a single miss is 20 % of 5). They become gates only once the fixture count grows past 20 (see the "NOT in v3" rejection of the 50–100-PR dataset as a Wave 11+ milestone). Below that threshold, the harness still reports per-category precision every run and flags any regression > 10 percentage points from the previous recorded run as a wave-level rollback trigger.
 
 Done:
 
@@ -793,6 +879,14 @@ Hints:
 - `ast-grep` may require a binary or JS port — consider Phase 11.5 or defer.
 - LSP proofs reuse `findUsagesTool` / `findSymbolTool` infrastructure.
 
+**ast-grep availability fallback** — until `ast-grep` is actually bundled, `verify_finding` must degrade gracefully rather than throw. Resolution order when `proof.kind === 'ast-grep'`:
+
+1. If an `ast-grep` binary is resolvable on `PATH` (or via an explicit `lupa.astGrepPath` setting), run it normally.
+2. Else, if the supplied `query` can be expressed as a textual pattern (heuristic: no AST-node selectors like `$$`, `$A`, `kind:`), attempt a ripgrep fallback using `RipgrepSearchService` with the query as a literal or regex; attach a `fallbackUsed: 'ripgrep-text'` flag on the receipt so the Judge knows precision is lower.
+3. Else, return a skipped-verification receipt (`verified: null`, `skipReason: 'ast-grep-unavailable'`). The finding is neither verified nor dropped; the Judge (Quest 11.2) treats `verified: null` as "no proof either way" and falls back to pure source-check reasoning.
+
+The pipeline MUST NOT drop a finding solely because `ast-grep` is unavailable — that would let a missing dependency silently erase true-positive findings. Telemetry records the fallback counters (`astgrep_native`, `astgrep_ripgrep_fallback`, `astgrep_skipped`) so we can decide when bundling `ast-grep` becomes worth the binary-size cost.
+
 ### Quest 11.2 — Verifier role (Judge stage)
 
 **As** the system,
@@ -801,12 +895,39 @@ Hints:
 
 Judge sees: PR overview, the finding (claim, evidence, proof receipt), cited files. **Does NOT see** investigator's full conversation (fresh context is the point).
 
+**Prompt-level self-criticism (the part that matters)** — the Judge's prompt must force the model to generate counter-arguments before reaching a verdict, not after. The required structure:
+
+```
+You are the Judge. Classify this finding as keep | downgrade | drop.
+
+Before you answer, produce:
+1. Three concrete reasons this finding might be wrong — missing context,
+   misread code, unwarranted assumption about caller behaviour, confusion
+   between similar symbols, fabricated citation, etc. Be specific; "it
+   might be fine" does not count.
+2. For each reason, check the cited source lines and state whether the
+   reason is supported or refuted by what's actually there.
+3. Only then: keep | downgrade | drop, with a one-sentence rationale.
+
+Severity-specific rules:
+- For security / correctness findings: if ANY of the three reasons
+  survives the source check, downgrade or drop. High bar.
+- For performance / concurrency: downgrade (don't drop) on moderate
+  uncertainty — author can judge context.
+- For style / maintainability: keep unless the finding is factually
+  wrong about the code.
+```
+
+The three-reasons-first structure is the cheap prompt trick Cursor BugBot credits for ~8 pp of the 52→78 % resolution-rate climb (V6 → V8 in their public write-up): forcing the Judge to _commit to_ counter-arguments before verdict-ing stops the model from rubber-stamping the investigator.
+
 Done:
 
-- New `JudgeStage` in post-pipeline (replaces `adversarialVerificationStep` + LLM portion of `evidenceAuditStep`).
-- Called once per finding with a tight prompt. Same model is fine; auxiliary model (Phase 10.3) permissible.
+- New `JudgeStage` in post-pipeline. **Integration timing**: in Wave 7 (when this Quest lands) `JudgeStage` slots into the existing 8-step post-analysis pipeline as a direct replacement for `adversarialVerificationStep` and the LLM portion of `evidenceAuditStep` — the other six steps (diff parsing, finding validation, dedup, severity normalization, formatting, receipt assembly) keep running unchanged. Wave 8 (Quest 12.1) is the one that collapses the remaining steps into the Synthesizer; until then the pipeline shape is 8 steps minus 1.5 plus Judge. Implementers of Wave 7 do not need to touch Quest 12.1's scope.
+- Called once per finding with a tight prompt using the three-reasons-first structure above. Same model is fine; auxiliary model (Phase 10.3) permissible.
+- Severity-asymmetric rules baked into the prompt: security/correctness use a high bar (any surviving counter-argument → downgrade/drop); performance/concurrency prefer downgrade over drop; style/maintainability keep unless factually wrong. Matches the per-category FP tiers in Quest 8.1.
+- Judge output schema includes `counterArguments: string[]` and `sourceCheckResult: 'supported' | 'refuted' | 'partial'` per argument, so eval can measure whether the model is actually doing the exercise or phoning it in (if > 40 % of `drop` verdicts have empty `counterArguments`, the prompt has decayed and needs revision).
 - Verdicts annotated on finding; `drop` removes from output, `downgrade` reduces severity by one P-level.
-- Telemetry: judge-keep-rate, judge-drop-rate per profile.
+- Telemetry: judge-keep-rate, judge-drop-rate per profile, per category. Alert on drop-rate < 5 % (rubber-stamping) or > 60 % (investigator quality collapse).
 
 ### Quest 11.3 — Mandatory `sources: [...]` grounding on every finding _(NEW in v3)_
 
@@ -816,13 +937,26 @@ Done:
 
 Pattern: AsyncReview's required `sources: ["file1.py#L10-L20", ...]` output field (see `rlm-tools-deep-dive.md` §1.5). Stronger than Lupa's current `verification_evidence` free-form string.
 
+**Two-layer design** — the schema requirement and the grounding enforcement are distinct gates with different on/off policies. Keep them separate:
+
+| Layer                                                          | What it does                                                                                           | Policy                                                                                                                                    |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Schema**                                                     | `record_finding` rejects calls missing `sources` (or with length 0 for P0–P2) at tool-validation time. | **Always on once 11.3 ships.** The model must provide something; this is cheap and forces the prompt pattern.                             |
+| **Grounding check** (`PreJudgeGate` / `findingValidationStep`) | Cross-references `sources[].path` against `investigatedFiles`; rejects findings citing un-read files.  | **Flag-gated** by `lupa.findingGrounding.mode ∈ { 'off' \| 'warn' \| 'enforce' }`. Default `warn` until Quest 11.2 lands, then `enforce`. |
+
+This resolves the apparent schema-required-vs-warn-only contradiction: the **schema** stays required, the **grounding check** is what runs in warn-only mode. A fabricated citation gets logged at `warn`, dropped at `enforce`.
+
 Done:
 
-- `record_finding` schema gains required `sources: Array<{ path: string; lineStart: number; lineEnd: number }>`. Minimum length: 1 for P0–P2 (P3 allowed without if style/suggestion).
-- `PreJudgeGate` (or `findingValidationStep`) rejects findings whose `sources` reference files not in the analysis's `investigatedFiles` set (coming from Quest 1.2's `extractFilesTouched`).
+- `record_finding` schema gains required `sources: Array<{ path: string; lineStart: number; lineEnd: number }>`. Minimum length: 1 for P0–P2 (P3 allowed without if style/suggestion). Schema validation is always on.
+- `PreJudgeGate` (or `findingValidationStep`) cross-references `sources` against `investigatedFiles`. Behaviour controlled by `lupa.findingGrounding.mode`:
+    - `off` — skip the check entirely (rollback).
+    - `warn` — log `[grounding-warn]` per offending finding, keep the finding.
+    - `enforce` — drop the finding; counted in telemetry as `grounding_rejected`.
+- `investigatedFiles` is built per Quest 1.2 (main agent + merged subagent `filesTouched`). Any discrepancy is a Quest 1.2 bug, not a Quest 11.3 bug.
 - Output renderer surfaces the citations as clickable `file:line-line` links.
 - Prompt block: "Every finding MUST include sources you actually read via `read_file` or `get_file_diff`. Do not fabricate citations."
-- Eval: measure ungrounded-drop rate; expect a step-change reduction in hallucinated findings.
+- Eval: measure ungrounded-`warn` rate pre-Wave-7 as baseline; after Wave 7 measure `grounding_rejected` rate — expect a step-change reduction in hallucinated findings.
 
 ---
 
@@ -855,9 +989,11 @@ Done:
 **I want** the Reviewer, Investigator, Verifier, and Synthesizer to have disjoint tool surfaces and prompts,
 **so that** each role optimizes for a single job and the Investigator can never accidentally post a finding or short-circuit verification.
 
-Topology:
+**Migration note** — this is the **target state** for Wave 8. During Waves 1–7 the main agent is allowed to read files directly (Quest 1.2's `extractFilesTouched` is explicitly built around main-agent tool calls, and Quest 1.4's cache serves both agents). Implementers of Waves 1–7 should **not** pre-emptively strip `read_file` / `get_file_diff` from the main agent's tool surface — doing so would break the recursion heuristic (Quest 5.1) and the PR-overview builder (Quest 3.1), both of which currently run against the main agent. Wave 8 (this Quest + 12.1) is the single point where the file-reading responsibility transfers to Investigators.
 
-- **Reviewer** — sees PR overview + diff metadata. Owns the plan. Calls `decompose_concerns`, spawns Investigators, calls Verifier on candidates, calls Synthesizer at end. Does NOT read source files directly.
+Topology (target state, after Wave 8):
+
+- **Reviewer** — sees PR overview + diff metadata. Owns the plan. Calls `decompose_concerns`, spawns Investigators, calls Verifier on candidates, calls Synthesizer at end. Does NOT read source files directly. (During the Wave 8 migration, the Reviewer keeps `read_file` as a fallback for one release cycle — flag `lupa.reviewer.canReadFiles` default `true`, flipped to `false` only after eval confirms no regression.)
 - **Investigator** — read-only tools (`read_file`, `find_symbol`, `find_usages`, `search_for_pattern`, `sequential_thinking`, `note`, `list_findings`). Depth=1 (cannot spawn). Returns structured `SubagentBatchResult`.
 - **Verifier** — fresh context per finding. Calls `verify_finding`, decides `keep | downgrade | drop`.
 - **Synthesizer** — deterministic. Assembles final review (narrative, findings sorted by P-level, receipts).
@@ -990,6 +1126,9 @@ These are deliberately unresolved. The implementing agent should pick an answer 
 - **DSPy adoption.** AsyncReview uses DSPy; we don't need to. The patterns it demonstrates are independently adoptable (see `rlm-tools-deep-dive.md` §5.2).
 - **Unbounded recursion / true leaf-root RLM with stored decompositions.** Explicitly rejected — Cognition's case is strong and Phase 12.4 caps depth at 1.
 - **A separate memory/RAG layer.** Quest 3.3 uses committed project files as per-repo memory; that's enough until eval says otherwise.
+- **Real-time "as-you-type" analysis via VS Code Diagnostic API.** A valid product direction, but out of scope for a rescue. The rescue's job is to fix the existing batch PR-review pipeline; shipping a second product surface on top of a broken pipeline would dilute the fix. Re-open after Wave 11 lands and eval numbers are stable.
+- **Explicit user-feedback / learning loop (thumbs up/down, dismiss-rate pattern mining).** Future work, not rescue work. Without a stable baseline (Wave 0) and a verification moat (Wave 7) there is no signal worth feeding back. Revisit once eval resolution-rate plateaus — Cursor BugBot only turned to learning loops after V7+ of their prompt iteration.
+- **50–100-PR ground-truth dataset.** The sealed 5-fixture set in Quest 8.1 (3 synthetic + 2 real, with `N=3` seeds) is the starting harness. Grow to 20 before trusting per-category FP targets below 15 %; grow to 50 before claiming "< 10 % FP on security." Treat the 50–100 target as a Wave 11-or-later milestone, not a Wave 0 requirement.
 
 ---
 

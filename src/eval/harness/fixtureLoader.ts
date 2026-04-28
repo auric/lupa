@@ -65,8 +65,9 @@ export async function loadFixtures(opts: {
                 kind: 'synthetic',
                 labels,
                 workspaceRoot: fixtureDir,
-                baseRef: 'dir:' + baseDir,
-                headRef: 'dir:' + headDir,
+                baseRef: 'dir:' + path.relative(fixtureDir, baseDir),
+                headRef: 'dir:' + path.relative(fixtureDir, headDir),
+                mergeRef: undefined,
             });
         }
     }
@@ -85,9 +86,16 @@ export async function loadFixtures(opts: {
             const fullPath = path.resolve(REAL_ROOT, fileName);
             const raw = await readJson(fullPath);
             const labels = validateRealFixture(raw, fullPath);
+            if (!labels.mergeSha) {
+                throw new Error(
+                    `Real fixture ${name} is missing mergeSha. Real fixtures require a mergeSha to compute resolution diffs.`
+                );
+            }
+            const effectiveMergeSha = labels.mergeSha;
             const cacheDir = await ensureCachedRepo(labels.repo, [
                 labels.baseSha,
                 labels.headSha,
+                effectiveMergeSha,
             ]);
             out.push({
                 name,
@@ -102,6 +110,7 @@ export async function loadFixtures(opts: {
                 workspaceRoot: cacheDir,
                 baseRef: 'sha:' + labels.baseSha,
                 headRef: 'sha:' + labels.headSha,
+                mergeRef: 'sha:' + effectiveMergeSha,
             });
         }
     }
@@ -153,6 +162,7 @@ function validateRealFixture(obj: unknown, source: string): RealFixtureFile {
     const repo = o['repo'];
     const baseSha = o['baseSha'];
     const headSha = o['headSha'];
+    const mergeSha = o['mergeSha'];
     if (typeof repo !== 'string' || repo.length === 0) {
         throw new Error(`${source}: 'repo' must be a non-empty string`);
     }
@@ -162,7 +172,10 @@ function validateRealFixture(obj: unknown, source: string): RealFixtureFile {
     if (typeof headSha !== 'string' || headSha.length === 0) {
         throw new Error(`${source}: 'headSha' must be a non-empty string`);
     }
-    return { ...base, repo, baseSha, headSha };
+    if (typeof mergeSha !== 'string' || mergeSha.length === 0) {
+        throw new Error(`${source}: 'mergeSha' must be a non-empty string`);
+    }
+    return { ...base, repo, baseSha, headSha, mergeSha };
 }
 
 function validateExpected(entry: unknown, source: string): ExpectedFinding {
@@ -196,11 +209,18 @@ function validateExpected(entry: unknown, source: string): ExpectedFinding {
         throw new Error(`${source}: 'lineHint' must be a positive integer`);
     }
     const mustMentionRaw = entry['mustMention'];
+    const resolvedByDefault = entry['resolvedByDefault'];
     if (
         !Array.isArray(mustMentionRaw) ||
         !mustMentionRaw.every((m) => typeof m === 'string')
     ) {
         throw new Error(`${source}: 'mustMention' must be a string[]`);
+    }
+    if (
+        resolvedByDefault !== undefined &&
+        typeof resolvedByDefault !== 'boolean'
+    ) {
+        throw new Error(`${source}: 'resolvedByDefault' must be a boolean`);
     }
     return {
         severity: severity as FindingSeverity,
@@ -208,6 +228,10 @@ function validateExpected(entry: unknown, source: string): ExpectedFinding {
         path: p,
         lineHint: lineHint as number,
         mustMention: mustMentionRaw as string[],
+        resolvedByDefault:
+            typeof resolvedByDefault === 'boolean'
+                ? resolvedByDefault
+                : undefined,
     };
 }
 

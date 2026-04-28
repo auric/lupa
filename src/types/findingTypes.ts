@@ -44,6 +44,12 @@ export const CONCRETE_FAILURE_MECHANISMS: readonly FailureMechanism[] = [
     'type_error',
 ] as const satisfies readonly FailureMechanism[];
 
+export interface FindingSource {
+    path: string;
+    lineStart: number;
+    lineEnd: number;
+}
+
 export interface RecordedFinding {
     id: string;
     agentId: string;
@@ -53,6 +59,7 @@ export interface RecordedFinding {
     title: string;
     file: string;
     lineRange: [number, number];
+    sources?: FindingSource[];
     description: string;
     affectedComponent: string;
     failureMechanism: FailureMechanism;

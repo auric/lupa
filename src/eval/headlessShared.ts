@@ -1,0 +1,321 @@
+import * as path from 'node:path';
+import * as vscode from 'vscode';
+
+export function normalizeModelIdentifier(identifier: string): string {
+    const trimmed = identifier.trim();
+    if (trimmed.length === 0) {
+        throw new Error('Model identifier must be a non-empty string.');
+    }
+
+    const slashIndex = trimmed.indexOf('/');
+    if (slashIndex === -1) {
+        return `copilot/${trimmed}`;
+    }
+
+    const vendor = trimmed.slice(0, slashIndex).trim().toLowerCase();
+    const id = trimmed.slice(slashIndex + 1).trim();
+    if (vendor.length === 0 || id.length === 0) {
+        throw new Error(
+            `Malformed model identifier '${trimmed}'. Use '<model-id>' or '<vendor>/<model-id>' with non-empty vendor and model segments.`
+        );
+    }
+
+    return `${vendor}/${id}`;
+}
+
+export function normalizeWorkspaceRelativePath(
+    filePath: unknown,
+    workspaceRoot: string | undefined
+): string {
+    const trimmed = getTrimmedPathString(filePath);
+    if (trimmed.length === 0) {
+        return '';
+    }
+
+    if (workspaceRoot && isAbsolutePathLike(trimmed)) {
+        const relativePath = path.relative(workspaceRoot, trimmed);
+        if (
+            relativePath.length === 0 ||
+            (!isAbsolutePathLike(relativePath) &&
+                !relativePath.startsWith('..'))
+        ) {
+            return normalizePosixPath(
+                relativePath.length === 0 ? '.' : relativePath
+            );
+        }
+    }
+
+    return normalizePosixPath(trimmed);
+}
+
+export function isWorkspaceRelativePath(filePath: unknown): boolean {
+    const trimmed = getTrimmedPathString(filePath);
+    if (trimmed.length === 0 || hasUnsafeWorkspacePathPrefix(trimmed)) {
+        return false;
+    }
+
+    const normalized = normalizePosixPath(trimmed);
+    return (
+        normalized.length > 0 &&
+        !hasUnsafeWorkspacePathPrefix(normalized) &&
+        !isAbsolutePathLike(normalized) &&
+        normalized !== '..' &&
+        !normalized.startsWith('../')
+    );
+}
+
+export function createHeadlessDeadline(timeoutMs: number): number {
+    return Date.now() + timeoutMs;
+}
+
+/**
+ * Returns the remaining budget in milliseconds.
+ *
+ * When `deadlineAt` is set, the function returns `deadlineAt - now` so that
+ * sequential budget phases share a single diminishing deadline. When
+ * `deadlineAt` is undefined, the function returns the full `timeoutMs`
+ * regardless of elapsed time. This is a deliberate conservative fallback for
+ * callers that do not compute a shared deadline.
+ *
+ * @remarks When deadlineAt is undefined, returns the full timeoutMs. This is a
+ * deliberate conservative fallback for direct callers that omit deadlineAt.
+ */
+export function getRemainingHeadlessBudgetMs(
+    timeoutMs: number,
+    deadlineAt: number | undefined,
+    now: number = Date.now()
+): number {
+    if (deadlineAt === undefined) {
+        return timeoutMs;
+    }
+    return Math.max(0, deadlineAt - now);
+}
+
+export function formatHeadlessTimeoutMessage(
+    timeoutMs: number,
+    phase: string
+): string {
+    return `Headless run exceeded timeout (${timeoutMs}ms) ${phase}.`;
+}
+
+export function formatHeadlessCancellationMessage(phase: string): string {
+    return `Headless run cancelled ${phase}.`;
+}
+
+/**
+ * Validates a ref string.
+ *
+ * SHA validation accepts SHA-1 (up to 40 hex chars) and SHA-256
+ * (up to 64 hex chars) formats.
+ */
+const MAX_REF_LENGTH = 4096;
+
+export function validateRef(ref: string, fieldName: string): void {
+    if (typeof ref !== 'string' || ref.length === 0) {
+        throw new Error(`${fieldName}: must be a non-empty string`);
+    }
+    if (ref.length > MAX_REF_LENGTH) {
+        throw new Error(
+            `${fieldName}: exceeds maximum length of ${MAX_REF_LENGTH} characters`
+        );
+    }
+    if (ref.startsWith('-')) {
+        throw new Error(
+            `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
+        );
+    }
+
+    // Block null bytes early (they truncate paths in C libraries).
+    if (ref.includes('\0')) {
+        throw new Error(`${fieldName}: contains null byte — got '${ref}'`);
+    }
+
+    const hasScheme = ref.startsWith('dir:') || ref.startsWith('sha:');
+    if (hasScheme) {
+        const body = ref.slice(ref.indexOf(':') + 1);
+        if (body.length === 0) {
+            throw new Error(
+                `${fieldName}: empty body after scheme — got '${ref}'`
+            );
+        }
+        if (ref.startsWith('sha:')) {
+            if (body.startsWith('-')) {
+                throw new Error(
+                    `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
+                );
+            }
+            // Accepts SHA-1 (40 hex chars) and SHA-256 (64 hex chars).
+            if (!/^[0-9a-fA-F]{1,64}$/.test(body)) {
+                throw new Error(
+                    `${fieldName}: invalid SHA format — got '${ref}'`
+                );
+            }
+            return;
+        }
+        if (ref.startsWith('dir:')) {
+            if (body.startsWith('-')) {
+                throw new Error(
+                    `${fieldName}: starts with '-', which is not allowed — got '${ref}'`
+                );
+            }
+            // Reject absolute paths in dir: scheme.
+            if (path.isAbsolute(body)) {
+                throw new Error(
+                    `${fieldName}: dir: body must be a relative path — got '${ref}'`
+                );
+            }
+            const parts = body.split(/[\\/]/);
+            if (parts.some((p) => p === '..')) {
+                throw new Error(
+                    `${fieldName}: dir: ref contains '..' which is not allowed — got '${ref}'`
+                );
+            }
+        }
+        return;
+    }
+    if (ref.includes('..')) {
+        throw new Error(
+            `${fieldName}: contains '..' range operator — got '${ref}'`
+        );
+    }
+    for (let i = 0; i < ref.length; i++) {
+        const code = ref.charCodeAt(i);
+        if (code <= 0x1f || code === 0x20) {
+            throw new Error(
+                `${fieldName}: contains whitespace or control characters — got '${ref}'`
+            );
+        }
+    }
+}
+
+export function requireRemainingHeadlessBudgetMs(
+    timeoutMs: number,
+    deadlineAt: number | undefined,
+    phase: string,
+    now: number = Date.now()
+): number {
+    const remainingMs = getRemainingHeadlessBudgetMs(
+        timeoutMs,
+        deadlineAt,
+        now
+    );
+    if (remainingMs <= 0) {
+        throw new Error(formatHeadlessTimeoutMessage(timeoutMs, phase));
+    }
+    return remainingMs;
+}
+
+export interface HeadlessBudgetAwaitOptions {
+    timeoutMs: number;
+    deadlineAt?: number;
+    phase: string;
+    cancellationToken?: vscode.CancellationToken;
+    onBudgetExceeded?: () => void;
+}
+
+function createHeadlessBudgetExceededError(
+    timeoutMs: number,
+    phase: string
+): Error {
+    return new Error(formatHeadlessTimeoutMessage(timeoutMs, phase));
+}
+
+function createHeadlessBudgetCancellationError(phase: string): Error {
+    return new Error(formatHeadlessCancellationMessage(phase));
+}
+
+export async function awaitWithinHeadlessBudget<T>(
+    promise: Promise<T>,
+    opts: HeadlessBudgetAwaitOptions
+): Promise<T> {
+    const remainingMs = getRemainingHeadlessBudgetMs(
+        opts.timeoutMs,
+        opts.deadlineAt
+    );
+    if (opts.cancellationToken?.isCancellationRequested) {
+        throw createHeadlessBudgetCancellationError(opts.phase);
+    }
+
+    if (remainingMs <= 0) {
+        try {
+            opts.onBudgetExceeded?.();
+        } catch {
+            /* ignore callback errors — primary timeout must always throw */
+        }
+        throw createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase);
+    }
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let cancellationDisposable: vscode.Disposable | undefined;
+    let budgetExceeded = false;
+
+    promise.catch(() => {});
+
+    const racers: Promise<T | never>[] = [promise];
+
+    if (opts.cancellationToken) {
+        const cancellationPromise = new Promise<never>((_, reject) => {
+            cancellationDisposable =
+                opts.cancellationToken?.onCancellationRequested(() => {
+                    if (budgetExceeded) {
+                        return;
+                    }
+                    reject(createHeadlessBudgetCancellationError(opts.phase));
+                });
+        });
+        cancellationPromise.catch(() => {});
+        racers.push(cancellationPromise);
+    }
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+            budgetExceeded = true;
+            try {
+                opts.onBudgetExceeded?.();
+            } catch {
+                /* ignore callback errors — primary timeout already rejected */
+            }
+            reject(
+                createHeadlessBudgetExceededError(opts.timeoutMs, opts.phase)
+            );
+        }, remainingMs);
+    });
+    timeoutPromise.catch(() => {});
+    racers.push(timeoutPromise);
+
+    try {
+        return await Promise.race(racers);
+    } finally {
+        if (timeoutId !== undefined) {
+            clearTimeout(timeoutId);
+        }
+        cancellationDisposable?.dispose();
+    }
+}
+
+function isAbsolutePathLike(filePath: string): boolean {
+    return (
+        path.isAbsolute(filePath) ||
+        /^[a-zA-Z]:[\\/]/.test(filePath) ||
+        filePath.startsWith('\\\\')
+    );
+}
+
+function getTrimmedPathString(filePath: unknown): string {
+    return typeof filePath === 'string' ? filePath.trim() : '';
+}
+
+function hasUnsafeWorkspacePathPrefix(filePath: string): boolean {
+    return (
+        /^[a-zA-Z][a-zA-Z\d+.-]*:(?:\/\/|\/)/.test(filePath) ||
+        /^[a-zA-Z]:/.test(filePath) ||
+        filePath.startsWith(':')
+    );
+}
+
+function normalizePosixPath(filePath: string): string {
+    const normalized = path.posix
+        .normalize(filePath.replace(/\\/g, '/'))
+        .replace(/^(?:\.\/)+/, '');
+    return normalized === '.' ? '' : normalized;
+}

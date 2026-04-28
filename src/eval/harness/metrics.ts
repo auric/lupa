@@ -1,7 +1,12 @@
+import {
+    FINDING_SEVERITIES,
+    type FindingSeverity,
+} from '../../types/findingTypes';
 import type {
     AggregateStats,
     PerFixtureAggregate,
     PerModelAggregate,
+    ResolutionMetricStatus,
     SingleRun,
 } from './types';
 
@@ -49,14 +54,19 @@ function aggregateModel(
         ok.map((r) => r.match?.recall ?? 0).filter(isFinite)
     );
     const f1 = meanStddev(ok.map((r) => r.match?.f1 ?? 0).filter(isFinite));
+    // Runs without resolution data map to NaN and are excluded from the
+    // aggregate via isFinite filtering inside aggregateResolutionRate.
+    const resolutionRate = aggregateResolutionRate(ok);
     const iterations = meanStddev(
-        ok.map((r) => r.result?.telemetry.iterations ?? 0)
+        ok.map((r) => r.result?.telemetry.iterations ?? 0).filter(isFinite)
     );
     const promptTokens = meanStddev(
-        ok.map((r) => r.result?.telemetry.promptTokens ?? 0)
+        ok.map((r) => r.result?.telemetry.promptTokens ?? 0).filter(isFinite)
     );
     const completionTokens = meanStddev(
-        ok.map((r) => r.result?.telemetry.completionTokens ?? 0)
+        ok
+            .map((r) => r.result?.telemetry.completionTokens ?? 0)
+            .filter(isFinite)
     );
     // TODO(quest-8.1): plumb token costs once AnalysisEngine exposes them
     const costUsd = meanStddev(ok.map(() => 0));
@@ -67,6 +77,8 @@ function aggregateModel(
         precision,
         recall,
         f1,
+        resolutionRate,
+        resolutionRateBySeverity: aggregateResolutionRateBySeverity(ok),
         iterations,
         promptTokens,
         completionTokens,
@@ -77,13 +89,30 @@ function aggregateModel(
     };
 }
 
+/**
+ * Computes mean and population standard deviation.
+ *
+ * Returns `NaN` for both `mean` and `stddev` when the input array is empty.
+ */
 export function meanStddev(values: readonly number[]): AggregateStats {
     const n = values.length;
     if (n === 0) {
-        return { count: 0, mean: Number.NaN, stddev: Number.NaN };
+        return {
+            count: 0,
+            mean: Number.NaN,
+            stddev: Number.NaN,
+            invalidCount: 0,
+            noFindingsCount: 0,
+        };
     }
     if (n === 1) {
-        return { count: 1, mean: values[0]!, stddev: 0 };
+        return {
+            count: 1,
+            mean: values[0]!,
+            stddev: 0,
+            invalidCount: 0,
+            noFindingsCount: 0,
+        };
     }
     let sum = 0;
     for (const v of values) {
@@ -95,7 +124,120 @@ export function meanStddev(values: readonly number[]): AggregateStats {
         const d = v - mean;
         sqSum += d * d;
     }
-    return { count: n, mean, stddev: Math.sqrt(sqSum / n) };
+    return {
+        count: n,
+        mean,
+        stddev: Math.sqrt(sqSum / n),
+        invalidCount: 0,
+        noFindingsCount: 0,
+    };
+}
+
+/**
+ * Computes aggregate resolution rate over a set of runs.
+ *
+ * Runs without resolution data map to `NaN`. These values are filtered out
+ * via `Number.isFinite` before computing aggregates. Consequently, the
+ * resolution rate may be based on fewer data points than precision/recall/f1,
+ * which fall back to `0` for missing data rather than `NaN`.
+ */
+function aggregateResolutionRate(runs: readonly SingleRun[]): AggregateStats {
+    const values: number[] = [];
+    let invalidCount = 0;
+    let noFindingsCount = 0;
+
+    for (const run of runs) {
+        const status = getRunResolutionMetricStatus(run);
+        if (status === 'valid') {
+            const rate = run.resolution?.resolutionRate ?? Number.NaN;
+            if (Number.isFinite(rate)) {
+                values.push(rate);
+            } else {
+                invalidCount++;
+            }
+            continue;
+        }
+
+        if (status === 'invalid-skipped') {
+            invalidCount++;
+            continue;
+        }
+
+        noFindingsCount++;
+    }
+
+    return withResolutionStatusCounts(values, invalidCount, noFindingsCount);
+}
+
+function aggregateResolutionRateBySeverity(
+    runs: readonly SingleRun[]
+): Partial<Record<FindingSeverity, AggregateStats>> {
+    const result: Partial<Record<FindingSeverity, AggregateStats>> = {};
+    for (const severity of FINDING_SEVERITIES) {
+        const values: number[] = [];
+        let invalidCount = 0;
+        let noFindingsCount = 0;
+
+        for (const run of runs) {
+            if (run.resolutionWarning) {
+                if (
+                    run.result != null &&
+                    run.result.findings.some(
+                        (finding) => finding.severity === severity
+                    )
+                ) {
+                    invalidCount++;
+                } else {
+                    noFindingsCount++;
+                }
+                continue;
+            }
+
+            const bucket = run.resolution?.bySeverity?.[severity];
+            const status = bucket?.metricStatus ?? 'no-findings';
+            if (status === 'valid') {
+                const rate = bucket?.resolutionRate ?? Number.NaN;
+                if (Number.isFinite(rate)) {
+                    values.push(rate);
+                } else {
+                    invalidCount++;
+                }
+                continue;
+            }
+
+            if (status === 'invalid-skipped') {
+                invalidCount++;
+                continue;
+            }
+
+            noFindingsCount++;
+        }
+
+        result[severity] = withResolutionStatusCounts(
+            values,
+            invalidCount,
+            noFindingsCount
+        );
+    }
+    return result;
+}
+
+function getRunResolutionMetricStatus(run: SingleRun): ResolutionMetricStatus {
+    if (run.resolutionWarning) {
+        return run.result == null || run.result.findings.length === 0
+            ? 'no-findings'
+            : 'invalid-skipped';
+    }
+    return run.resolution?.metricStatus ?? 'no-findings';
+}
+
+function withResolutionStatusCounts(
+    values: readonly number[],
+    invalidCount: number,
+    noFindingsCount: number
+): AggregateStats {
+    const stats = meanStddev(values);
+    return { ...stats, invalidCount, noFindingsCount };
 }
 
 function groupBy<T, K>(
