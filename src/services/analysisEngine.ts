@@ -214,6 +214,8 @@ export class AnalysisEngine implements vscode.Disposable {
         let wasTruncated = false;
         let mainAnalysisDegraded = false;
         let mainAnalysisExitReason: ExitReason | undefined;
+        let mainAnalysisHitQuotaExhausted = false;
+        let mainAnalysisHitRateLimit = false;
 
         try {
             Log.info('Starting analysis with tool-calling support');
@@ -433,6 +435,9 @@ export class AnalysisEngine implements vscode.Disposable {
                 conversationRunner.degraded;
             mainAnalysisDegraded = conversationRunner.degraded;
             mainAnalysisExitReason = conversationRunner.exitReason;
+            mainAnalysisHitQuotaExhausted =
+                conversationRunner.hitQuotaExhausted;
+            mainAnalysisHitRateLimit = conversationRunner.hitRateLimit;
             const shouldRunPipeline =
                 !conversationRunner.wasCancelled &&
                 !conversationRunner.hitQuotaExhausted &&
@@ -514,7 +519,7 @@ export class AnalysisEngine implements vscode.Disposable {
             // Clear parent cancellation token to release references
             subagentSessionManager.setParentCancellationToken(undefined);
             // Complete root agent lifecycle in recursive state tree.
-            // Order matters: error > degraded > findings > quota/rate-limit > cancelled.
+            // Order matters: error > degraded > cancelled > findings > quota/rate-limit.
             // Use mainAnalysis* snapshots because the pipeline may have called
             // conversationRunner.run() again, resetting the runner's flags.
             if (recursiveState) {
@@ -525,15 +530,15 @@ export class AnalysisEngine implements vscode.Disposable {
                         'root',
                         mainAnalysisExitReason ?? 'degraded'
                     );
+                } else if (mainAnalysisWasCancelled) {
+                    recursiveState.cancelAgent('root');
                 } else if (findingStore.size > 0) {
                     recursiveState.completeAgent('root');
                 } else if (
-                    conversationRunner.hitQuotaExhausted ||
-                    conversationRunner.hitRateLimit
+                    mainAnalysisHitQuotaExhausted ||
+                    mainAnalysisHitRateLimit
                 ) {
                     recursiveState.completeAgent('root');
-                } else if (mainAnalysisWasCancelled) {
-                    recursiveState.cancelAgent('root');
                 } else {
                     recursiveState.completeAgent('root');
                 }
