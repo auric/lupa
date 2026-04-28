@@ -557,12 +557,14 @@ const CallList = ({
     );
 };
 
-const EmptyState = () => (
+const EmptyState = ({ wasTruncated }: { wasTruncated?: boolean }) => (
     <div className="tc-empty">
         <Wrench size={36} strokeWidth={1.2} className="tc-empty-icon" />
         <div className="tc-empty-title">No Tool Calls</div>
         <div className="tc-empty-desc">
-            The analysis completed without using any tools.
+            {wasTruncated
+                ? 'Analysis stopped early (iteration limit or degraded state). No tools were used.'
+                : 'The analysis completed without using any tools.'}
         </div>
     </div>
 );
@@ -582,7 +584,7 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
     const inputRef = useRef<HTMLInputElement>(null);
 
     if (!toolCalls || toolCalls.calls.length === 0) {
-        return <EmptyState />;
+        return <EmptyState wasTruncated={toolCalls?.wasTruncated} />;
     }
 
     const totalCalls = useMemo(

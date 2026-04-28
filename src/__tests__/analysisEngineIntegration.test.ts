@@ -1093,7 +1093,7 @@ index 1234567..abcdefg 100644
             // Reproduce the bug: model records findings but never calls submit_review,
             // causing the runner to exit degraded. Before the fix, the pipeline was
             // skipped because analysisCompleted was false. After the fix, pipeline
-            // runs because findings exist and wasTruncated is set.
+            // runs because findings exist (findingStore.size > 0).
             const recordFindingTool = new RecordFindingTool();
             const submitReviewTool = new SubmitReviewTool();
             const mockTool = new MockAnalysisTool();
