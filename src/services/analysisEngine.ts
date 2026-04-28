@@ -210,6 +210,7 @@ export class AnalysisEngine implements vscode.Disposable {
         let stepRecords: StepRecord[] = [];
         let mainAnalysisWasCancelled = false;
         let mainAnalysisIterationsUsed = 0;
+        let wasTruncated = false;
 
         try {
             Log.info('Starting analysis with tool-calling support');
@@ -424,7 +425,7 @@ export class AnalysisEngine implements vscode.Disposable {
             mainAnalysisWasCancelled = conversationRunner.wasCancelled;
             mainAnalysisIterationsUsed = conversationRunner.iterationsUsed;
 
-            const wasTruncated =
+            wasTruncated =
                 conversationRunner.hitMaxIterations ||
                 conversationRunner.degraded;
             const shouldRunPipeline =
@@ -500,24 +501,27 @@ export class AnalysisEngine implements vscode.Disposable {
         } finally {
             // Clear parent cancellation token to release references
             subagentSessionManager.setParentCancellationToken(undefined);
-            // Complete root agent lifecycle in recursive state tree
+            // Complete root agent lifecycle in recursive state tree.
+            // Order matters: error > degraded > findings > quota/rate-limit > cancelled.
             if (recursiveState) {
-                if (analysisCompleted || findingStore.size > 0) {
-                    recursiveState.completeAgent('root');
-                } else if (analysisError) {
+                if (analysisError) {
                     recursiveState.failAgent('root', analysisError);
-                } else if (
-                    conversationRunner.hitQuotaExhausted ||
-                    conversationRunner.hitRateLimit
-                ) {
-                    recursiveState.completeAgent('root');
                 } else if (conversationRunner.degraded) {
                     recursiveState.failAgent(
                         'root',
                         conversationRunner.exitReason ?? 'degraded'
                     );
-                } else {
+                } else if (findingStore.size > 0) {
+                    recursiveState.completeAgent('root');
+                } else if (
+                    conversationRunner.hitQuotaExhausted ||
+                    conversationRunner.hitRateLimit
+                ) {
+                    recursiveState.completeAgent('root');
+                } else if (mainAnalysisWasCancelled) {
                     recursiveState.cancelAgent('root');
+                } else {
+                    recursiveState.completeAgent('root');
                 }
             }
         }
@@ -533,9 +537,7 @@ export class AnalysisEngine implements vscode.Disposable {
             filesAnalyzed,
             stepRecords,
             findings: findingStore.getAll(),
-            wasTruncated:
-                conversationRunner.hitMaxIterations ||
-                conversationRunner.degraded,
+            wasTruncated,
         };
     }
 

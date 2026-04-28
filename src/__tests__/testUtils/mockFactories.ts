@@ -556,11 +556,13 @@ export function createFileExistsError(
  */
 export function createMockWorkspaceSettings(
     overrides: Partial<{
+        maxIterations: number;
         maxRecursionDepth: number;
     }> = {}
 ): WorkspaceSettingsService {
     return {
-        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations,
+        getMaxIterations: () =>
+            overrides.maxIterations ?? ANALYSIS_LIMITS.maxIterations,
         getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds,
         getMaxSubagentsPerSession: () => ANALYSIS_LIMITS.maxSubagentsPerSession,
         getMaxRecursionDepth: () =>

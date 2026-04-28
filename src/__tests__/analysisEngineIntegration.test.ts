@@ -1136,7 +1136,9 @@ index 1234567..abcdefg 100644
             mockCopilotModelManager.sendRequest.mockImplementation(() => {
                 callCount++;
                 if (callCount <= 3) {
-                    // Iterations 1-3: investigation tool calls to satisfy calibration gate.
+                    // Iterations 1-3: investigation tool calls. The default
+                    // calibration profile requires >=2 investigation calls before
+                    // the first finding; we use 3 to be safe across all profiles.
                     return Promise.resolve({
                         content: 'Investigating...',
                         toolCalls: [
@@ -1210,18 +1212,21 @@ index 1234567..abcdefg 100644
                 createMockAnalysisEngineOutput()
             );
 
-            // The finding should survive even though submit_review was never called.
-            expect(result.findings.length).toBeGreaterThan(0);
-            expect(result.findings[0].title).toBe('Off-by-one error');
+            try {
+                // The finding should survive even though submit_review was never called.
+                expect(result.findings.length).toBeGreaterThan(0);
+                expect(result.findings[0].title).toBe('Off-by-one error');
 
-            // The pipeline must have been invoked — this is the core fix.
-            expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+                // The pipeline must have been invoked — this is the core fix.
+                expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
 
-            // The result must indicate truncation because degraded was true.
-            expect(result.wasTruncated).toBe(true);
-            expect(result.completed).toBe(false);
-
-            pipelineRunSpy.mockRestore();
+                // The result must indicate truncation because degraded was true.
+                expect(result.wasTruncated).toBe(true);
+                expect(result.completed).toBe(false);
+                expect(result.iterationsUsed).toBe(7);
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
         });
 
         it('should set wasTruncated when runner hits max iterations', async () => {
@@ -1266,7 +1271,9 @@ index 1234567..abcdefg 100644
             mockCopilotModelManager.sendRequest.mockImplementation(() => {
                 callCount++;
                 if (callCount <= 3) {
-                    // Iterations 1-3: investigation calls to satisfy calibration gate.
+                    // Iterations 1-3: investigation calls. The default calibration
+                    // profile requires >=2 investigation calls before the first
+                    // finding; we use 3 to be safe across all profiles.
                     return Promise.resolve({
                         content: 'Investigating...',
                         toolCalls: [
@@ -1349,11 +1356,17 @@ index 1234567..abcdefg 100644
                 createMockAnalysisEngineOutput()
             );
 
-            expect(result.findings.length).toBeGreaterThan(0);
-            expect(result.wasTruncated).toBe(true);
-            expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
-
-            pipelineRunSpy.mockRestore();
+            try {
+                expect(result.findings.length).toBeGreaterThan(0);
+                expect(result.wasTruncated).toBe(true);
+                // When max iterations is hit (not degraded), analysisCompleted is
+                // still true because none of the negative flags are set.
+                expect(result.completed).toBe(true);
+                expect(result.iterationsUsed).toBe(5);
+                expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
         });
     });
 });
