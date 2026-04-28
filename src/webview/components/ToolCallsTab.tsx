@@ -700,7 +700,7 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
                         <span className="tc-stat-sep" />
                         <div
                             className="tc-stat tc-stat--warn"
-                            title="Analysis stopped at the maximum iteration limit. Results are partial."
+                            title="Analysis stopped early (iteration limit or degraded state). Results are partial."
                         >
                             <AlertCircle size={13} />
                             <span className="tc-stat-label">truncated</span>

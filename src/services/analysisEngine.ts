@@ -475,12 +475,12 @@ export class AnalysisEngine implements vscode.Disposable {
                     `Analysis complete (${toolCallRecords.length} tool calls)`,
                     2
                 );
-                if (analysisCompleted) {
-                    Log.info('Analysis completed successfully');
-                } else {
+                if (wasTruncated) {
                     Log.info(
                         'Analysis truncated — post-analysis pipeline run on recorded findings'
                     );
+                } else {
+                    Log.info('Analysis completed successfully');
                 }
             } else if (
                 conversationRunner.hitQuotaExhausted ||

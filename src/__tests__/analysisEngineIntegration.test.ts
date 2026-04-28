@@ -1445,9 +1445,9 @@ index 1234567..abcdefg 100644
             }
         });
 
-        it('should skip pipeline when max iterations hit with no findings', async () => {
+        it('should still run pipeline when max iterations hit with no findings', async () => {
             // Boundary: runner hits max iterations without ever recording a finding.
-            // The pipeline should NOT run and wasTruncated should still be true.
+            // analysisCompleted remains true, so the pipeline still runs.
             const submitReviewTool = new SubmitReviewTool();
             const mockTool = new MockAnalysisTool();
 
