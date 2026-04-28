@@ -475,7 +475,13 @@ export class AnalysisEngine implements vscode.Disposable {
                     `Analysis complete (${toolCallRecords.length} tool calls)`,
                     2
                 );
-                Log.info('Analysis completed successfully');
+                if (analysisCompleted) {
+                    Log.info('Analysis completed successfully');
+                } else {
+                    Log.info(
+                        'Analysis truncated — post-analysis pipeline run on recorded findings'
+                    );
+                }
             } else if (
                 conversationRunner.hitQuotaExhausted ||
                 conversationRunner.hitRateLimit
@@ -492,6 +498,7 @@ export class AnalysisEngine implements vscode.Disposable {
             }
         } catch (error) {
             if (isCancellationError(error)) {
+                mainAnalysisWasCancelled = true;
                 throw error;
             }
             analysisError = getErrorMessage(error);
