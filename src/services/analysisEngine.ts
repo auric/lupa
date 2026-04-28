@@ -79,6 +79,7 @@ export interface AnalysisEngineResult {
     filesAnalyzed: number;
     stepRecords: StepRecord[];
     findings: RecordedFinding[];
+    wasTruncated: boolean;
 }
 
 /**
@@ -423,7 +424,16 @@ export class AnalysisEngine implements vscode.Disposable {
             mainAnalysisWasCancelled = conversationRunner.wasCancelled;
             mainAnalysisIterationsUsed = conversationRunner.iterationsUsed;
 
-            if (analysisCompleted) {
+            const wasTruncated =
+                conversationRunner.hitMaxIterations ||
+                conversationRunner.degraded;
+            const shouldRunPipeline =
+                !conversationRunner.wasCancelled &&
+                !conversationRunner.hitQuotaExhausted &&
+                !conversationRunner.hitRateLimit &&
+                (analysisCompleted || findingStore.size > 0);
+
+            if (shouldRunPipeline) {
                 const pipeline = new PostAnalysisPipeline(
                     this.findingValidator
                 );
@@ -453,6 +463,12 @@ export class AnalysisEngine implements vscode.Disposable {
 
                 selfReflectionScores = pipelineResult.selfReflectionScores;
                 stepRecords = pipelineResult.stepRecords;
+
+                if (wasTruncated) {
+                    Log.info(
+                        `Analysis truncated — running post-analysis pipeline on ${findingStore.size} recorded findings`
+                    );
+                }
 
                 output.onProgress(
                     `Analysis complete (${toolCallRecords.length} tool calls)`,
@@ -486,7 +502,7 @@ export class AnalysisEngine implements vscode.Disposable {
             subagentSessionManager.setParentCancellationToken(undefined);
             // Complete root agent lifecycle in recursive state tree
             if (recursiveState) {
-                if (analysisCompleted) {
+                if (analysisCompleted || findingStore.size > 0) {
                     recursiveState.completeAgent('root');
                 } else if (analysisError) {
                     recursiveState.failAgent('root', analysisError);
@@ -517,6 +533,9 @@ export class AnalysisEngine implements vscode.Disposable {
             filesAnalyzed,
             stepRecords,
             findings: findingStore.getAll(),
+            wasTruncated:
+                conversationRunner.hitMaxIterations ||
+                conversationRunner.degraded,
         };
     }
 

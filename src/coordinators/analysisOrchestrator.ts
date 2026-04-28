@@ -218,6 +218,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                             iterationsUsed: result.iterationsUsed,
                             maxIterations:
                                 this.services.workspaceSettings.getMaxIterations(),
+                            wasTruncated: result.wasTruncated,
                         }
                     );
 

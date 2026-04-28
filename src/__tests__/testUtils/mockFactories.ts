@@ -701,6 +701,7 @@ export function createMockAnalysisEngineResult(
         analysisText: overrides.analysisText ?? 'Mock analysis result',
         toolCallRecords: overrides.toolCallRecords ?? [],
         completed: overrides.completed ?? true,
+        wasTruncated: overrides.wasTruncated ?? false,
         wasCancelled: overrides.wasCancelled ?? false,
         error: overrides.error ?? undefined,
         iterationsUsed: overrides.iterationsUsed ?? 5,

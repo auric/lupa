@@ -8,6 +8,8 @@ import { ITool } from '../tools/ITool';
 import { DiffUtils } from '../utils/diffUtils';
 import type { DiffHunk } from '../types/contextTypes';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
+import { RecordFindingTool } from '../tools/recordFindingTool';
+import { PostAnalysisPipeline } from '../services/postAnalysisPipeline';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
@@ -37,6 +39,10 @@ class MockAnalysisTool implements ITool {
             .boolean()
             .default(true)
             .describe('Include full body'),
+        file: z
+            .string()
+            .optional()
+            .describe('Optional file path for tracking investigated files'),
     });
 
     getVSCodeTool(): vscode.LanguageModelChatTool {
@@ -1079,6 +1085,275 @@ index 1234567..abcdefg 100644
 
             expect(generateToolAwareSpy).toHaveBeenCalled();
             expect(generateRecursiveSpy).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('truncation handling', () => {
+        it('should run post-analysis pipeline on recorded findings when analysis exits degraded', async () => {
+            // Reproduce the bug: model records findings but never calls submit_review,
+            // causing the runner to exit degraded. Before the fix, the pipeline was
+            // skipped because analysisCompleted was false. After the fix, pipeline
+            // runs because findings exist and wasTruncated is set.
+            const recordFindingTool = new RecordFindingTool();
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                recordFindingTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'record_finding') {
+                    return recordFindingTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
+            // Requires enough iterations for investigation calls + record_finding +
+            // completion nudges to exhaust. MAX_COMPLETION_NUDGES = 2, so we need
+            // at least 3 text-only iterations after record_finding to trigger degraded.
+            const truncatedSettings = createMockWorkspaceSettings({
+                maxIterations: 8,
+                maxRecursionDepth: 0,
+            });
+
+            const truncatedProvider = new AnalysisEngine(
+                mockToolRegistry,
+                mockPromptGenerator,
+                truncatedSettings,
+                mockDiffEnricher,
+                mockFindingValidator
+            );
+
+            let callCount = 0;
+            mockCopilotModelManager.sendRequest.mockImplementation(() => {
+                callCount++;
+                if (callCount <= 3) {
+                    // Iterations 1-3: investigation tool calls to satisfy calibration gate.
+                    return Promise.resolve({
+                        content: 'Investigating...',
+                        toolCalls: [
+                            {
+                                id: `call_investigate_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: JSON.stringify({
+                                        symbolName: 'validateToken',
+                                        file: 'src/auth.ts',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                if (callCount === 4) {
+                    // Iteration 4: record a finding.
+                    return Promise.resolve({
+                        content: 'Found an issue',
+                        toolCalls: [
+                            {
+                                id: 'call_record_1',
+                                function: {
+                                    name: 'record_finding',
+                                    arguments: JSON.stringify({
+                                        severity: 'HIGH',
+                                        category: 'logic_error',
+                                        title: 'Off-by-one error',
+                                        file: 'src/auth.ts',
+                                        line: 15,
+                                        description:
+                                            'The loop condition uses <= instead of <, causing an off-by-one error that reads past the array boundary.',
+                                        verification_evidence:
+                                            'Inspected the loop bounds via read_file tool.',
+                                        disproof_note:
+                                            'Checked callers with find_usages — all 3 callers pass unvalidated input.',
+                                        affected_component: 'authenticateUser',
+                                        failure_mechanism: 'runtime_exception',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                // Iterations 5+: respond with text but never call submit_review.
+                // After 2 completion nudges the runner exits degraded.
+                return Promise.resolve({
+                    content:
+                        'I have recorded the finding. Let me continue investigating...',
+                    toolCalls: [],
+                });
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockResolvedValue({
+                    droppedTitles: [],
+                    rewrittenAnalysis: undefined,
+                    additionalToolCallRecords: [],
+                    selfReflectionScores: [],
+                    stepRecords: [],
+                });
+
+            const result = await truncatedProvider.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
+
+            // The finding should survive even though submit_review was never called.
+            expect(result.findings.length).toBeGreaterThan(0);
+            expect(result.findings[0].title).toBe('Off-by-one error');
+
+            // The pipeline must have been invoked — this is the core fix.
+            expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+
+            // The result must indicate truncation because degraded was true.
+            expect(result.wasTruncated).toBe(true);
+            expect(result.completed).toBe(false);
+
+            pipelineRunSpy.mockRestore();
+        });
+
+        it('should set wasTruncated when runner hits max iterations', async () => {
+            // Synthetic scenario: model records a finding early, then keeps
+            // making tool calls until the iteration cap is hit.
+            const recordFindingTool = new RecordFindingTool();
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                recordFindingTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'record_finding') {
+                    return recordFindingTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
+            const capSettings = createMockWorkspaceSettings({
+                maxIterations: 5,
+                maxRecursionDepth: 0,
+            });
+
+            const capProvider = new AnalysisEngine(
+                mockToolRegistry,
+                mockPromptGenerator,
+                capSettings,
+                mockDiffEnricher,
+                mockFindingValidator
+            );
+
+            let callCount = 0;
+            mockCopilotModelManager.sendRequest.mockImplementation(() => {
+                callCount++;
+                if (callCount <= 3) {
+                    // Iterations 1-3: investigation calls to satisfy calibration gate.
+                    return Promise.resolve({
+                        content: 'Investigating...',
+                        toolCalls: [
+                            {
+                                id: `call_investigate_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: JSON.stringify({
+                                        symbolName: 'validateToken',
+                                        file: 'src/auth.ts',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                if (callCount === 4) {
+                    // Iteration 4: record a finding.
+                    return Promise.resolve({
+                        content: 'Found an issue',
+                        toolCalls: [
+                            {
+                                id: 'call_record_1',
+                                function: {
+                                    name: 'record_finding',
+                                    arguments: JSON.stringify({
+                                        severity: 'HIGH',
+                                        category: 'logic_error',
+                                        title: 'Buffer overflow risk',
+                                        file: 'src/auth.ts',
+                                        line: 20,
+                                        description:
+                                            'Unbounded string copy into fixed-size buffer.',
+                                        verification_evidence:
+                                            'Read the function body carefully.',
+                                        disproof_note:
+                                            'Checked callers with find_usages — all pass unvalidated input.',
+                                        affected_component: 'authenticateUser',
+                                        failure_mechanism: 'runtime_exception',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                // Burn the last iteration with a tool call so we hit the cap
+                // without ever calling submit_review.
+                return Promise.resolve({
+                    content: 'Investigating further...',
+                    toolCalls: [
+                        {
+                            id: `call_tool_${callCount}`,
+                            function: {
+                                name: 'find_symbol',
+                                arguments: JSON.stringify({
+                                    symbolName: 'foo',
+                                }),
+                            },
+                        },
+                    ],
+                });
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockResolvedValue({
+                    droppedTitles: [],
+                    rewrittenAnalysis: undefined,
+                    additionalToolCallRecords: [],
+                    selfReflectionScores: [],
+                    stepRecords: [],
+                });
+
+            const result = await capProvider.analyze(
+                createMockAnalysisEngineInput({
+                    parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                    llmClient: mockCopilotModelManager as any,
+                    token: tokenSource.token,
+                }),
+                createMockAnalysisEngineOutput()
+            );
+
+            expect(result.findings.length).toBeGreaterThan(0);
+            expect(result.wasTruncated).toBe(true);
+            expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+
+            pipelineRunSpy.mockRestore();
         });
     });
 });

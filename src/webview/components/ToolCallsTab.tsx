@@ -258,6 +258,13 @@ function formatToolCallsAsMarkdown(toolCalls: ToolCallsData): string {
         totalIterations > 0 ? `- **Total Iterations:** ${totalIterations}` : '',
         '',
     ].filter(Boolean);
+    if (toolCalls.wasTruncated) {
+        lines.push('');
+        lines.push(
+            '> **Truncated:** Analysis stopped at the maximum iteration limit. Results are partial.'
+        );
+        lines.push('');
+    }
     lines.push(...formatCallsMarkdown(toolCalls.calls, 0));
     return lines.join('\n');
 }
@@ -688,7 +695,16 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
                         </div>
                     </>
                 )}
-                {!toolCalls.analysisCompleted && (
+                {toolCalls.wasTruncated && (
+                    <>
+                        <span className="tc-stat-sep" />
+                        <div className="tc-stat tc-stat--warn">
+                            <AlertCircle size={13} />
+                            <span className="tc-stat-label">truncated</span>
+                        </div>
+                    </>
+                )}
+                {!toolCalls.analysisCompleted && !toolCalls.wasTruncated && (
                     <>
                         <span className="tc-stat-sep" />
                         <div className="tc-stat tc-stat--warn">
