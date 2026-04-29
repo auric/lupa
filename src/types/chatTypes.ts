@@ -62,7 +62,7 @@ export interface ChatAnalysisMetadata {
     hasSecurityIssues?: boolean;
     /** Whether testing (🧪) suggestions were included */
     hasTestingSuggestions?: boolean;
-    /** Whether analysis was truncated (partial results) */
+    /** Whether the analysis was truncated due to iteration limits or degraded state */
     wasTruncated?: boolean;
     /** Whether analysis was cancelled */
     cancelled?: boolean;

@@ -29,11 +29,11 @@ import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
+import { TRUNCATED_MESSAGE } from '../constants/messages';
 import type {
     ChatToolCallHandler,
     ChatAnalysisMetadata,
 } from '../types/chatTypes';
-import { TRUNCATED_MESSAGE } from '../constants/messages';
 import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
 

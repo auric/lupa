@@ -1529,28 +1529,6 @@ index 1234567..abcdefg 100644
         });
 
         it('should skip pipeline when cancelled even if findings exist', async () => {
-            const recordFindingTool = new RecordFindingTool();
-            const submitReviewTool = new SubmitReviewTool();
-            const mockTool = new MockAnalysisTool();
-
-            mockToolRegistry.getAllTools.mockReturnValue([
-                mockTool,
-                recordFindingTool,
-                submitReviewTool,
-            ]);
-            mockToolRegistry.getTool.mockImplementation((name: string) => {
-                if (name === 'find_symbol') {
-                    return mockTool;
-                }
-                if (name === 'record_finding') {
-                    return recordFindingTool;
-                }
-                if (name === 'submit_review') {
-                    return submitReviewTool;
-                }
-                return undefined;
-            });
-
             const pipelineRunSpy = vi
                 .spyOn(
                     await import('../services/postAnalysisPipeline'),
@@ -1564,14 +1542,17 @@ index 1234567..abcdefg 100644
                 );
 
             try {
-                const localTokenSource = new vscode.CancellationTokenSource();
-                localTokenSource.cancel();
+                const cancelledSource = createMockCancellationTokenSource();
+                cancelledSource.cancel();
 
-                const result = await provider.analyze({
-                    diffText: sampleDiff,
-                    branchName: 'feature/x',
-                    token: localTokenSource.token,
-                });
+                const result = await provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: cancelledSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
 
                 expect(result.findings.length).toBe(0);
                 expect(result.wasTruncated).toBe(false);
@@ -1583,27 +1564,12 @@ index 1234567..abcdefg 100644
         });
 
         it('should skip pipeline when quota exhausted even if findings exist', async () => {
-            const recordFindingTool = new RecordFindingTool();
-            const submitReviewTool = new SubmitReviewTool();
-            const mockTool = new MockAnalysisTool();
-
-            mockToolRegistry.getAllTools.mockReturnValue([
-                mockTool,
-                recordFindingTool,
-                submitReviewTool,
-            ]);
-            mockToolRegistry.getTool.mockImplementation((name: string) => {
-                if (name === 'find_symbol') {
-                    return mockTool;
+            class ChatQuotaExceeded extends Error {
+                constructor(message = 'Quota exceeded') {
+                    super(message);
+                    this.name = 'ChatQuotaExceeded';
                 }
-                if (name === 'record_finding') {
-                    return recordFindingTool;
-                }
-                if (name === 'submit_review') {
-                    return submitReviewTool;
-                }
-                return undefined;
-            });
+            }
 
             const pipelineRunSpy = vi
                 .spyOn(
@@ -1618,17 +1584,18 @@ index 1234567..abcdefg 100644
                 );
 
             try {
-                // Force quota exhaustion by rejecting with quota error
                 mockCopilotModelManager.sendRequest.mockRejectedValue(
-                    new Error('429 Quota exceeded')
+                    new ChatQuotaExceeded()
                 );
 
-                const localTokenSource = new vscode.CancellationTokenSource();
-                const result = await provider.analyze({
-                    diffText: sampleDiff,
-                    branchName: 'feature/x',
-                    token: localTokenSource.token,
-                });
+                const result = await provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
 
                 expect(result.findings.length).toBe(0);
                 expect(result.wasTruncated).toBe(false);
@@ -1640,27 +1607,14 @@ index 1234567..abcdefg 100644
         });
 
         it('should skip pipeline when rate limited even if findings exist', async () => {
-            const recordFindingTool = new RecordFindingTool();
-            const submitReviewTool = new SubmitReviewTool();
-            const mockTool = new MockAnalysisTool();
+            class ChatRateLimited extends Error {
+                constructor(message = 'Rate limited') {
+                    super(message);
+                    this.name = 'ChatRateLimited';
+                }
+            }
 
-            mockToolRegistry.getAllTools.mockReturnValue([
-                mockTool,
-                recordFindingTool,
-                submitReviewTool,
-            ]);
-            mockToolRegistry.getTool.mockImplementation((name: string) => {
-                if (name === 'find_symbol') {
-                    return mockTool;
-                }
-                if (name === 'record_finding') {
-                    return recordFindingTool;
-                }
-                if (name === 'submit_review') {
-                    return submitReviewTool;
-                }
-                return undefined;
-            });
+            vi.useFakeTimers();
 
             const pipelineRunSpy = vi
                 .spyOn(
@@ -1675,17 +1629,22 @@ index 1234567..abcdefg 100644
                 );
 
             try {
-                // Force rate limit by rejecting with rate limit error
                 mockCopilotModelManager.sendRequest.mockRejectedValue(
-                    new Error('429 Rate limit exceeded')
+                    new ChatRateLimited()
                 );
 
-                const localTokenSource = new vscode.CancellationTokenSource();
-                const result = await provider.analyze({
-                    diffText: sampleDiff,
-                    branchName: 'feature/x',
-                    token: localTokenSource.token,
-                });
+                const runPromise = provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                // Advance timers past all retry backoffs (5 retries max).
+                await vi.advanceTimersByTimeAsync(120_000);
+                const result = await runPromise;
 
                 expect(result.findings.length).toBe(0);
                 expect(result.wasTruncated).toBe(false);
@@ -1693,6 +1652,7 @@ index 1234567..abcdefg 100644
                 expect(pipelineRunSpy).not.toHaveBeenCalled();
             } finally {
                 pipelineRunSpy.mockRestore();
+                vi.useRealTimers();
             }
         });
     });
