@@ -1185,7 +1185,8 @@ index 1234567..abcdefg 100644
                     });
                 }
                 // Iterations 5+: respond with text but never call submit_review.
-                // After 2 completion nudges the runner exits degraded.
+                // After 3 text-only responses (soft continue + 2 nudges),
+                // the runner exits degraded.
                 return Promise.resolve({
                     content:
                         'I have recorded the finding. Let me continue investigating...',
@@ -1223,10 +1224,9 @@ index 1234567..abcdefg 100644
                 // The result must indicate truncation because degraded was true.
                 expect(result.wasTruncated).toBe(true);
                 expect(result.completed).toBe(false);
-                // Exact iteration count depends on internal MAX_COMPLETION_NUDGES;
-                // assert a safe range instead of a hard-coded value.
-                expect(result.iterationsUsed).toBeGreaterThanOrEqual(4);
-                expect(result.iterationsUsed).toBeLessThanOrEqual(8);
+                // 3 investigation calls + 1 record_finding + text-only responses
+                // until degraded with MAX_COMPLETION_NUDGES=2.
+                expect(result.iterationsUsed).toBe(7);
             } finally {
                 pipelineRunSpy.mockRestore();
             }
@@ -1365,8 +1365,7 @@ index 1234567..abcdefg 100644
                 // When max iterations is hit (not degraded), analysisCompleted is
                 // still true because none of the negative flags are set.
                 expect(result.completed).toBe(true);
-                expect(result.iterationsUsed).toBeGreaterThanOrEqual(4);
-                expect(result.iterationsUsed).toBeLessThanOrEqual(5);
+                expect(result.iterationsUsed).toBe(5);
                 expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
             } finally {
                 pipelineRunSpy.mockRestore();
@@ -1438,6 +1437,7 @@ index 1234567..abcdefg 100644
                 expect(result.findings.length).toBe(0);
                 expect(result.wasTruncated).toBe(true);
                 expect(result.completed).toBe(false);
+                expect(result.iterationsUsed).toBe(3);
                 // Pipeline must NOT have been invoked — no findings to process.
                 expect(pipelineRunSpy).not.toHaveBeenCalled();
             } finally {
@@ -1523,6 +1523,174 @@ index 1234567..abcdefg 100644
                 // Pipeline still runs because analysisCompleted is true (max
                 // iterations does not set any negative flag).
                 expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
+
+        it('should skip pipeline when cancelled even if findings exist', async () => {
+            const recordFindingTool = new RecordFindingTool();
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                recordFindingTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'record_finding') {
+                    return recordFindingTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(
+                    await import('../services/postAnalysisPipeline'),
+                    'PostAnalysisPipeline'
+                )
+                .mockImplementation(
+                    () =>
+                        ({
+                            run: vi.fn().mockResolvedValue(undefined),
+                        }) as unknown as PostAnalysisPipeline
+                );
+
+            try {
+                const localTokenSource = new vscode.CancellationTokenSource();
+                localTokenSource.cancel();
+
+                const result = await provider.analyze({
+                    diffText: sampleDiff,
+                    branchName: 'feature/x',
+                    token: localTokenSource.token,
+                });
+
+                expect(result.findings.length).toBe(0);
+                expect(result.wasTruncated).toBe(false);
+                expect(result.completed).toBe(false);
+                expect(pipelineRunSpy).not.toHaveBeenCalled();
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
+
+        it('should skip pipeline when quota exhausted even if findings exist', async () => {
+            const recordFindingTool = new RecordFindingTool();
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                recordFindingTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'record_finding') {
+                    return recordFindingTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(
+                    await import('../services/postAnalysisPipeline'),
+                    'PostAnalysisPipeline'
+                )
+                .mockImplementation(
+                    () =>
+                        ({
+                            run: vi.fn().mockResolvedValue(undefined),
+                        }) as unknown as PostAnalysisPipeline
+                );
+
+            try {
+                // Force quota exhaustion by rejecting with quota error
+                mockCopilotModelManager.sendRequest.mockRejectedValue(
+                    new Error('429 Quota exceeded')
+                );
+
+                const localTokenSource = new vscode.CancellationTokenSource();
+                const result = await provider.analyze({
+                    diffText: sampleDiff,
+                    branchName: 'feature/x',
+                    token: localTokenSource.token,
+                });
+
+                expect(result.findings.length).toBe(0);
+                expect(result.wasTruncated).toBe(false);
+                expect(result.completed).toBe(false);
+                expect(pipelineRunSpy).not.toHaveBeenCalled();
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
+
+        it('should skip pipeline when rate limited even if findings exist', async () => {
+            const recordFindingTool = new RecordFindingTool();
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                recordFindingTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'record_finding') {
+                    return recordFindingTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(
+                    await import('../services/postAnalysisPipeline'),
+                    'PostAnalysisPipeline'
+                )
+                .mockImplementation(
+                    () =>
+                        ({
+                            run: vi.fn().mockResolvedValue(undefined),
+                        }) as unknown as PostAnalysisPipeline
+                );
+
+            try {
+                // Force rate limit by rejecting with rate limit error
+                mockCopilotModelManager.sendRequest.mockRejectedValue(
+                    new Error('429 Rate limit exceeded')
+                );
+
+                const localTokenSource = new vscode.CancellationTokenSource();
+                const result = await provider.analyze({
+                    diffText: sampleDiff,
+                    branchName: 'feature/x',
+                    token: localTokenSource.token,
+                });
+
+                expect(result.findings.length).toBe(0);
+                expect(result.wasTruncated).toBe(false);
+                expect(result.completed).toBe(false);
+                expect(pipelineRunSpy).not.toHaveBeenCalled();
             } finally {
                 pipelineRunSpy.mockRestore();
             }

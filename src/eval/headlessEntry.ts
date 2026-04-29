@@ -597,8 +597,8 @@ export async function runHeadlessFromEnv(
                 if (!result.completed) {
                     // --out (if any) is already written above so the operator
                     // can inspect the partial result. Surface as a non-zero
-                    // exit via the outer catch: partial findings are unvalidated
-                    // when the pipeline was skipped (no findings recorded).
+                    // exit via the outer catch: partial findings may be
+                    // unvalidated if the post-analysis pipeline was skipped.
                     const suffix = args.out
                         ? `see ${args.out} for partial result`
                         : 'rerun with --out <path> to capture partial result';

@@ -423,20 +423,19 @@ export class AnalysisEngine implements vscode.Disposable {
                 input.token,
                 handler
             );
-            analysisCompleted =
-                !conversationRunner.wasCancelled &&
-                !conversationRunner.hitQuotaExhausted &&
-                !conversationRunner.hitRateLimit &&
-                !conversationRunner.degraded;
             mainAnalysisWasCancelled = conversationRunner.wasCancelled;
             mainAnalysisIterationsUsed = conversationRunner.iterationsUsed;
-
             mainAnalysisDegraded = conversationRunner.degraded;
             mainAnalysisExitReason = conversationRunner.exitReason;
             mainAnalysisHitQuotaExhausted =
                 conversationRunner.hitQuotaExhausted;
             mainAnalysisHitRateLimit = conversationRunner.hitRateLimit;
             mainAnalysisHitMaxIterations = conversationRunner.hitMaxIterations;
+            analysisCompleted =
+                !mainAnalysisWasCancelled &&
+                !mainAnalysisHitQuotaExhausted &&
+                !mainAnalysisHitRateLimit &&
+                !mainAnalysisDegraded;
             wasTruncated =
                 mainAnalysisHitMaxIterations ||
                 (mainAnalysisDegraded &&
@@ -505,7 +504,7 @@ export class AnalysisEngine implements vscode.Disposable {
                 );
             } else if (mainAnalysisDegraded) {
                 Log.warn(
-                    `Analysis ended in degraded state: ${mainAnalysisExitReason}`
+                    `Analysis ended in degraded state: ${mainAnalysisExitReason ?? 'degraded'}`
                 );
             } else if (mainAnalysisWasCancelled) {
                 Log.info('Analysis was cancelled by user');
