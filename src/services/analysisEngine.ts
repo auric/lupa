@@ -216,6 +216,7 @@ export class AnalysisEngine implements vscode.Disposable {
         let mainAnalysisExitReason: ExitReason | undefined;
         let mainAnalysisHitQuotaExhausted = false;
         let mainAnalysisHitRateLimit = false;
+        let mainAnalysisHitMaxIterations = false;
 
         try {
             Log.info('Starting analysis with tool-calling support');
@@ -435,8 +436,9 @@ export class AnalysisEngine implements vscode.Disposable {
             mainAnalysisHitQuotaExhausted =
                 conversationRunner.hitQuotaExhausted;
             mainAnalysisHitRateLimit = conversationRunner.hitRateLimit;
+            mainAnalysisHitMaxIterations = conversationRunner.hitMaxIterations;
             wasTruncated =
-                conversationRunner.hitMaxIterations ||
+                mainAnalysisHitMaxIterations ||
                 (mainAnalysisDegraded &&
                     !mainAnalysisHitQuotaExhausted &&
                     !mainAnalysisHitRateLimit);
