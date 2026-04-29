@@ -430,16 +430,16 @@ export class AnalysisEngine implements vscode.Disposable {
             mainAnalysisWasCancelled = conversationRunner.wasCancelled;
             mainAnalysisIterationsUsed = conversationRunner.iterationsUsed;
 
-            wasTruncated =
-                conversationRunner.hitMaxIterations ||
-                (conversationRunner.degraded &&
-                    !conversationRunner.hitQuotaExhausted &&
-                    !conversationRunner.hitRateLimit);
             mainAnalysisDegraded = conversationRunner.degraded;
             mainAnalysisExitReason = conversationRunner.exitReason;
             mainAnalysisHitQuotaExhausted =
                 conversationRunner.hitQuotaExhausted;
             mainAnalysisHitRateLimit = conversationRunner.hitRateLimit;
+            wasTruncated =
+                conversationRunner.hitMaxIterations ||
+                (mainAnalysisDegraded &&
+                    !mainAnalysisHitQuotaExhausted &&
+                    !mainAnalysisHitRateLimit);
             const shouldRunPipeline =
                 !mainAnalysisWasCancelled &&
                 !mainAnalysisHitQuotaExhausted &&
@@ -525,7 +525,7 @@ export class AnalysisEngine implements vscode.Disposable {
             // Clear parent cancellation token to release references
             subagentSessionManager.setParentCancellationToken(undefined);
             // Complete root agent lifecycle in recursive state tree.
-            // Order matters: error > quota/rate-limit > degraded > cancelled > findings.
+            // Order matters: error > quota/rate-limit > degraded > cancelled > complete.
             // Use mainAnalysis* snapshots because the pipeline may have called
             // conversationRunner.run() again, resetting the runner's flags.
             if (recursiveState) {
