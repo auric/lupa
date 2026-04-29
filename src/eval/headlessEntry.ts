@@ -595,10 +595,8 @@ export async function runHeadlessFromEnv(
                     fs.writeFileSync(args.out, JSON.stringify(result, null, 2));
                 }
                 if (!result.completed) {
-                    // --out (if any) is already written above so the operator
-                    // can inspect the partial result. Surface as a non-zero
-                    // exit via the outer catch: partial findings may be
-                    // unvalidated if the post-analysis pipeline was skipped.
+                    // Analysis ended without completing. Partial result was
+                    // already written to --out (if provided) for inspection.
                     const suffix = args.out
                         ? `see ${args.out} for partial result`
                         : 'rerun with --out <path> to capture partial result';

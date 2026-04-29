@@ -1528,7 +1528,7 @@ index 1234567..abcdefg 100644
             }
         });
 
-        it('should skip pipeline when cancelled even if findings exist', async () => {
+        it('should skip pipeline when cancelled', async () => {
             const pipelineRunSpy = vi
                 .spyOn(
                     await import('../services/postAnalysisPipeline'),
@@ -1563,7 +1563,7 @@ index 1234567..abcdefg 100644
             }
         });
 
-        it('should skip pipeline when quota exhausted even if findings exist', async () => {
+        it('should skip pipeline when quota exhausted', async () => {
             class ChatQuotaExceeded extends Error {
                 constructor(message = 'Quota exceeded') {
                     super(message);
@@ -1606,7 +1606,7 @@ index 1234567..abcdefg 100644
             }
         });
 
-        it('should skip pipeline when rate limited even if findings exist', async () => {
+        it('should skip pipeline when rate limited', async () => {
             class ChatRateLimited extends Error {
                 constructor(message = 'Rate limited') {
                     super(message);
