@@ -500,7 +500,10 @@ export function getHeadlessAnalysisResultValidationError(
     if (typeof result.completed !== 'boolean') {
         return 'result.completed must be a boolean';
     }
-    if (typeof result.wasTruncated !== 'boolean') {
+    if (
+        result.wasTruncated !== undefined &&
+        typeof result.wasTruncated !== 'boolean'
+    ) {
         return 'result.wasTruncated must be a boolean';
     }
     return null;

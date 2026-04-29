@@ -503,6 +503,7 @@ describe('runHeadless', () => {
         expect(result.modelId).toBe('copilot/gpt-4.1');
         expect(result.seed).toBe(42);
         expect(result.completed).toBe(true);
+        expect(result.wasTruncated).toBe(false);
         expect(result.rawToolCallLog).toHaveLength(1);
         expect(result.telemetry).toMatchObject({
             iterations: 4,

@@ -634,6 +634,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 hasCriticalIssues: contentAnalysis.hasCriticalIssues,
                 hasSecurityIssues: contentAnalysis.hasSecurityIssues,
                 hasTestingSuggestions: contentAnalysis.hasTestingSuggestions,
+                wasTruncated: result.wasTruncated,
                 cancelled: false,
                 analysisTimestamp: Date.now(),
             } satisfies ChatAnalysisMetadata,

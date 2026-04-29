@@ -51,7 +51,7 @@ export interface ToolCallsData {
     /** Maximum iterations configured for the main analysis */
     maxIterations?: number;
     /** Whether the analysis was truncated due to iteration limits or degraded state */
-    wasTruncated?: boolean;
+    wasTruncated: boolean;
 }
 
 /**
