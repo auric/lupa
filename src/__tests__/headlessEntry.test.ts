@@ -108,6 +108,7 @@ describe('runHeadlessFromEnv', () => {
             modelId: 'copilot/gpt-4.1',
             seed: 42,
             completed: false,
+            wasTruncated: false,
         };
         vi.mocked(runHeadless).mockResolvedValue(partialResult as never);
 
@@ -164,6 +165,7 @@ describe('runHeadlessFromEnv', () => {
             modelId: 'copilot/gpt-4.1',
             seed: 42,
             completed: false,
+            wasTruncated: false,
         };
 
         async function runWithArgs(
@@ -259,6 +261,7 @@ describe('runHeadlessFromEnv', () => {
             modelId: 'copilot/gpt-4.1',
             seed: 42,
             completed: false,
+            wasTruncated: false,
         } as never);
 
         const coordinator = {
@@ -442,6 +445,7 @@ describe('runHeadlessFromEnv', () => {
             modelId: 'copilot/gpt-4.1',
             seed: 0,
             completed: true,
+            wasTruncated: false,
         } as never);
 
         const coordinator = {
@@ -844,6 +848,7 @@ describe('runHeadlessFromEnv', () => {
             modelId: 'copilot/gpt-4.1',
             seed: 42,
             completed: true,
+            wasTruncated: false,
         } as never);
 
         const coordinator = {
@@ -951,6 +956,7 @@ describe('runHeadlessFromEnv', () => {
             modelId: 'copilot/gpt-4.1',
             seed: 42,
             completed: true,
+            wasTruncated: false,
         } as never);
 
         const coordinator = {
@@ -1239,6 +1245,7 @@ describe('runHeadlessFromEnv', () => {
             modelId: 'copilot/gpt-4.1',
             seed: 42,
             completed: true,
+            wasTruncated: false,
         } as never);
 
         const coordinator = {

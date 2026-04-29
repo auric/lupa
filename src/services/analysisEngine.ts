@@ -509,10 +509,6 @@ export class AnalysisEngine implements vscode.Disposable {
                 );
             } else if (mainAnalysisWasCancelled) {
                 Log.info('Analysis was cancelled by user');
-            } else {
-                Log.warn(
-                    'Analysis ended in an unexpected state — no completion, error, or cancellation flags were set'
-                );
             }
         } catch (error) {
             if (isCancellationError(error)) {
@@ -528,6 +524,8 @@ export class AnalysisEngine implements vscode.Disposable {
             subagentSessionManager.setParentCancellationToken(undefined);
             // Complete root agent lifecycle in recursive state tree.
             // Order matters: error > quota/rate-limit > degraded > cancelled > complete.
+            // Max-iterations (wasTruncated) intentionally falls through to completeAgent
+            // because the analysis succeeded — it was merely cut short by the budget.
             // Use mainAnalysis* snapshots because the pipeline may have called
             // conversationRunner.run() again, resetting the runner's flags.
             if (recursiveState) {

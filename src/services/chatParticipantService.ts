@@ -33,6 +33,7 @@ import type {
     ChatToolCallHandler,
     ChatAnalysisMetadata,
 } from '../types/chatTypes';
+import { TRUNCATED_MESSAGE } from '../constants/messages';
 import type { ExecutionContext } from '../types/executionContext';
 import { getCalibrationProfile } from '../models/modelCalibration';
 
@@ -610,9 +611,7 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         if (result.wasTruncated) {
-            stream.markdown(
-                `> ${SEVERITY.warning} Analysis stopped early (iteration limit or degraded state). Results are partial.\n\n`
-            );
+            stream.markdown(`> ${SEVERITY.warning} ${TRUNCATED_MESSAGE}\n\n`);
         }
 
         streamMarkdownWithAnchors(stream, result.analysisText, gitRootUri);

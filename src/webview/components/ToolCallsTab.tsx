@@ -4,6 +4,7 @@ import {
     Bot,
     Wrench,
     AlertCircle,
+    AlertTriangle,
     CheckCircle2,
     XCircle,
     Clock,
@@ -15,7 +16,11 @@ import {
 } from 'lucide-react';
 import { JsonViewer } from './JsonViewer';
 import { CopyButton } from './CopyButton';
-import type { ToolCallsData, ToolCallRecord } from '../../types/toolCallTypes';
+import {
+    type ToolCallsData,
+    type ToolCallRecord,
+} from '../../types/toolCallTypes';
+import { TRUNCATED_MESSAGE } from '../../constants/messages';
 import { countAllCalls } from '../utils/toolCallCounting';
 
 interface ToolCallsTabProps {
@@ -260,9 +265,7 @@ function formatToolCallsAsMarkdown(toolCalls: ToolCallsData): string {
     ].filter(Boolean);
     if (toolCalls.wasTruncated) {
         lines.push('');
-        lines.push(
-            '> **Truncated:** Analysis stopped early (iteration limit or degraded state). Results are partial.'
-        );
+        lines.push(`> **Truncated:** ${TRUNCATED_MESSAGE}`);
         lines.push('');
     }
     lines.push(...formatCallsMarkdown(toolCalls.calls, 0));
@@ -563,7 +566,7 @@ const EmptyState = ({ wasTruncated }: { wasTruncated?: boolean }) => (
         <div className="tc-empty-title">No Tool Calls</div>
         <div className="tc-empty-desc">
             {wasTruncated
-                ? 'Analysis stopped early (iteration limit or degraded state). No tools were used.'
+                ? `${TRUNCATED_MESSAGE} No tools were used.`
                 : 'The analysis completed without using any tools.'}
         </div>
     </div>
@@ -701,10 +704,10 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
                     <>
                         <span className="tc-stat-sep" />
                         <div
-                            className="tc-stat tc-stat--warn"
-                            title="Analysis stopped early (iteration limit or degraded state). Results are partial."
+                            className="tc-stat tc-stat--truncated"
+                            title={TRUNCATED_MESSAGE}
                         >
-                            <AlertCircle size={13} />
+                            <AlertTriangle size={13} />
                             <span className="tc-stat-label">truncated</span>
                         </div>
                     </>
