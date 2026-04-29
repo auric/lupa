@@ -495,18 +495,22 @@ export class AnalysisEngine implements vscode.Disposable {
                     Log.info('Analysis completed successfully');
                 }
             } else if (
-                conversationRunner.hitQuotaExhausted ||
-                conversationRunner.hitRateLimit
+                mainAnalysisHitQuotaExhausted ||
+                mainAnalysisHitRateLimit
             ) {
                 Log.warn(
                     'Analysis ended due to API quota or rate limit exhaustion'
                 );
-            } else if (conversationRunner.degraded) {
+            } else if (mainAnalysisDegraded) {
                 Log.warn(
-                    `Analysis ended in degraded state: ${conversationRunner.exitReason}`
+                    `Analysis ended in degraded state: ${mainAnalysisExitReason}`
                 );
-            } else {
+            } else if (mainAnalysisWasCancelled) {
                 Log.info('Analysis was cancelled by user');
+            } else {
+                Log.warn(
+                    'Analysis ended in an unexpected state — no completion, error, or cancellation flags were set'
+                );
             }
         } catch (error) {
             if (isCancellationError(error)) {
