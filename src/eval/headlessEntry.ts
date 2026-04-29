@@ -598,7 +598,7 @@ export async function runHeadlessFromEnv(
                     // --out (if any) is already written above so the operator
                     // can inspect the partial result. Surface as a non-zero
                     // exit via the outer catch: partial findings are unvalidated
-                    // (PostAnalysisPipeline only runs when completed is true).
+                    // when the pipeline was skipped (no findings recorded).
                     const suffix = args.out
                         ? `see ${args.out} for partial result`
                         : 'rerun with --out <path> to capture partial result';
