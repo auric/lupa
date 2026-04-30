@@ -103,6 +103,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({
                         content={analysis}
                         isDarkTheme={isDarkTheme}
                         onCopy={copyToClipboard}
+                        wasTruncated={toolCalls?.wasTruncated ?? false}
                     />
                 </TabsContent>
 

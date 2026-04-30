@@ -515,6 +515,7 @@ export class AnalysisEngine implements vscode.Disposable {
                 throw error;
             }
             analysisError = getErrorMessage(error);
+            analysisCompleted = false;
             const errorMessage = `Error during analysis: ${analysisError}`;
             Log.error(errorMessage, error);
             analysisText = errorMessage;
