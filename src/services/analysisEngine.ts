@@ -524,8 +524,9 @@ export class AnalysisEngine implements vscode.Disposable {
             subagentSessionManager.setParentCancellationToken(undefined);
             // Complete root agent lifecycle in recursive state tree.
             // Order matters: error > quota/rate-limit > degraded > cancelled > complete.
-            // Max-iterations (wasTruncated) intentionally falls through to completeAgent
-            // because the analysis succeeded — it was merely cut short by the budget.
+            // Max-iterations without degradation intentionally falls through to
+            // completeAgent because the analysis succeeded — it was merely cut
+            // short by the iteration budget. Degraded cases are handled above.
             // Use mainAnalysis* snapshots because the pipeline may have called
             // conversationRunner.run() again, resetting the runner's flags.
             if (recursiveState) {

@@ -474,6 +474,60 @@ describe('runHeadlessFromEnv', () => {
         });
     });
 
+    it('writes wasTruncated=true to --out when analysis is truncated', async () => {
+        const args = {
+            workspace: '/ws',
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/gpt-4.1',
+            seed: 42,
+            timeoutMs: 60_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        const { runHeadless } = await import('../eval/headlessRunner');
+
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReturnValue({
+            dispose: vi.fn(),
+        } as never);
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+        vi.mocked(runHeadless).mockResolvedValue({
+            findings: [],
+            narrative: 'truncated narrative',
+            telemetry: {
+                iterations: 1,
+                toolCalls: 0,
+                promptTokens: 0,
+                completionTokens: 0,
+                durationMs: 123,
+                compactionsUsed: 0,
+            },
+            rawToolCallLog: [],
+            modelId: 'copilot/gpt-4.1',
+            seed: 0,
+            completed: true,
+            wasTruncated: true,
+        } as never);
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        const { runHeadlessFromEnv } = await import('../eval/headlessEntry');
+        await runHeadlessFromEnv(coordinator as never);
+
+        const outJson = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+        expect(outJson.wasTruncated).toBe(true);
+        expect(outJson.narrative).toBe('truncated narrative');
+    });
+
     async function runWithRawArgs(rawArgs: string): Promise<{
         exitCode: number;
         error: string | null;

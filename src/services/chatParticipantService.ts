@@ -358,8 +358,20 @@ export class ChatParticipantService implements vscode.Disposable {
 
             debouncedHandler.flush();
 
+            const explorationWasTruncated =
+                runner.hitMaxIterations ||
+                (runner.degraded &&
+                    !runner.hitQuotaExhausted &&
+                    !runner.hitRateLimit);
+
             if (runner.wasCancelled) {
                 return this.handleCancellation(stream);
+            }
+
+            if (explorationWasTruncated) {
+                stream.markdown(
+                    `\n\n> ${SEVERITY.warning} ${TRUNCATED_MESSAGE}\n\n`
+                );
             }
 
             streamMarkdownWithAnchors(stream, result, gitRootUri);
@@ -367,7 +379,7 @@ export class ChatParticipantService implements vscode.Disposable {
             return {
                 metadata: {
                     command: 'exploration',
-                    wasTruncated: false,
+                    wasTruncated: explorationWasTruncated,
                     cancelled: false,
                     analysisTimestamp: Date.now(),
                 } satisfies ChatAnalysisMetadata,
@@ -681,6 +693,7 @@ export class ChatParticipantService implements vscode.Disposable {
         return {
             metadata: {
                 cancelled: true,
+                wasTruncated: false,
                 responseIsIncomplete: true,
             },
         };

@@ -1238,6 +1238,7 @@ describe('ChatParticipantService', () => {
                 );
                 expect(result.metadata).toEqual({
                     cancelled: true,
+                    wasTruncated: false,
                     responseIsIncomplete: true,
                 });
             });
@@ -1302,6 +1303,7 @@ describe('ChatParticipantService', () => {
                 );
                 expect(result.metadata).toEqual({
                     cancelled: true,
+                    wasTruncated: false,
                     responseIsIncomplete: true,
                 });
             });
@@ -1371,6 +1373,7 @@ describe('ChatParticipantService', () => {
                 );
                 expect(result.metadata).toEqual({
                     cancelled: true,
+                    wasTruncated: false,
                     responseIsIncomplete: true,
                 });
             });
@@ -1501,6 +1504,7 @@ describe('ChatParticipantService', () => {
                 );
                 expect(result.metadata).toEqual({
                     cancelled: true,
+                    wasTruncated: false,
                     responseIsIncomplete: true,
                 });
             });
@@ -1566,6 +1570,7 @@ describe('ChatParticipantService', () => {
                 );
                 expect(result.metadata).toEqual({
                     cancelled: true,
+                    wasTruncated: false,
                     responseIsIncomplete: true,
                 });
             });
@@ -2136,6 +2141,7 @@ describe('ChatParticipantService', () => {
             );
             expect(result.metadata).toEqual({
                 cancelled: true,
+                wasTruncated: false,
                 responseIsIncomplete: true,
             });
         });
@@ -2193,6 +2199,7 @@ describe('ChatParticipantService', () => {
             );
             expect(result.metadata).toEqual({
                 cancelled: true,
+                wasTruncated: false,
                 responseIsIncomplete: true,
             });
         });
@@ -2252,6 +2259,7 @@ describe('ChatParticipantService', () => {
             );
             expect(result.metadata).toEqual({
                 cancelled: true,
+                wasTruncated: false,
                 responseIsIncomplete: true,
             });
         });
