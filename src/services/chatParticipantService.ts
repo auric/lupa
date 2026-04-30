@@ -367,6 +367,7 @@ export class ChatParticipantService implements vscode.Disposable {
             return {
                 metadata: {
                     command: 'exploration',
+                    wasTruncated: false,
                     cancelled: false,
                     analysisTimestamp: Date.now(),
                 } satisfies ChatAnalysisMetadata,

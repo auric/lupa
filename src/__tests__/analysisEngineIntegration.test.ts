@@ -1655,5 +1655,119 @@ index 1234567..abcdefg 100644
                 vi.useRealTimers();
             }
         });
+
+        it('should surface pipeline errors without losing recorded findings', async () => {
+            const recordFindingTool = new RecordFindingTool();
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                recordFindingTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'record_finding') {
+                    return recordFindingTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
+            let callCount = 0;
+            mockCopilotModelManager.sendRequest.mockImplementation(() => {
+                callCount++;
+                if (callCount <= 3) {
+                    return Promise.resolve({
+                        content: 'Investigating...',
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: JSON.stringify({
+                                        symbolName: 'validateToken',
+                                        file: 'src/auth.ts',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                if (callCount === 4) {
+                    return Promise.resolve({
+                        content: 'I found an issue.',
+                        toolCalls: [
+                            {
+                                id: 'call_record',
+                                function: {
+                                    name: 'record_finding',
+                                    arguments: JSON.stringify({
+                                        severity: 'HIGH',
+                                        category: 'logic_error',
+                                        title: 'Buffer overflow risk',
+                                        file: 'src/auth.ts',
+                                        line: 20,
+                                        description:
+                                            'Unbounded string copy into fixed-size buffer.',
+                                        verification_evidence:
+                                            'Read the function body carefully.',
+                                        disproof_note:
+                                            'Checked callers with find_usages — all pass unvalidated input.',
+                                        affected_component: 'authenticateUser',
+                                        failure_mechanism: 'runtime_exception',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                return Promise.resolve({
+                    content: 'Continuing investigation...',
+                    toolCalls: [],
+                });
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockRejectedValue(new Error('Pipeline failure'));
+
+            try {
+                const truncatedSettings = createMockWorkspaceSettings({
+                    maxIterations: 8,
+                    maxRecursionDepth: 0,
+                });
+
+                const truncatedProvider = new AnalysisEngine(
+                    mockToolRegistry,
+                    mockPromptGenerator,
+                    truncatedSettings,
+                    mockDiffEnricher,
+                    mockFindingValidator
+                );
+
+                const result = await truncatedProvider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                // Findings should still be present despite pipeline error
+                expect(result.findings.length).toBeGreaterThan(0);
+                expect(result.error).toContain('Pipeline failure');
+                expect(result.completed).toBe(false);
+                expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
     });
 });

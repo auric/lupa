@@ -19,8 +19,14 @@ export const AnalysisTab = ({
     const result = (
         <div className="analysis-tab">
             {wasTruncated && (
-                <div className="analysis-truncated-banner">
-                    <span className="analysis-truncated-icon">⚠️</span>
+                <div className="analysis-truncated-banner" role="alert">
+                    <span
+                        className="analysis-truncated-icon"
+                        role="img"
+                        aria-label="Warning"
+                    >
+                        ⚠️
+                    </span>
                     <span className="analysis-truncated-text">
                         {TRUNCATED_MESSAGE}
                     </span>
