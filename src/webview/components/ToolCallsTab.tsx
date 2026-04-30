@@ -560,7 +560,11 @@ const CallList = ({
     );
 };
 
-const EmptyState = ({ wasTruncated }: { wasTruncated?: boolean }) => (
+const EmptyState = ({
+    wasTruncated,
+}: {
+    wasTruncated: boolean | undefined;
+}) => (
     <div className="tc-empty">
         <Wrench size={36} strokeWidth={1.2} className="tc-empty-icon" />
         <div className="tc-empty-title">No Tool Calls</div>

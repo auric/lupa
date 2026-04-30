@@ -1115,6 +1115,11 @@ index 1234567..abcdefg 100644
                 }
                 return undefined;
             });
+            mockToolRegistry.getToolNames.mockReturnValue([
+                'find_symbol',
+                'record_finding',
+                'submit_review',
+            ]);
 
             // Requires enough iterations for investigation calls + record_finding +
             // completion nudges to exhaust. MAX_COMPLETION_NUDGES = 2, so we need
@@ -1256,6 +1261,11 @@ index 1234567..abcdefg 100644
                 }
                 return undefined;
             });
+            mockToolRegistry.getToolNames.mockReturnValue([
+                'find_symbol',
+                'record_finding',
+                'submit_review',
+            ]);
 
             const capSettings = createMockWorkspaceSettings({
                 maxIterations: 5,
@@ -1673,6 +1683,11 @@ index 1234567..abcdefg 100644
                 }
                 return undefined;
             });
+            mockToolRegistry.getToolNames.mockReturnValue([
+                'find_symbol',
+                'record_finding',
+                'submit_review',
+            ]);
 
             let callCount = 0;
             mockCopilotModelManager.sendRequest.mockImplementation(() => {

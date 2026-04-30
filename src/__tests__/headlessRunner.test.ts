@@ -558,7 +558,27 @@ describe('runHeadless', () => {
         const result = await runHeadless(baseOpts(), services);
 
         expect(result.completed).toBe(false);
+        expect(result.wasTruncated).toBe(false);
         expect(result.narrative).toBe('partial');
+    });
+
+    it('propagates wasTruncated=true from engine to result', async () => {
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        const services = makeServices({
+            analyzeResult: createMockAnalysisEngineResult({
+                completed: true,
+                wasTruncated: true,
+                error: undefined,
+                analysisText: 'truncated analysis',
+                findings: [],
+            }),
+        });
+
+        const result = await runHeadless(baseOpts(), services);
+
+        expect(result.completed).toBe(true);
+        expect(result.wasTruncated).toBe(true);
+        expect(result.narrative).toBe('truncated analysis');
     });
 
     it('throws when no diff is produced', async () => {
