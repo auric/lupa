@@ -1530,16 +1530,14 @@ index 1234567..abcdefg 100644
 
         it('should skip pipeline when cancelled', async () => {
             const pipelineRunSpy = vi
-                .spyOn(
-                    await import('../services/postAnalysisPipeline'),
-                    'PostAnalysisPipeline'
-                )
-                .mockImplementation(
-                    () =>
-                        ({
-                            run: vi.fn().mockResolvedValue(undefined),
-                        }) as unknown as PostAnalysisPipeline
-                );
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockResolvedValue({
+                    droppedTitles: [],
+                    rewrittenAnalysis: undefined,
+                    additionalToolCallRecords: [],
+                    selfReflectionScores: [],
+                    stepRecords: [],
+                });
 
             try {
                 const cancelledSource = createMockCancellationTokenSource();
@@ -1572,16 +1570,14 @@ index 1234567..abcdefg 100644
             }
 
             const pipelineRunSpy = vi
-                .spyOn(
-                    await import('../services/postAnalysisPipeline'),
-                    'PostAnalysisPipeline'
-                )
-                .mockImplementation(
-                    () =>
-                        ({
-                            run: vi.fn().mockResolvedValue(undefined),
-                        }) as unknown as PostAnalysisPipeline
-                );
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockResolvedValue({
+                    droppedTitles: [],
+                    rewrittenAnalysis: undefined,
+                    additionalToolCallRecords: [],
+                    selfReflectionScores: [],
+                    stepRecords: [],
+                });
 
             try {
                 mockCopilotModelManager.sendRequest.mockRejectedValue(
@@ -1617,16 +1613,14 @@ index 1234567..abcdefg 100644
             vi.useFakeTimers();
 
             const pipelineRunSpy = vi
-                .spyOn(
-                    await import('../services/postAnalysisPipeline'),
-                    'PostAnalysisPipeline'
-                )
-                .mockImplementation(
-                    () =>
-                        ({
-                            run: vi.fn().mockResolvedValue(undefined),
-                        }) as unknown as PostAnalysisPipeline
-                );
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockResolvedValue({
+                    droppedTitles: [],
+                    rewrittenAnalysis: undefined,
+                    additionalToolCallRecords: [],
+                    selfReflectionScores: [],
+                    stepRecords: [],
+                });
 
             try {
                 mockCopilotModelManager.sendRequest.mockRejectedValue(
@@ -1642,7 +1636,8 @@ index 1234567..abcdefg 100644
                     createMockAnalysisEngineOutput()
                 );
 
-                // Advance timers past all retry backoffs (5 retries max).
+                // Advance timers past all retry backoffs. The runner retries
+                // up to 5 times with cumulative backoff well under 120s.
                 await vi.advanceTimersByTimeAsync(120_000);
                 const result = await runPromise;
 
@@ -1764,6 +1759,7 @@ index 1234567..abcdefg 100644
                 expect(result.findings.length).toBeGreaterThan(0);
                 expect(result.error).toContain('Pipeline failure');
                 expect(result.completed).toBe(false);
+                expect(result.wasTruncated).toBe(true);
                 expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
             } finally {
                 pipelineRunSpy.mockRestore();
