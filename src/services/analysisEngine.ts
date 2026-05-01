@@ -217,6 +217,7 @@ export class AnalysisEngine implements vscode.Disposable {
         let mainAnalysisHitQuotaExhausted = false;
         let mainAnalysisHitRateLimit = false;
         let mainAnalysisHitMaxIterations = false;
+        let pipelineWasCancelled = false;
 
         try {
             Log.info('Starting analysis with tool-calling support');
@@ -484,6 +485,7 @@ export class AnalysisEngine implements vscode.Disposable {
 
                 selfReflectionScores = pipelineResult.selfReflectionScores;
                 stepRecords = pipelineResult.stepRecords;
+                pipelineWasCancelled = conversationRunner.wasCancelled;
 
                 output.onProgress(
                     `Analysis complete (${toolCallRecords.length} tool calls)`,
@@ -516,7 +518,13 @@ export class AnalysisEngine implements vscode.Disposable {
                 throw error;
             }
             analysisError = getErrorMessage(error);
-            analysisCompleted = false;
+            // Only mark as not-completed if the main analysis itself failed.
+            // If the main analysis succeeded but the post-analysis pipeline
+            // failed, preserve the completed state so consumers can tell
+            // the difference.
+            if (mainAnalysisIterationsUsed === 0) {
+                analysisCompleted = false;
+            }
             const errorMessage = `Error during analysis: ${analysisError}`;
             Log.error(errorMessage, error);
             // Preserve existing analysis text so partial findings are not
@@ -539,7 +547,7 @@ export class AnalysisEngine implements vscode.Disposable {
             if (recursiveState) {
                 if (analysisError) {
                     recursiveState.failAgent('root', analysisError);
-                } else if (mainAnalysisWasCancelled) {
+                } else if (mainAnalysisWasCancelled || pipelineWasCancelled) {
                     recursiveState.cancelAgent('root');
                 } else if (
                     mainAnalysisHitQuotaExhausted ||
@@ -561,7 +569,7 @@ export class AnalysisEngine implements vscode.Disposable {
             analysisText,
             toolCallRecords: [...toolCallRecords],
             completed: analysisCompleted,
-            wasCancelled: mainAnalysisWasCancelled,
+            wasCancelled: mainAnalysisWasCancelled || pipelineWasCancelled,
             error: analysisError,
             iterationsUsed: mainAnalysisIterationsUsed,
             selfReflectionScores,

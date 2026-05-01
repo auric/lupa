@@ -42,6 +42,7 @@ import {
     AnalysisEngine,
     type AnalysisEngineInput,
     type AnalysisEngineOutput,
+    type AnalysisEngineResult,
 } from './analysisEngine';
 
 /**
@@ -255,21 +256,27 @@ export class ChatParticipantService implements vscode.Disposable {
                 )
                 .build();
             stream.markdown(response);
-            return { errorDetails: { message: 'Service not initialized' } };
+            return {
+                errorDetails: { message: 'Service not initialized' },
+                metadata: {
+                    wasTruncated: false,
+                    responseIsIncomplete: true,
+                },
+            };
         }
 
         if (token.isCancellationRequested) {
             return this.handleCancellation(stream);
         }
 
-        try {
-            // Create stream adapter first - needed for subagent tool streaming
-            const gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
-            const { debouncedHandler, adapter } = this.createStreamAdapter(
-                stream,
-                gitRootUri
-            );
+        // Declare outside try so catch block can flush buffered output
+        const gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
+        const { debouncedHandler, adapter } = this.createStreamAdapter(
+            stream,
+            gitRootUri
+        );
 
+        try {
             // Create per-request subagent infrastructure with chat handler
             const timeoutMs =
                 this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
@@ -330,6 +337,9 @@ export class ChatParticipantService implements vscode.Disposable {
                         conversation.prependHistoryMessages(historyMessages);
                     }
                 } catch (error) {
+                    if (isCancellationError(error)) {
+                        return this.handleCancellation(stream);
+                    }
                     Log.warn(
                         '[ChatParticipantService]: History processing failed, continuing without',
                         error
@@ -397,6 +407,8 @@ export class ChatParticipantService implements vscode.Disposable {
                 error
             );
 
+            debouncedHandler?.flush();
+
             const response = new ChatResponseBuilder()
                 .addErrorSection(
                     'Exploration Error',
@@ -447,7 +459,13 @@ export class ChatParticipantService implements vscode.Disposable {
                 )
                 .build();
             stream.markdown(response);
-            return { errorDetails: { message: 'Service not initialized' } };
+            return {
+                errorDetails: { message: 'Service not initialized' },
+                metadata: {
+                    wasTruncated: false,
+                    responseIsIncomplete: true,
+                },
+            };
         }
 
         try {
@@ -464,6 +482,10 @@ export class ChatParticipantService implements vscode.Disposable {
                 stream.markdown(response);
                 return {
                     errorDetails: { message: 'Git service not initialized' },
+                    metadata: {
+                        wasTruncated: false,
+                        responseIsIncomplete: true,
+                    },
                 };
             }
 
@@ -480,7 +502,12 @@ export class ChatParticipantService implements vscode.Disposable {
                     .addFollowupPrompt(message)
                     .build();
                 stream.markdown(response);
-                return {};
+                return {
+                    metadata: {
+                        wasTruncated: false,
+                        responseIsIncomplete: false,
+                    },
+                };
             }
 
             const finalScopeLabel =
@@ -516,7 +543,10 @@ export class ChatParticipantService implements vscode.Disposable {
             stream.markdown(response);
             return {
                 errorDetails: { message: errorMessage },
-                metadata: { responseIsIncomplete: true },
+                metadata: {
+                    wasTruncated: false,
+                    responseIsIncomplete: true,
+                },
             };
         }
     }
@@ -597,9 +627,12 @@ export class ChatParticipantService implements vscode.Disposable {
             onIterationStart: adapter.onIterationStart?.bind(adapter),
         };
 
-        const result = await this.deps!.analysisEngine.analyze(input, output);
-
-        debouncedHandler.flush();
+        let result: AnalysisEngineResult;
+        try {
+            result = await this.deps!.analysisEngine.analyze(input, output);
+        } finally {
+            debouncedHandler.flush();
+        }
 
         if (result.wasCancelled) {
             return this.handleCancellation(stream);
@@ -610,6 +643,20 @@ export class ChatParticipantService implements vscode.Disposable {
                 '[ChatParticipantService]: Analysis failed',
                 result.error
             );
+            // Stream any partial analysis text so the user can see findings
+            // that were recorded before the error occurred.
+            if (result.wasTruncated) {
+                stream.markdown(
+                    `\n\n> ${SEVERITY.warning} ${TRUNCATED_MESSAGE}\n\n`
+                );
+            }
+            if (result.analysisText) {
+                streamMarkdownWithAnchors(
+                    stream,
+                    result.analysisText,
+                    gitRootUri
+                );
+            }
             const response = new ChatResponseBuilder()
                 .addErrorSection(
                     'Analysis Error',
@@ -628,7 +675,9 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         if (result.wasTruncated) {
-            stream.markdown(`> ${SEVERITY.warning} ${TRUNCATED_MESSAGE}\n\n`);
+            stream.markdown(
+                `\n\n> ${SEVERITY.warning} ${TRUNCATED_MESSAGE}\n\n`
+            );
         }
 
         streamMarkdownWithAnchors(stream, result.analysisText, gitRootUri);

@@ -296,7 +296,12 @@ describe('ChatParticipantService', () => {
             expect(mockStream.markdown).toHaveBeenCalledWith(
                 expect.stringContaining('No Changes Found')
             );
-            expect(result).toEqual({});
+            expect(result).toEqual({
+                metadata: {
+                    wasTruncated: false,
+                    responseIsIncomplete: false,
+                },
+            });
         });
 
         it('should return helpful message for diff error', async () => {
@@ -350,7 +355,12 @@ describe('ChatParticipantService', () => {
             expect(mockStream.markdown).toHaveBeenCalledWith(
                 expect.stringContaining('No Changes Found')
             );
-            expect(result).toEqual({});
+            expect(result).toEqual({
+                metadata: {
+                    wasTruncated: false,
+                    responseIsIncomplete: false,
+                },
+            });
         });
 
         it('should return error when dependencies not injected', async () => {
@@ -639,7 +649,12 @@ describe('ChatParticipantService', () => {
             expect(mockStream.markdown).toHaveBeenCalledWith(
                 expect.stringContaining('working tree is clean')
             );
-            expect(result).toEqual({});
+            expect(result).toEqual({
+                metadata: {
+                    wasTruncated: false,
+                    responseIsIncomplete: false,
+                },
+            });
         });
 
         it('should return error when git not initialized for /changes', async () => {
@@ -1034,6 +1049,66 @@ describe('ChatParticipantService', () => {
                 hasTestingSuggestions: false,
             });
             expect(result.metadata.analysisTimestamp).toBeDefined();
+        });
+
+        it('should stream truncation warning and set wasTruncated when analysis is truncated', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'diff --git a/test.ts b/test.ts\n+new line',
+                    refName: 'uncommitted changes',
+                    error: undefined,
+                }),
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+                analysisEngine: {
+                    analyze: vi.fn().mockResolvedValue(
+                        createMockAnalysisEngineResult({
+                            analysisText: 'Partial analysis results',
+                            wasTruncated: true,
+                            completed: true,
+                        })
+                    ),
+                } as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
+            });
+
+            const result = await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('Analysis stopped early')
+            );
+            expect(result.metadata).toMatchObject({
+                wasTruncated: true,
+            });
         });
 
         it('should call stream.filetree with parsed diff files', async () => {
@@ -1904,6 +1979,68 @@ describe('ChatParticipantService', () => {
             expect(result.metadata).toMatchObject({
                 command: 'exploration',
                 cancelled: false,
+            });
+        });
+
+        it('should stream truncation warning in exploration mode when runner is degraded', async () => {
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
+                this.run = vi.fn().mockResolvedValue('Exploration response');
+                this.degraded = true;
+                this.exitReason = 'model_refusal';
+                this.hitMaxIterations = false;
+                this.hitQuotaExhausted = false;
+                this.hitRateLimit = false;
+                this.wasCancelled = false;
+                this.reset = vi.fn();
+            });
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue(createMockAnalysisEngineResult()),
+                } as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
+            });
+
+            const result = await capturedHandler(
+                {
+                    command: undefined,
+                    prompt: 'What does ConversationRunner do?',
+                    model: { id: 'test-model' },
+                },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('Analysis stopped early')
+            );
+            expect(result.metadata).toMatchObject({
+                command: 'exploration',
+                wasTruncated: true,
             });
         });
 
