@@ -6,7 +6,7 @@ interface AnalysisTabProps {
     content: string;
     isDarkTheme: boolean;
     onCopy?: (text: string) => void;
-    wasTruncated: boolean | undefined;
+    wasTruncated: boolean;
 }
 
 export const AnalysisTab = ({

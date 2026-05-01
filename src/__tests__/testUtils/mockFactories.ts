@@ -18,9 +18,7 @@ import type { ILLMClient } from '../../models/ILLMClient';
 import type { ExecutionContext } from '../../types/executionContext';
 import { RecursiveStateManager } from '../../sessions/recursiveStateManager';
 import { DEFAULT_PROFILE } from '../../models/modelCalibration';
-import type { ToolCallRecord } from '../../types/toolCallTypes';
-import type { SelfReflectionScore } from '../../services/selfReflectionScorer';
-import type { StepRecord } from '../../services/pipeline/pipelineTypes';
+import type { PostAnalysisPipelineResult } from '../../services/postAnalysisPipeline';
 
 /**
  * Creates a mock Position object with proper comparison methods.
@@ -717,11 +715,14 @@ export function createMockAnalysisEngineResult(
     };
 }
 
-/** Standard empty PostAnalysisPipeline result for tests that mock the pipeline. */
-export const EMPTY_PIPELINE_RESULT = Object.freeze({
-    droppedTitles: [] as string[],
-    rewrittenAnalysis: undefined as string | undefined,
-    additionalToolCallRecords: [] as ToolCallRecord[],
-    selfReflectionScores: [] as SelfReflectionScore[],
-    stepRecords: [] as StepRecord[],
-});
+/** Creates a fresh empty PostAnalysisPipeline result for tests.
+ *  Using a factory prevents accidental shared mutable state across tests. */
+export function createEmptyPipelineResult(): PostAnalysisPipelineResult {
+    return {
+        droppedTitles: [],
+        rewrittenAnalysis: undefined,
+        additionalToolCallRecords: [],
+        selfReflectionScores: [],
+        stepRecords: [],
+    };
+}

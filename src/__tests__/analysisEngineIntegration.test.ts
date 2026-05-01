@@ -15,7 +15,7 @@ import {
     createMockCancellationTokenSource,
     createMockAnalysisEngineInput,
     createMockAnalysisEngineOutput,
-    EMPTY_PIPELINE_RESULT,
+    createEmptyPipelineResult,
 } from './testUtils/mockFactories';
 import type { ExecutionContext } from '../types/executionContext';
 
@@ -1202,7 +1202,7 @@ index 1234567..abcdefg 100644
 
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
+                .mockResolvedValue(createEmptyPipelineResult());
 
             try {
                 const result = await truncatedProvider.analyze(
@@ -1225,9 +1225,10 @@ index 1234567..abcdefg 100644
                 expect(result.wasTruncated).toBe(true);
                 expect(result.completed).toBe(false);
                 // Assert a safe range instead of hard-coding the exact count,
-                // which depends on internal MAX_COMPLETION_NUDGES.
+                // which depends on internal MAX_COMPLETION_NUDGES. Upper bound
+                // is maxIterations so a runaway loop would still fail.
                 expect(result.iterationsUsed).toBeGreaterThanOrEqual(5);
-                expect(result.iterationsUsed).toBeLessThanOrEqual(10);
+                expect(result.iterationsUsed).toBeLessThanOrEqual(8);
             } finally {
                 pipelineRunSpy.mockRestore();
             }
@@ -1348,7 +1349,7 @@ index 1234567..abcdefg 100644
 
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
+                .mockResolvedValue(createEmptyPipelineResult());
 
             try {
                 const result = await capProvider.analyze(
@@ -1416,7 +1417,7 @@ index 1234567..abcdefg 100644
 
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
+                .mockResolvedValue(createEmptyPipelineResult());
 
             try {
                 const result = await noFindingsProvider.analyze(
@@ -1495,7 +1496,7 @@ index 1234567..abcdefg 100644
 
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
+                .mockResolvedValue(createEmptyPipelineResult());
 
             try {
                 const result = await capNoFindingsProvider.analyze(
@@ -1521,7 +1522,7 @@ index 1234567..abcdefg 100644
         it('should skip pipeline when cancelled', async () => {
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
+                .mockResolvedValue(createEmptyPipelineResult());
 
             try {
                 const cancelledSource = createMockCancellationTokenSource();
@@ -1555,7 +1556,7 @@ index 1234567..abcdefg 100644
 
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
+                .mockResolvedValue(createEmptyPipelineResult());
 
             try {
                 mockCopilotModelManager.sendRequest.mockRejectedValue(
@@ -1590,7 +1591,7 @@ index 1234567..abcdefg 100644
 
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
+                .mockResolvedValue(createEmptyPipelineResult());
 
             vi.useFakeTimers();
 
@@ -1617,6 +1618,10 @@ index 1234567..abcdefg 100644
                 expect(result.wasTruncated).toBe(false);
                 expect(result.completed).toBe(false);
                 expect(pipelineRunSpy).not.toHaveBeenCalled();
+                // Verify the runner actually retried (1 initial + 5 retries = 6 calls).
+                expect(
+                    mockCopilotModelManager.sendRequest
+                ).toHaveBeenCalledTimes(6);
             } finally {
                 pipelineRunSpy.mockRestore();
                 vi.useRealTimers();
