@@ -485,6 +485,9 @@ export function getHeadlessAnalysisResultValidationError(
     if (typeof result.wasTruncated !== 'boolean') {
         return 'result.wasTruncated must be a boolean';
     }
+    if (result.error !== undefined && typeof result.error !== 'string') {
+        return 'result.error must be a string';
+    }
     if (!Array.isArray(result.rawToolCallLog)) {
         return 'result.rawToolCallLog must be an array';
     }

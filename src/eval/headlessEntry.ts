@@ -600,8 +600,9 @@ export async function runHeadlessFromEnv(
                     const suffix = args.out
                         ? `see ${args.out} for partial result`
                         : 'rerun with --out <path> to capture partial result';
+                    const errorDetail = result.error ? `: ${result.error}` : '';
                     throw new Error(
-                        `Analysis ended without completing (possible rate-limit, quota exhaustion, or degraded exit); ${suffix}`
+                        `Analysis ended without completing (possible rate-limit, quota exhaustion, or degraded exit)${errorDetail}; ${suffix}`
                     );
                 }
                 if (!args.silent) {

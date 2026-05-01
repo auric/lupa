@@ -515,15 +515,19 @@ describe('runHeadless', () => {
         expect(result.telemetry.durationMs).toBeGreaterThanOrEqual(0);
     });
 
-    it('throws when the engine reports an error', async () => {
+    it('returns partial result with error when the engine reports an error', async () => {
         vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
         const services = makeServices({
             analyzeResult: createMockAnalysisEngineResult({
                 error: 'boom',
                 completed: false,
+                findings: [{ id: 'f1', title: 'partial' } as RecordedFinding],
             }),
         });
-        await expect(runHeadless(baseOpts(), services)).rejects.toThrow(/boom/);
+        const result = await runHeadless(baseOpts(), services);
+        expect(result.error).toBe('boom');
+        expect(result.completed).toBe(false);
+        expect(result.findings.length).toBe(1);
     });
 
     it('throws when the analysis is cancelled', async () => {
