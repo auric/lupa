@@ -270,13 +270,16 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         // Declare outside try so catch block can flush buffered output
-        const gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
-        const { debouncedHandler, adapter } = this.createStreamAdapter(
-            stream,
-            gitRootUri
-        );
+        let gitRootUri: vscode.Uri | undefined;
+        let debouncedHandler: DebouncedStreamHandler | undefined;
+        let adapter: ToolCallStreamAdapter | undefined;
 
         try {
+            gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
+            const created = this.createStreamAdapter(stream, gitRootUri);
+            debouncedHandler = created.debouncedHandler;
+            adapter = created.adapter;
+
             // Create per-request subagent infrastructure with chat handler
             const timeoutMs =
                 this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
@@ -366,21 +369,31 @@ export class ChatParticipantService implements vscode.Disposable {
                 adapter
             );
 
-            debouncedHandler.flush();
+            try {
+                debouncedHandler?.flush();
+            } catch (flushError) {
+                Log.warn(
+                    '[ChatParticipantService]: Failed to flush stream buffer',
+                    flushError
+                );
+            }
 
             const explorationWasTruncated =
-                runner.hitMaxIterations ||
-                (runner.degraded &&
-                    !runner.hitQuotaExhausted &&
-                    !runner.hitRateLimit);
+                !runner.wasCancelled &&
+                (runner.hitMaxIterations ||
+                    (runner.degraded &&
+                        !runner.hitQuotaExhausted &&
+                        !runner.hitRateLimit));
 
             if (runner.wasCancelled) {
                 return this.handleCancellation(stream);
             }
 
             if (explorationWasTruncated) {
+                this.streamTruncationWarning(stream);
+            } else if (runner.hitQuotaExhausted || runner.hitRateLimit) {
                 stream.markdown(
-                    `\n\n> ${SEVERITY.warning} ${TRUNCATED_MESSAGE}\n\n`
+                    `\n\n> ${SEVERITY.warning} Analysis stopped due to API quota or rate limit. Results may be incomplete.\n\n`
                 );
             }
 
@@ -395,6 +408,17 @@ export class ChatParticipantService implements vscode.Disposable {
                 } satisfies ChatAnalysisMetadata,
             };
         } catch (error) {
+            // Flush any buffered streamed content before handling the error.
+            // This preserves partial findings/tool output for the user.
+            try {
+                debouncedHandler?.flush();
+            } catch (flushError) {
+                Log.warn(
+                    '[ChatParticipantService]: Failed to flush stream buffer',
+                    flushError
+                );
+            }
+
             // Check error type rather than token state to avoid race conditions
             // where the error is already thrown before we can check the token
             if (isCancellationError(error)) {
@@ -406,8 +430,6 @@ export class ChatParticipantService implements vscode.Disposable {
                 '[ChatParticipantService]: Exploration mode failed',
                 error
             );
-
-            debouncedHandler?.flush();
 
             const response = new ChatResponseBuilder()
                 .addErrorSection(
@@ -631,7 +653,11 @@ export class ChatParticipantService implements vscode.Disposable {
         try {
             result = await this.deps!.analysisEngine.analyze(input, output);
         } finally {
-            debouncedHandler.flush();
+            try {
+                debouncedHandler.flush();
+            } catch {
+                // Ignore flush errors so the original error is not masked.
+            }
         }
 
         if (result.wasCancelled) {
@@ -646,11 +672,14 @@ export class ChatParticipantService implements vscode.Disposable {
             // Stream any partial analysis text so the user can see findings
             // that were recorded before the error occurred.
             if (result.wasTruncated) {
-                stream.markdown(
-                    `\n\n> ${SEVERITY.warning} ${TRUNCATED_MESSAGE}\n\n`
-                );
+                this.streamTruncationWarning(stream);
             }
-            if (result.analysisText) {
+            // Stream partial analysis text only when it contains genuine
+            // findings — skip when it is just the error message placeholder.
+            if (
+                result.analysisText &&
+                !result.analysisText.includes(result.error)
+            ) {
                 streamMarkdownWithAnchors(
                     stream,
                     result.analysisText,
@@ -675,9 +704,7 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         if (result.wasTruncated) {
-            stream.markdown(
-                `\n\n> ${SEVERITY.warning} ${TRUNCATED_MESSAGE}\n\n`
-            );
+            this.streamTruncationWarning(stream);
         }
 
         streamMarkdownWithAnchors(stream, result.analysisText, gitRootUri);
@@ -782,6 +809,13 @@ export class ChatParticipantService implements vscode.Disposable {
         );
         subagentSessionManager.setParentCancellationToken(token);
         return { subagentSessionManager, subagentExecutor };
+    }
+
+    /**
+     * Streams the standard truncation warning banner to the chat UI.
+     */
+    private streamTruncationWarning(stream: vscode.ChatResponseStream): void {
+        stream.markdown(`\n\n> ${SEVERITY.warning} ${TRUNCATED_MESSAGE}\n\n`);
     }
 
     /**

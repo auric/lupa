@@ -1111,6 +1111,80 @@ describe('ChatParticipantService', () => {
             });
         });
 
+        it('should stream partial analysis text when engine returns error', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'diff --git a/test.ts b/test.ts\n+new line',
+                    refName: 'uncommitted changes',
+                    error: undefined,
+                }),
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+                analysisEngine: {
+                    analyze: vi.fn().mockResolvedValue(
+                        createMockAnalysisEngineResult({
+                            analysisText:
+                                'Partial findings recorded before error',
+                            wasTruncated: true,
+                            completed: true,
+                            error: 'Post-analysis pipeline failed',
+                        })
+                    ),
+                } as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
+            });
+
+            const result = await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            // Truncation warning should be streamed first
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('Analysis stopped early')
+            );
+            // Partial analysis text should be streamed
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining(
+                    'Partial findings recorded before error'
+                )
+            );
+            // Error section should be streamed
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('Something went wrong during analysis')
+            );
+            expect(result.metadata).toMatchObject({
+                wasTruncated: true,
+                responseIsIncomplete: true,
+            });
+        });
+
         it('should call stream.filetree with parsed diff files', async () => {
             // Set up workspace folders mock
             const originalWorkspaceFolders = vscode.workspace.workspaceFolders;
@@ -1990,6 +2064,68 @@ describe('ChatParticipantService', () => {
                 this.degraded = true;
                 this.exitReason = 'model_refusal';
                 this.hitMaxIterations = false;
+                this.hitQuotaExhausted = false;
+                this.hitRateLimit = false;
+                this.wasCancelled = false;
+                this.reset = vi.fn();
+            });
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+                analysisEngine: {
+                    analyze: vi
+                        .fn()
+                        .mockResolvedValue(createMockAnalysisEngineResult()),
+                } as any,
+                diffEnricher: {
+                    enrich: vi.fn().mockResolvedValue({
+                        enrichedSymbols: [],
+                        generatedAt: Date.now(),
+                        timeoutCount: 0,
+                    }),
+                } as any,
+                findingValidator: {
+                    validate: vi.fn().mockResolvedValue({
+                        validated: [],
+                        dropped: 0,
+                        downgraded: 0,
+                        kept: 0,
+                    }),
+                } as any,
+            });
+
+            const result = await capturedHandler(
+                {
+                    command: undefined,
+                    prompt: 'What does ConversationRunner do?',
+                    model: { id: 'test-model' },
+                },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('Analysis stopped early')
+            );
+            expect(result.metadata).toMatchObject({
+                command: 'exploration',
+                wasTruncated: true,
+            });
+        });
+
+        it('should stream truncation warning in exploration mode when runner hits max iterations', async () => {
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
+                this.run = vi.fn().mockResolvedValue('Exploration response');
+                this.degraded = false;
+                this.exitReason = undefined;
+                this.hitMaxIterations = true;
                 this.hitQuotaExhausted = false;
                 this.hitRateLimit = false;
                 this.wasCancelled = false;

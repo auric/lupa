@@ -7,7 +7,6 @@ import { TokenValidator } from '../models/tokenValidator';
 import {
     ConversationRunner,
     type ToolCallHandler,
-    type ExitReason,
 } from '../models/conversationRunner';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { DiffHunk } from '../types/contextTypes';
@@ -213,10 +212,11 @@ export class AnalysisEngine implements vscode.Disposable {
         let mainAnalysisIterationsUsed = 0;
         let wasTruncated = false;
         let mainAnalysisDegraded = false;
-        let mainAnalysisExitReason: ExitReason | undefined;
+        let mainAnalysisExitReason: string | undefined;
         let mainAnalysisHitQuotaExhausted = false;
         let mainAnalysisHitRateLimit = false;
         let mainAnalysisHitMaxIterations = false;
+        let mainAnalysisFinished = false;
         let pipelineWasCancelled = false;
 
         try {
@@ -424,6 +424,7 @@ export class AnalysisEngine implements vscode.Disposable {
                 input.token,
                 handler
             );
+            mainAnalysisFinished = true;
             mainAnalysisWasCancelled = conversationRunner.wasCancelled;
             mainAnalysisIterationsUsed = conversationRunner.iterationsUsed;
             mainAnalysisDegraded = conversationRunner.degraded;
@@ -514,7 +515,13 @@ export class AnalysisEngine implements vscode.Disposable {
             }
         } catch (error) {
             if (isCancellationError(error)) {
-                mainAnalysisWasCancelled = true;
+                // Distinguish main-analysis cancellation from pipeline
+                // cancellation to preserve snapshot invariants.
+                if (mainAnalysisFinished) {
+                    pipelineWasCancelled = true;
+                } else {
+                    mainAnalysisWasCancelled = true;
+                }
                 throw error;
             }
             analysisError = getErrorMessage(error);
@@ -522,7 +529,7 @@ export class AnalysisEngine implements vscode.Disposable {
             // If the main analysis succeeded but the post-analysis pipeline
             // failed, preserve the completed state so consumers can tell
             // the difference.
-            if (mainAnalysisIterationsUsed === 0) {
+            if (!mainAnalysisFinished) {
                 analysisCompleted = false;
             }
             const errorMessage = `Error during analysis: ${analysisError}`;

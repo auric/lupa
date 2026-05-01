@@ -66,6 +66,8 @@ export interface ChatAnalysisMetadata {
     wasTruncated?: boolean;
     /** Whether analysis was cancelled */
     cancelled?: boolean;
+    /** Whether the response is incomplete (error or truncation) */
+    responseIsIncomplete?: boolean;
     /** Unix timestamp when analysis was performed */
     analysisTimestamp?: number;
 }

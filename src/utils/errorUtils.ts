@@ -23,3 +23,20 @@ export function getErrorMessage(error: unknown): string {
         }
     }
 }
+
+/** Maximum length for error strings before truncation. */
+export const MAX_ERROR_LEN = 500;
+
+/**
+ * Truncates an error message to a maximum length, appending an ellipsis
+ * indicator when truncation occurs.
+ */
+export function truncateError(
+    error: string | undefined,
+    maxLen = MAX_ERROR_LEN
+): string {
+    if (!error || error.length <= maxLen) {
+        return error ?? '';
+    }
+    return error.slice(0, maxLen) + '... (truncated)';
+}

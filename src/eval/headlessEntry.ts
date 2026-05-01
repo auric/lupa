@@ -18,6 +18,7 @@ import {
     requireRemainingHeadlessBudgetMs,
     validateRef,
 } from './headlessShared';
+import { truncateError } from '../utils/errorUtils';
 
 /**
  * Environment-variable contract shared with scripts/eval/launchHeadless.js.
@@ -601,7 +602,10 @@ export async function runHeadlessFromEnv(
                     const suffix = args.out
                         ? `see ${args.out} for partial result`
                         : 'rerun with --out <path> to capture partial result';
-                    const errorDetail = result.error ? `: ${result.error}` : '';
+                    const truncatedError = truncateError(result.error);
+                    const errorDetail = truncatedError
+                        ? `: ${truncatedError}`
+                        : '';
                     throw new Error(
                         `Analysis ended without completing (possible rate-limit, quota exhaustion, or degraded exit)${errorDetail}; ${suffix}`
                     );
@@ -609,7 +613,9 @@ export async function runHeadlessFromEnv(
                 if (result.error) {
                     // Engine reported an error despite completing — warn but
                     // do not fail, since findings may still be useful.
-                    Log.warn(`Analysis completed with error: ${result.error}`);
+                    Log.warn(
+                        `Analysis completed with error: ${truncateError(result.error)}`
+                    );
                 }
                 if (!args.silent) {
                     try {

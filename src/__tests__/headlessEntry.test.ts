@@ -492,6 +492,15 @@ describe('runHeadlessFromEnv', () => {
         const vscode = await import('vscode');
         const { runHeadless } = await import('../eval/headlessRunner');
 
+        vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
+            {
+                id: 'gpt-4.1',
+                name: 'GPT-4.1',
+                family: 'gpt-4',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            } as unknown as import('vscode').LanguageModelChat,
+        ]);
         vi.mocked(vscode.lm.onDidChangeChatModels).mockReturnValue({
             dispose: vi.fn(),
         } as never);
@@ -526,6 +535,79 @@ describe('runHeadlessFromEnv', () => {
         const outJson = JSON.parse(fs.readFileSync(outPath, 'utf8'));
         expect(outJson.wasTruncated).toBe(true);
         expect(outJson.narrative).toBe('truncated narrative');
+    });
+
+    it('warns when runHeadless returns completed=true with error set', async () => {
+        const args = {
+            workspace: '/ws',
+            base: 'main',
+            head: 'feature/x',
+            model: 'copilot/gpt-4.1',
+            seed: 42,
+            timeoutMs: 60_000,
+            out: outPath,
+            silent: true,
+        };
+        process.env.LUPA_HEADLESS_MODE = '1';
+        process.env.LUPA_HEADLESS_ARGS = JSON.stringify(args);
+        process.env.LUPA_HEADLESS_SENTINEL = sentinelPath;
+
+        const vscode = await import('vscode');
+        const { runHeadless } = await import('../eval/headlessRunner');
+
+        vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([
+            {
+                id: 'gpt-4.1',
+                name: 'GPT-4.1',
+                family: 'gpt-4',
+                vendor: 'copilot',
+                maxInputTokens: 128000,
+            } as unknown as import('vscode').LanguageModelChat,
+        ]);
+        vi.mocked(vscode.lm.onDidChangeChatModels).mockReturnValue({
+            dispose: vi.fn(),
+        } as never);
+        vi.mocked(vscode.commands.executeCommand).mockResolvedValue(
+            undefined as never
+        );
+        vi.mocked(runHeadless).mockResolvedValue({
+            findings: [],
+            narrative: 'narrative with error',
+            telemetry: {
+                iterations: 1,
+                toolCalls: 0,
+                promptTokens: 0,
+                completionTokens: 0,
+                durationMs: 123,
+                compactionsUsed: 0,
+            },
+            rawToolCallLog: [],
+            modelId: 'copilot/gpt-4.1',
+            seed: 0,
+            completed: true,
+            error: 'Pipeline validation failed',
+        } as never);
+
+        const warnSpy = vi.fn();
+        vi.doMock('../services/loggingService', () => ({
+            Log: {
+                info: vi.fn(),
+                warn: warnSpy,
+                error: vi.fn(),
+                debug: vi.fn(),
+            },
+        }));
+
+        const coordinator = {
+            waitForInitialization: vi.fn().mockResolvedValue({}),
+        };
+
+        const { runHeadlessFromEnv } = await import('../eval/headlessEntry');
+        await runHeadlessFromEnv(coordinator as never);
+
+        expect(warnSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Pipeline validation failed')
+        );
     });
 
     async function runWithRawArgs(rawArgs: string): Promise<{

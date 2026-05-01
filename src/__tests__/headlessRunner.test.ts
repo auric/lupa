@@ -8,6 +8,7 @@ import { runHeadless } from '../eval/headlessRunner';
 import { ModelRequestHandler } from '../models/modelRequestHandler';
 import { createMockAnalysisEngineResult } from './testUtils/mockFactories';
 import type { IServiceRegistry } from '../services/serviceManager';
+import type { RecordedFinding } from '../types/findingTypes';
 import * as headlessArgs from '../../scripts/eval/headlessArgs';
 
 vi.mock('vscode');
@@ -541,6 +542,20 @@ describe('runHeadless', () => {
         });
         await expect(runHeadless(baseOpts(), services)).rejects.toThrow(
             /Analysis cancelled/
+        );
+    });
+
+    it('includes error detail in cancellation throw when error is present', async () => {
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        const services = makeServices({
+            analyzeResult: createMockAnalysisEngineResult({
+                wasCancelled: true,
+                completed: false,
+                error: 'Quota exhausted during pipeline',
+            }),
+        });
+        await expect(runHeadless(baseOpts(), services)).rejects.toThrow(
+            /Quota exhausted during pipeline/
         );
     });
 

@@ -1747,5 +1747,122 @@ index 1234567..abcdefg 100644
                 pipelineRunSpy.mockRestore();
             }
         });
+
+        it('should preserve completed=true when pipeline fails after successful main analysis', async () => {
+            const recordFindingTool = new RecordFindingTool();
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                recordFindingTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'record_finding') {
+                    return recordFindingTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+            mockToolRegistry.getToolNames.mockReturnValue([
+                'find_symbol',
+                'record_finding',
+                'submit_review',
+            ]);
+
+            // Main analysis succeeds: investigation then submit_review
+            let callCount = 0;
+            mockCopilotModelManager.sendRequest.mockImplementation(() => {
+                callCount++;
+                if (callCount <= 2) {
+                    return Promise.resolve({
+                        content: 'Investigating...',
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: JSON.stringify({
+                                        symbolName: 'validateToken',
+                                        file: 'src/auth.ts',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                return Promise.resolve({
+                    content: 'Analysis complete',
+                    toolCalls: [
+                        {
+                            id: 'call_submit',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content: 'Final review',
+                                }),
+                            },
+                        },
+                    ],
+                });
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockRejectedValue(new Error('Pipeline failure after success'));
+
+            try {
+                const result = await provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                // Main analysis succeeded, so completed stays true even though
+                // the pipeline failed afterward.
+                expect(result.completed).toBe(true);
+                expect(result.error).toContain(
+                    'Pipeline failure after success'
+                );
+                expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
+
+        it('should capture pipeline errors after successful main analysis', async () => {
+            // Use default mock which returns submit_review successfully,
+            // so main analysis completes and pipeline is triggered.
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockRejectedValue(new Error('Pipeline crashed'));
+
+            try {
+                const result = await provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                // Error should be captured without crashing
+                expect(result.error).toContain('Pipeline crashed');
+                expect(result.wasCancelled).toBe(false);
+                expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
     });
 });
