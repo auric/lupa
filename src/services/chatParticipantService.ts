@@ -620,7 +620,10 @@ export class ChatParticipantService implements vscode.Disposable {
             stream.markdown(response);
             return {
                 errorDetails: { message: result.error },
-                metadata: { responseIsIncomplete: true },
+                metadata: {
+                    wasTruncated: result.wasTruncated,
+                    responseIsIncomplete: true,
+                },
             };
         }
 

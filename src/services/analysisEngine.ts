@@ -519,7 +519,11 @@ export class AnalysisEngine implements vscode.Disposable {
             analysisCompleted = false;
             const errorMessage = `Error during analysis: ${analysisError}`;
             Log.error(errorMessage, error);
-            analysisText = errorMessage;
+            // Preserve existing analysis text so partial findings are not
+            // hidden from consumers (chat UI, webview) on pipeline errors.
+            if (!analysisText || analysisText.trim().length === 0) {
+                analysisText = errorMessage;
+            }
         } finally {
             // Clear parent cancellation token to release references
             subagentSessionManager.setParentCancellationToken(undefined);
