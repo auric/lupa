@@ -468,7 +468,7 @@ export class AnalysisEngine implements vscode.Disposable {
                     conversationManager,
                     conversationRunner,
                     systemPrompt,
-                    availableTools: availableTools,
+                    availableTools,
                     disabledToolNames,
                     handler,
                     progressCallback: (msg, inc) => output.onProgress(msg, inc),

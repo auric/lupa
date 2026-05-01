@@ -71,7 +71,7 @@
 }
 
 .tc-stat--truncated {
-    color: var(--vscode-problemsWarningIcon-foreground, #d18616);
+    color: var(--vscode-editorWarning-foreground, #cca700);
 }
 
 .tc-stat-sep {

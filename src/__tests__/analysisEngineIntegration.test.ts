@@ -15,6 +15,7 @@ import {
     createMockCancellationTokenSource,
     createMockAnalysisEngineInput,
     createMockAnalysisEngineOutput,
+    EMPTY_PIPELINE_RESULT,
 } from './testUtils/mockFactories';
 import type { ExecutionContext } from '../types/executionContext';
 
@@ -1201,13 +1202,7 @@ index 1234567..abcdefg 100644
 
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue({
-                    droppedTitles: [],
-                    rewrittenAnalysis: undefined,
-                    additionalToolCallRecords: [],
-                    selfReflectionScores: [],
-                    stepRecords: [],
-                });
+                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
 
             try {
                 const result = await truncatedProvider.analyze(
@@ -1353,13 +1348,7 @@ index 1234567..abcdefg 100644
 
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue({
-                    droppedTitles: [],
-                    rewrittenAnalysis: undefined,
-                    additionalToolCallRecords: [],
-                    selfReflectionScores: [],
-                    stepRecords: [],
-                });
+                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
 
             try {
                 const result = await capProvider.analyze(
@@ -1427,13 +1416,7 @@ index 1234567..abcdefg 100644
 
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue({
-                    droppedTitles: [],
-                    rewrittenAnalysis: undefined,
-                    additionalToolCallRecords: [],
-                    selfReflectionScores: [],
-                    stepRecords: [],
-                });
+                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
 
             try {
                 const result = await noFindingsProvider.analyze(
@@ -1512,13 +1495,7 @@ index 1234567..abcdefg 100644
 
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue({
-                    droppedTitles: [],
-                    rewrittenAnalysis: undefined,
-                    additionalToolCallRecords: [],
-                    selfReflectionScores: [],
-                    stepRecords: [],
-                });
+                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
 
             try {
                 const result = await capNoFindingsProvider.analyze(
@@ -1544,13 +1521,7 @@ index 1234567..abcdefg 100644
         it('should skip pipeline when cancelled', async () => {
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue({
-                    droppedTitles: [],
-                    rewrittenAnalysis: undefined,
-                    additionalToolCallRecords: [],
-                    selfReflectionScores: [],
-                    stepRecords: [],
-                });
+                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
 
             try {
                 const cancelledSource = createMockCancellationTokenSource();
@@ -1584,13 +1555,7 @@ index 1234567..abcdefg 100644
 
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue({
-                    droppedTitles: [],
-                    rewrittenAnalysis: undefined,
-                    additionalToolCallRecords: [],
-                    selfReflectionScores: [],
-                    stepRecords: [],
-                });
+                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
 
             try {
                 mockCopilotModelManager.sendRequest.mockRejectedValue(
@@ -1627,13 +1592,7 @@ index 1234567..abcdefg 100644
 
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
-                .mockResolvedValue({
-                    droppedTitles: [],
-                    rewrittenAnalysis: undefined,
-                    additionalToolCallRecords: [],
-                    selfReflectionScores: [],
-                    stepRecords: [],
-                });
+                .mockResolvedValue(EMPTY_PIPELINE_RESULT);
 
             try {
                 mockCopilotModelManager.sendRequest.mockRejectedValue(

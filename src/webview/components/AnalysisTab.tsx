@@ -17,7 +17,7 @@ export const AnalysisTab = ({
 }: AnalysisTabProps) => {
     console.time('Analysis tab render');
     const result = (
-        <div className="analysis-tab">
+        <div>
             {wasTruncated && (
                 <div className="analysis-truncated-banner" role="alert">
                     <span

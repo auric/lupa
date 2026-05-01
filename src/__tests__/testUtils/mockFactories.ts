@@ -713,3 +713,12 @@ export function createMockAnalysisEngineResult(
         findings: overrides.findings ?? [],
     };
 }
+
+/** Standard empty PostAnalysisPipeline result for tests that mock the pipeline. */
+export const EMPTY_PIPELINE_RESULT = {
+    droppedTitles: [],
+    rewrittenAnalysis: undefined,
+    additionalToolCallRecords: [],
+    selfReflectionScores: [],
+    stepRecords: [],
+};
