@@ -1588,11 +1588,11 @@ index 1234567..abcdefg 100644
                 }
             }
 
-            vi.useFakeTimers();
-
             const pipelineRunSpy = vi
                 .spyOn(PostAnalysisPipeline.prototype, 'run')
                 .mockResolvedValue(EMPTY_PIPELINE_RESULT);
+
+            vi.useFakeTimers();
 
             try {
                 mockCopilotModelManager.sendRequest.mockRejectedValue(

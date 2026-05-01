@@ -18,6 +18,9 @@ import type { ILLMClient } from '../../models/ILLMClient';
 import type { ExecutionContext } from '../../types/executionContext';
 import { RecursiveStateManager } from '../../sessions/recursiveStateManager';
 import { DEFAULT_PROFILE } from '../../models/modelCalibration';
+import type { ToolCallRecord } from '../../types/toolCallTypes';
+import type { SelfReflectionScore } from '../../services/selfReflectionScorer';
+import type { StepRecord } from '../../services/pipeline/pipelineTypes';
 
 /**
  * Creates a mock Position object with proper comparison methods.
@@ -715,10 +718,10 @@ export function createMockAnalysisEngineResult(
 }
 
 /** Standard empty PostAnalysisPipeline result for tests that mock the pipeline. */
-export const EMPTY_PIPELINE_RESULT = {
-    droppedTitles: [],
-    rewrittenAnalysis: undefined,
-    additionalToolCallRecords: [],
-    selfReflectionScores: [],
-    stepRecords: [],
-};
+export const EMPTY_PIPELINE_RESULT = Object.freeze({
+    droppedTitles: [] as string[],
+    rewrittenAnalysis: undefined as string | undefined,
+    additionalToolCallRecords: [] as ToolCallRecord[],
+    selfReflectionScores: [] as SelfReflectionScore[],
+    stepRecords: [] as StepRecord[],
+});

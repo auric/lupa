@@ -169,6 +169,10 @@ body,
     line-height: 1;
 }
 
+.analysis-truncated-text {
+    line-height: 1.4;
+}
+
 @theme inline {
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);

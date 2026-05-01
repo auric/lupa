@@ -9,6 +9,7 @@ import {
     LUPA_HEADLESS_ARGS_ENV,
     LUPA_HEADLESS_SENTINEL_ENV,
 } from './headlessConstants';
+import { Log } from '../services/loggingService';
 import {
     createHeadlessDeadline,
     formatHeadlessTimeoutMessage,
@@ -604,6 +605,11 @@ export async function runHeadlessFromEnv(
                     throw new Error(
                         `Analysis ended without completing (possible rate-limit, quota exhaustion, or degraded exit)${errorDetail}; ${suffix}`
                     );
+                }
+                if (result.error) {
+                    // Engine reported an error despite completing — warn but
+                    // do not fail, since findings may still be useful.
+                    Log.warn(`Analysis completed with error: ${result.error}`);
                 }
                 if (!args.silent) {
                     try {

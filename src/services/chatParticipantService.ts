@@ -410,6 +410,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 errorDetails: { message: errorMessage },
                 metadata: {
                     command: 'exploration',
+                    wasTruncated: false,
                     cancelled: false,
                     responseIsIncomplete: true,
                 },

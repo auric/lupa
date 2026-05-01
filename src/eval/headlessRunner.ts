@@ -40,7 +40,7 @@ export interface HeadlessAnalysisResult {
     seed: number;
     completed: boolean;
     wasTruncated: boolean;
-    error?: string;
+    error: string | undefined;
 }
 
 /**
@@ -160,8 +160,9 @@ export async function runHeadless(
         );
 
         if (result.wasCancelled) {
+            const errorDetail = result.error ? `: ${result.error}` : '';
             throw new Error(
-                `Analysis cancelled for ${opts.baseRef}..${opts.headRef}`
+                `Analysis cancelled for ${opts.baseRef}..${opts.headRef}${errorDetail}`
             );
         }
 

@@ -437,10 +437,11 @@ export class AnalysisEngine implements vscode.Disposable {
                 !mainAnalysisHitRateLimit &&
                 !mainAnalysisDegraded;
             wasTruncated =
-                mainAnalysisHitMaxIterations ||
-                (mainAnalysisDegraded &&
-                    !mainAnalysisHitQuotaExhausted &&
-                    !mainAnalysisHitRateLimit);
+                !mainAnalysisWasCancelled &&
+                (mainAnalysisHitMaxIterations ||
+                    (mainAnalysisDegraded &&
+                        !mainAnalysisHitQuotaExhausted &&
+                        !mainAnalysisHitRateLimit));
             const shouldRunPipeline =
                 !mainAnalysisWasCancelled &&
                 !mainAnalysisHitQuotaExhausted &&
@@ -523,15 +524,19 @@ export class AnalysisEngine implements vscode.Disposable {
             // Clear parent cancellation token to release references
             subagentSessionManager.setParentCancellationToken(undefined);
             // Complete root agent lifecycle in recursive state tree.
-            // Order matters: error > quota/rate-limit > degraded > cancelled > complete.
+            // Order matters: error > cancelled > quota/rate-limit > degraded > complete.
+            // Cancellation takes precedence over degraded/quota because a user
+            // may cancel during the post-analysis pipeline.
             // Max-iterations without degradation intentionally falls through to
             // completeAgent because the analysis succeeded — it was merely cut
-            // short by the iteration budget. Degraded cases are handled above.
+            // short by the iteration budget.
             // Use mainAnalysis* snapshots because the pipeline may have called
             // conversationRunner.run() again, resetting the runner's flags.
             if (recursiveState) {
                 if (analysisError) {
                     recursiveState.failAgent('root', analysisError);
+                } else if (mainAnalysisWasCancelled) {
+                    recursiveState.cancelAgent('root');
                 } else if (
                     mainAnalysisHitQuotaExhausted ||
                     mainAnalysisHitRateLimit
@@ -542,8 +547,6 @@ export class AnalysisEngine implements vscode.Disposable {
                         'root',
                         mainAnalysisExitReason ?? 'degraded'
                     );
-                } else if (mainAnalysisWasCancelled) {
-                    recursiveState.cancelAgent('root');
                 } else {
                     recursiveState.completeAgent('root');
                 }
