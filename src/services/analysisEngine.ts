@@ -7,6 +7,7 @@ import { TokenValidator } from '../models/tokenValidator';
 import {
     ConversationRunner,
     type ToolCallHandler,
+    type ExitReason,
 } from '../models/conversationRunner';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { DiffHunk } from '../types/contextTypes';
@@ -212,7 +213,7 @@ export class AnalysisEngine implements vscode.Disposable {
         let mainAnalysisIterationsUsed = 0;
         let wasTruncated = false;
         let mainAnalysisDegraded = false;
-        let mainAnalysisExitReason: string | undefined;
+        let mainAnalysisExitReason: ExitReason | undefined;
         let mainAnalysisHitQuotaExhausted = false;
         let mainAnalysisHitRateLimit = false;
         let mainAnalysisHitMaxIterations = false;
