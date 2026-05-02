@@ -1859,6 +1859,8 @@ index 1234567..abcdefg 100644
                 // Error should be captured without crashing
                 expect(result.error).toContain('Pipeline crashed');
                 expect(result.wasCancelled).toBe(false);
+                expect(result.completed).toBe(true);
+                expect(result.wasTruncated).toBe(false);
                 expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
             } finally {
                 pipelineRunSpy.mockRestore();

@@ -10,7 +10,7 @@ import {
     normalizeModelIdentifier,
     requireRemainingHeadlessBudgetMs,
 } from './headlessShared';
-import { truncateError } from '../utils/errorUtils';
+import { formatErrorDetail } from '../utils/errorUtils';
 
 export interface HeadlessRunnerOptions {
     workspaceRoot: string;
@@ -161,8 +161,7 @@ export async function runHeadless(
         );
 
         if (result.wasCancelled) {
-            const truncatedError = truncateError(result.error);
-            const errorDetail = truncatedError ? `: ${truncatedError}` : '';
+            const errorDetail = formatErrorDetail(result.error);
             throw new Error(
                 `Analysis cancelled for ${opts.baseRef}..${opts.headRef}${errorDetail}`
             );

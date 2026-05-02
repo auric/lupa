@@ -28,6 +28,16 @@ export function getErrorMessage(error: unknown): string {
 export const MAX_ERROR_LEN = 500;
 
 /**
+ * Formats an error message with a colon prefix if present.
+ * Returns empty string if error is undefined/empty.
+ * Useful for embedding errors into sentence context.
+ */
+export function formatErrorDetail(error: string | undefined): string {
+    const truncated = truncateError(error);
+    return truncated ? `: ${truncated}` : '';
+}
+
+/**
  * Truncates an error message to a maximum length, appending an ellipsis
  * indicator when truncation occurs.
  */

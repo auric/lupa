@@ -434,22 +434,23 @@ export class AnalysisEngine implements vscode.Disposable {
                 conversationRunner.hitQuotaExhausted;
             mainAnalysisHitRateLimit = conversationRunner.hitRateLimit;
             mainAnalysisHitMaxIterations = conversationRunner.hitMaxIterations;
-            analysisCompleted =
+
+            // Hard stops: cancelled, quota exhausted, or rate limited.
+            // These prevent the pipeline from running and are excluded from truncation.
+            const noHardStop =
                 !mainAnalysisWasCancelled &&
                 !mainAnalysisHitQuotaExhausted &&
-                !mainAnalysisHitRateLimit &&
-                !mainAnalysisDegraded;
+                !mainAnalysisHitRateLimit;
+
+            analysisCompleted = noHardStop && !mainAnalysisDegraded;
             wasTruncated =
-                !mainAnalysisWasCancelled &&
+                noHardStop &&
                 (mainAnalysisHitMaxIterations ||
                     (mainAnalysisDegraded &&
                         !mainAnalysisHitQuotaExhausted &&
                         !mainAnalysisHitRateLimit));
             const shouldRunPipeline =
-                !mainAnalysisWasCancelled &&
-                !mainAnalysisHitQuotaExhausted &&
-                !mainAnalysisHitRateLimit &&
-                (analysisCompleted || findingStore.size > 0);
+                noHardStop && (analysisCompleted || findingStore.size > 0);
 
             if (shouldRunPipeline) {
                 if (wasTruncated) {

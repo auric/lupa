@@ -613,6 +613,15 @@ describe('runHeadlessFromEnv', () => {
         expect(warnSpy).toHaveBeenCalledWith(
             expect.stringContaining('Pipeline validation failed')
         );
+
+        const outJson = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+        expect(outJson.completed).toBe(true);
+        expect(outJson.wasTruncated).toBe(false);
+        expect(outJson.error).toBe('Pipeline validation failed');
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(0);
+        expect(sentinel.error).toBeNull();
     });
 
     async function runWithRawArgs(rawArgs: string): Promise<{

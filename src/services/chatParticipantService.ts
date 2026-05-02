@@ -392,9 +392,7 @@ export class ChatParticipantService implements vscode.Disposable {
             if (explorationWasTruncated) {
                 this.streamTruncationWarning(stream);
             } else if (runner.hitQuotaExhausted || runner.hitRateLimit) {
-                stream.markdown(
-                    `\n\n> ${SEVERITY.warning} Analysis stopped due to API quota or rate limit. Results may be incomplete.\n\n`
-                );
+                this.streamQuotaWarning(stream);
             }
 
             streamMarkdownWithAnchors(stream, result, gitRootUri);
@@ -718,9 +716,7 @@ export class ChatParticipantService implements vscode.Disposable {
             this.streamTruncationWarning(stream);
         } else if (!result.completed) {
             // Quota/rate-limit: analysis didn't complete but there's no error
-            stream.markdown(
-                `\n\n> ${SEVERITY.warning} Analysis stopped due to API quota or rate limit. Results may be incomplete.\n\n`
-            );
+            this.streamQuotaWarning(stream);
         }
 
         streamMarkdownWithAnchors(stream, result.analysisText, gitRootUri);
@@ -833,6 +829,15 @@ export class ChatParticipantService implements vscode.Disposable {
      */
     private streamTruncationWarning(stream: vscode.ChatResponseStream): void {
         stream.markdown(`\n\n> ${SEVERITY.warning} ${TRUNCATED_MESSAGE}\n\n`);
+    }
+
+    /**
+     * Streams the standard quota/rate-limit warning banner to the chat UI.
+     */
+    private streamQuotaWarning(stream: vscode.ChatResponseStream): void {
+        stream.markdown(
+            `\n\n> ${SEVERITY.warning} Analysis stopped due to API quota or rate limit. Results may be incomplete.\n\n`
+        );
     }
 
     /**
