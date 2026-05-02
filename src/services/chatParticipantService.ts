@@ -716,6 +716,11 @@ export class ChatParticipantService implements vscode.Disposable {
 
         if (result.wasTruncated) {
             this.streamTruncationWarning(stream);
+        } else if (!result.completed) {
+            // Quota/rate-limit: analysis didn't complete but there's no error
+            stream.markdown(
+                `\n\n> ${SEVERITY.warning} Analysis stopped due to API quota or rate limit. Results may be incomplete.\n\n`
+            );
         }
 
         streamMarkdownWithAnchors(stream, result.analysisText, gitRootUri);

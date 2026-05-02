@@ -222,14 +222,14 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                         }
                     );
 
-                    const statusMessage =
-                        result.error && result.error.length > 0
-                            ? 'Analysis completed with warnings'
-                            : 'Analysis complete';
+                    const hasError = result.error && result.error.length > 0;
+                    const statusMessage = hasError
+                        ? 'Analysis completed with warnings'
+                        : result.wasTruncated
+                          ? 'Analysis truncated'
+                          : 'Analysis complete';
                     const statusIcon =
-                        result.error && result.error.length > 0
-                            ? 'warning'
-                            : 'check';
+                        hasError || result.wasTruncated ? 'warning' : 'check';
                     this.services.statusBar.showTemporaryMessage(
                         statusMessage,
                         3000,
