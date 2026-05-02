@@ -687,7 +687,7 @@ export class ChatParticipantService implements vscode.Disposable {
             // auto-generated error placeholder with no genuine findings.
             const isErrorPlaceholder =
                 !result.completed &&
-                result.analysisText?.startsWith('Error during analysis:');
+                result.analysisText.startsWith('Error during analysis:');
             if (result.analysisText && !isErrorPlaceholder) {
                 streamMarkdownWithAnchors(
                     stream,
