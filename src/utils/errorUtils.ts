@@ -39,5 +39,6 @@ export function truncateError(
         return error ?? '';
     }
     const suffix = '... (truncated)';
-    return error.slice(0, maxLen - suffix.length) + suffix;
+    const sliceEnd = Math.max(0, maxLen - suffix.length);
+    return error.slice(0, sliceEnd) + suffix;
 }

@@ -661,8 +661,11 @@ export class ChatParticipantService implements vscode.Disposable {
         } finally {
             try {
                 debouncedHandler.flush();
-            } catch {
-                // Ignore flush errors so the original error is not masked.
+            } catch (flushError) {
+                Log.warn(
+                    '[ChatParticipantService]: Failed to flush stream buffer in analysis',
+                    flushError
+                );
             }
         }
 
@@ -680,12 +683,12 @@ export class ChatParticipantService implements vscode.Disposable {
             if (result.wasTruncated) {
                 this.streamTruncationWarning(stream);
             }
-            // Stream partial analysis text only when it contains genuine
-            // findings — skip when it is just the error message placeholder.
-            if (
-                result.analysisText &&
-                !result.analysisText.includes(result.error)
-            ) {
+            // Stream partial analysis text unless it's just the engine's
+            // auto-generated error placeholder with no genuine findings.
+            const isErrorPlaceholder =
+                !result.completed &&
+                result.analysisText?.startsWith('Error during analysis:');
+            if (result.analysisText && !isErrorPlaceholder) {
                 streamMarkdownWithAnchors(
                     stream,
                     result.analysisText,
