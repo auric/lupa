@@ -38,5 +38,6 @@ export function truncateError(
     if (!error || error.length <= maxLen) {
         return error ?? '';
     }
-    return error.slice(0, maxLen) + '... (truncated)';
+    const suffix = '... (truncated)';
+    return error.slice(0, maxLen - suffix.length) + suffix;
 }

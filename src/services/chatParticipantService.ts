@@ -734,7 +734,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 hasTestingSuggestions: contentAnalysis.hasTestingSuggestions,
                 wasTruncated: result.wasTruncated,
                 cancelled: false,
-                responseIsIncomplete: result.wasTruncated,
+                responseIsIncomplete: !result.completed || result.wasTruncated,
                 analysisTimestamp: Date.now(),
             } satisfies ChatAnalysisMetadata,
         };
