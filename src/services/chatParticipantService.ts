@@ -399,11 +399,17 @@ export class ChatParticipantService implements vscode.Disposable {
 
             streamMarkdownWithAnchors(stream, result, gitRootUri);
 
+            const isIncomplete =
+                explorationWasTruncated ||
+                runner.hitQuotaExhausted ||
+                runner.hitRateLimit;
+
             return {
                 metadata: {
                     command: 'exploration',
                     wasTruncated: explorationWasTruncated,
                     cancelled: false,
+                    responseIsIncomplete: isIncomplete,
                     analysisTimestamp: Date.now(),
                 } satisfies ChatAnalysisMetadata,
             };
@@ -728,6 +734,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 hasTestingSuggestions: contentAnalysis.hasTestingSuggestions,
                 wasTruncated: result.wasTruncated,
                 cancelled: false,
+                responseIsIncomplete: result.wasTruncated,
                 analysisTimestamp: Date.now(),
             } satisfies ChatAnalysisMetadata,
         };
