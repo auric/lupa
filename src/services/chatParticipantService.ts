@@ -703,6 +703,8 @@ export class ChatParticipantService implements vscode.Disposable {
             return {
                 errorDetails: { message: result.error },
                 metadata: {
+                    command: request.command as 'branch' | 'changes',
+                    filesAnalyzed: result.filesAnalyzed,
                     wasTruncated: result.wasTruncated,
                     responseIsIncomplete: true,
                 },
