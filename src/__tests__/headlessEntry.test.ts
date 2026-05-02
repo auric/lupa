@@ -535,6 +535,10 @@ describe('runHeadlessFromEnv', () => {
         const outJson = JSON.parse(fs.readFileSync(outPath, 'utf8'));
         expect(outJson.wasTruncated).toBe(true);
         expect(outJson.narrative).toBe('truncated narrative');
+
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+        expect(sentinel.exitCode).toBe(0);
+        expect(sentinel.error).toBeNull();
     });
 
     it('warns when runHeadless returns completed=true with error set', async () => {

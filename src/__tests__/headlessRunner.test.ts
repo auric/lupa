@@ -528,7 +528,7 @@ describe('runHeadless', () => {
         const result = await runHeadless(baseOpts(), services);
         expect(result.error).toBe('boom');
         expect(result.completed).toBe(false);
-        expect(result.findings.length).toBe(1);
+        expect(result.findings).toHaveLength(1);
     });
 
     it('throws when the analysis is cancelled', async () => {

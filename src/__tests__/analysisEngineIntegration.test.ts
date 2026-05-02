@@ -1610,7 +1610,7 @@ index 1234567..abcdefg 100644
                 );
 
                 // Advance timers past all retry backoffs. The runner retries
-                // up to 5 times with cumulative backoff well under 120s.
+                // up to 5 times with cumulative backoff well under 600s.
                 await vi.advanceTimersByTimeAsync(120_000);
                 const result = await runPromise;
 
