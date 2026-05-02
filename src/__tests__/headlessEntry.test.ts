@@ -589,6 +589,7 @@ describe('runHeadlessFromEnv', () => {
             modelId: 'copilot/gpt-4.1',
             seed: 0,
             completed: true,
+            wasTruncated: false,
             error: 'Pipeline validation failed',
         } as never);
 
