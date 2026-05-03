@@ -29,7 +29,11 @@ import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
-import { QUOTA_MESSAGE, TRUNCATED_MESSAGE } from '../constants/messages';
+import {
+    QUOTA_MESSAGE,
+    TRUNCATED_MESSAGE,
+    ERROR_PLACEHOLDER_PREFIX,
+} from '../constants/messages';
 import type {
     ChatToolCallHandler,
     ChatAnalysisMetadata,
@@ -506,7 +510,7 @@ export class ChatParticipantService implements vscode.Disposable {
                     .build();
                 stream.markdown(response);
                 return {
-                    errorDetails: { message: 'Service not initialized' },
+                    errorDetails: { message: 'Git service not initialized' },
                     metadata: {
                         wasTruncated: false,
                         responseIsIncomplete: true,
@@ -684,7 +688,7 @@ export class ChatParticipantService implements vscode.Disposable {
             // auto-generated error placeholder with no genuine findings.
             const isErrorPlaceholder =
                 !result.completed &&
-                result.analysisText.startsWith('Error during analysis:');
+                result.analysisText?.startsWith(ERROR_PLACEHOLDER_PREFIX);
             if (result.analysisText && !isErrorPlaceholder) {
                 streamMarkdownWithAnchors(
                     stream,

@@ -536,7 +536,7 @@ export class AnalysisEngine implements vscode.Disposable {
             Log.error(errorMessage, error);
             // Preserve existing analysis text so partial findings are not
             // hidden from consumers (chat UI, webview) on pipeline errors.
-            if (!analysisText || analysisText.trim().length === 0) {
+            if (!analysisText.trim()) {
                 analysisText = errorMessage;
             }
         } finally {
@@ -552,7 +552,7 @@ export class AnalysisEngine implements vscode.Disposable {
             // Use mainAnalysis* snapshots because the pipeline may have called
             // conversationRunner.run() again, resetting the runner's flags.
             if (recursiveState) {
-                if (analysisError && !mainAnalysisFinished) {
+                if (analysisError) {
                     recursiveState.failAgent('root', analysisError);
                 } else if (mainAnalysisWasCancelled || pipelineWasCancelled) {
                     recursiveState.cancelAgent('root');
