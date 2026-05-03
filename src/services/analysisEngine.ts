@@ -474,6 +474,7 @@ export class AnalysisEngine implements vscode.Disposable {
                     disabledToolNames,
                     handler,
                     progressCallback: (msg, inc) => output.onProgress(msg, inc),
+                    mainAnalysisDegraded,
                 });
 
                 toolCallRecords.push(
@@ -551,7 +552,7 @@ export class AnalysisEngine implements vscode.Disposable {
             // Use mainAnalysis* snapshots because the pipeline may have called
             // conversationRunner.run() again, resetting the runner's flags.
             if (recursiveState) {
-                if (analysisError) {
+                if (analysisError && !mainAnalysisFinished) {
                     recursiveState.failAgent('root', analysisError);
                 } else if (mainAnalysisWasCancelled || pipelineWasCancelled) {
                     recursiveState.cancelAgent('root');

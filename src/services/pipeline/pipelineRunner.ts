@@ -19,6 +19,20 @@ export async function runPipeline(
     const records: StepRecord[] = [];
 
     for (const step of steps) {
+        if (context.mainAnalysisDegraded && step.kind === 'llm-conversation') {
+            records.push({
+                name: step.name,
+                label: step.label,
+                kind: step.kind,
+                status: 'skipped',
+                durationMs: 0,
+            });
+            Log.info(
+                `Pipeline: skipping "${step.label}" because main analysis degraded`
+            );
+            continue;
+        }
+
         if (
             context.executionContext.cancellationToken
                 .isCancellationRequested &&

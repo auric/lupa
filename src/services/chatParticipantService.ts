@@ -450,7 +450,7 @@ export class ChatParticipantService implements vscode.Disposable {
                     wasTruncated: false,
                     cancelled: false,
                     responseIsIncomplete: true,
-                },
+                } satisfies ChatAnalysisMetadata,
             };
         }
     }
@@ -510,7 +510,7 @@ export class ChatParticipantService implements vscode.Disposable {
                     metadata: {
                         wasTruncated: false,
                         responseIsIncomplete: true,
-                    },
+                    } satisfies ChatAnalysisMetadata,
                 };
             }
 
@@ -531,7 +531,7 @@ export class ChatParticipantService implements vscode.Disposable {
                     metadata: {
                         wasTruncated: false,
                         responseIsIncomplete: false,
-                    },
+                    } satisfies ChatAnalysisMetadata,
                 };
             }
 
@@ -707,7 +707,7 @@ export class ChatParticipantService implements vscode.Disposable {
                     filesAnalyzed: result.filesAnalyzed,
                     wasTruncated: result.wasTruncated,
                     responseIsIncomplete: true,
-                },
+                } satisfies ChatAnalysisMetadata,
             };
         }
 
@@ -787,7 +787,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 cancelled: true,
                 wasTruncated: false,
                 responseIsIncomplete: true,
-            },
+            } satisfies ChatAnalysisMetadata,
         };
     }
 
