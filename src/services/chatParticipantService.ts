@@ -380,10 +380,9 @@ export class ChatParticipantService implements vscode.Disposable {
 
             const explorationWasTruncated =
                 !runner.wasCancelled &&
-                (runner.hitMaxIterations ||
-                    (runner.degraded &&
-                        !runner.hitQuotaExhausted &&
-                        !runner.hitRateLimit));
+                !runner.hitQuotaExhausted &&
+                !runner.hitRateLimit &&
+                (runner.hitMaxIterations || runner.degraded);
 
             if (runner.wasCancelled) {
                 return this.handleCancellation(stream);

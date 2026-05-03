@@ -445,10 +445,7 @@ export class AnalysisEngine implements vscode.Disposable {
             analysisCompleted = noHardStop && !mainAnalysisDegraded;
             wasTruncated =
                 noHardStop &&
-                (mainAnalysisHitMaxIterations ||
-                    (mainAnalysisDegraded &&
-                        !mainAnalysisHitQuotaExhausted &&
-                        !mainAnalysisHitRateLimit));
+                (mainAnalysisHitMaxIterations || mainAnalysisDegraded);
             const shouldRunPipeline =
                 noHardStop && (analysisCompleted || findingStore.size > 0);
 
