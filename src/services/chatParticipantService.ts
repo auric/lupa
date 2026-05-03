@@ -29,7 +29,7 @@ import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
-import { TRUNCATED_MESSAGE } from '../constants/messages';
+import { QUOTA_MESSAGE, TRUNCATED_MESSAGE } from '../constants/messages';
 import type {
     ChatToolCallHandler,
     ChatAnalysisMetadata,
@@ -834,9 +834,7 @@ export class ChatParticipantService implements vscode.Disposable {
      * Streams the standard quota/rate-limit warning banner to the chat UI.
      */
     private streamQuotaWarning(stream: vscode.ChatResponseStream): void {
-        stream.markdown(
-            `\n\n> ${SEVERITY.warning} Analysis stopped due to API quota or rate limit. Results may be incomplete.\n\n`
-        );
+        stream.markdown(`\n\n> ${SEVERITY.warning} ${QUOTA_MESSAGE}\n\n`);
     }
 
     /**
