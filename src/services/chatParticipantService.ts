@@ -506,7 +506,7 @@ export class ChatParticipantService implements vscode.Disposable {
                     .build();
                 stream.markdown(response);
                 return {
-                    errorDetails: { message: 'Git service not initialized' },
+                    errorDetails: { message: 'Service not initialized' },
                     metadata: {
                         wasTruncated: false,
                         responseIsIncomplete: true,
@@ -571,7 +571,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 metadata: {
                     wasTruncated: false,
                     responseIsIncomplete: true,
-                },
+                } satisfies ChatAnalysisMetadata,
             };
         }
     }
