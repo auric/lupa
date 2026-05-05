@@ -15,6 +15,7 @@ import type { RecordedFinding } from '../types/findingTypes';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+import { ERROR_PLACEHOLDER_PREFIX } from '../constants/messages';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
@@ -532,7 +533,7 @@ export class AnalysisEngine implements vscode.Disposable {
             if (!mainAnalysisFinished) {
                 analysisCompleted = false;
             }
-            const errorMessage = `Error during analysis: ${analysisError}`;
+            const errorMessage = `${ERROR_PLACEHOLDER_PREFIX} ${analysisError}`;
             Log.error(errorMessage, error);
             // Preserve existing analysis text so partial findings are not
             // hidden from consumers (chat UI, webview) on pipeline errors.

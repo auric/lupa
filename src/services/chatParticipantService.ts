@@ -661,7 +661,9 @@ export class ChatParticipantService implements vscode.Disposable {
             result = await this.deps!.analysisEngine.analyze(input, output);
         } finally {
             try {
-                debouncedHandler.flush();
+                if (!token.isCancellationRequested) {
+                    debouncedHandler.flush();
+                }
             } catch (flushError) {
                 Log.warn(
                     '[ChatParticipantService]: Failed to flush stream buffer in analysis',
