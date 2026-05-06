@@ -374,7 +374,9 @@ export class ChatParticipantService implements vscode.Disposable {
             );
 
             try {
-                debouncedHandler?.flush();
+                if (!token.isCancellationRequested) {
+                    debouncedHandler?.flush();
+                }
             } catch (flushError) {
                 Log.warn(
                     '[ChatParticipantService]: Failed to flush stream buffer',
