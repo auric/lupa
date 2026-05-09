@@ -15,6 +15,7 @@ import {
     requireRemainingHeadlessBudgetMs,
     validateRef,
 } from '../headlessShared';
+import { truncateError } from '../../utils/errorUtils';
 
 const MIN_TIMEOUT_MS = 10_000;
 const LAUNCHER_HEADROOM_MS = 60_000;
@@ -223,7 +224,7 @@ export async function invokeHeadless(
             parsed.result.completed &&
             parsed.result.error
         ) {
-            error = `Analysis completed but engine reported an error: ${parsed.result.error}; stderr tail: ${tailStderr(stderr, stdout)}`;
+            error = `Analysis completed but engine reported an error: ${truncateError(parsed.result.error)}; stderr tail: ${tailStderr(stderr, stdout)}`;
         } else if (exitCode !== 0 && parsed.ok && parsed.result.completed) {
             error = `Launcher exited ${exitCode} after writing a completed analysis result; treating the run as failed so the parsed result is preserved only as error context; stderr tail: ${tailStderr(stderr, stdout)}`;
         } else if (!parsed.ok && parsed.reason === 'missing') {

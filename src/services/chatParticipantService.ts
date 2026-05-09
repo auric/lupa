@@ -265,7 +265,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 metadata: {
                     wasTruncated: false,
                     responseIsIncomplete: true,
-                },
+                } satisfies ChatAnalysisMetadata,
             };
         }
 
@@ -420,7 +420,9 @@ export class ChatParticipantService implements vscode.Disposable {
             // Flush any buffered streamed content before handling the error.
             // This preserves partial findings/tool output for the user.
             try {
-                debouncedHandler?.flush();
+                if (!token.isCancellationRequested) {
+                    debouncedHandler?.flush();
+                }
             } catch (flushError) {
                 Log.warn(
                     '[ChatParticipantService]: Failed to flush stream buffer',
@@ -495,7 +497,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 metadata: {
                     wasTruncated: false,
                     responseIsIncomplete: true,
-                },
+                } satisfies ChatAnalysisMetadata,
             };
         }
 
