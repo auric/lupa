@@ -36,9 +36,9 @@ describe('ModelRequestHandler', () => {
             const result = ModelRequestHandler.convertMessages(messages);
 
             expect(result).toHaveLength(1);
-            expect(
-                vscode.LanguageModelChatMessage.Assistant
-            ).toHaveBeenCalledWith('You are a helpful assistant.');
+            expect(vscode.LanguageModelChatMessage.User).toHaveBeenCalledWith(
+                '<system_instructions>You are a helpful assistant.</system_instructions>'
+            );
         });
 
         it('should convert user messages to User messages', () => {
