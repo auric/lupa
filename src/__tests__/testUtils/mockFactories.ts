@@ -18,6 +18,7 @@ import type { ILLMClient } from '../../models/ILLMClient';
 import type { ExecutionContext } from '../../types/executionContext';
 import { RecursiveStateManager } from '../../sessions/recursiveStateManager';
 import { DEFAULT_PROFILE } from '../../models/modelCalibration';
+import type { PostAnalysisPipelineResult } from '../../services/postAnalysisPipeline';
 
 /**
  * Creates a mock Position object with proper comparison methods.
@@ -556,11 +557,13 @@ export function createFileExistsError(
  */
 export function createMockWorkspaceSettings(
     overrides: Partial<{
+        maxIterations: number;
         maxRecursionDepth: number;
     }> = {}
 ): WorkspaceSettingsService {
     return {
-        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations,
+        getMaxIterations: () =>
+            overrides.maxIterations ?? ANALYSIS_LIMITS.maxIterations,
         getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds,
         getMaxSubagentsPerSession: () => ANALYSIS_LIMITS.maxSubagentsPerSession,
         getMaxRecursionDepth: () =>
@@ -701,6 +704,7 @@ export function createMockAnalysisEngineResult(
         analysisText: overrides.analysisText ?? 'Mock analysis result',
         toolCallRecords: overrides.toolCallRecords ?? [],
         completed: overrides.completed ?? true,
+        wasTruncated: overrides.wasTruncated ?? false,
         wasCancelled: overrides.wasCancelled ?? false,
         error: overrides.error ?? undefined,
         iterationsUsed: overrides.iterationsUsed ?? 5,
@@ -708,5 +712,17 @@ export function createMockAnalysisEngineResult(
         filesAnalyzed: overrides.filesAnalyzed ?? 0,
         stepRecords: overrides.stepRecords ?? [],
         findings: overrides.findings ?? [],
+    };
+}
+
+/** Creates a fresh empty PostAnalysisPipeline result for tests.
+ *  Using a factory prevents accidental shared mutable state across tests. */
+export function createEmptyPipelineResult(): PostAnalysisPipelineResult {
+    return {
+        droppedTitles: [],
+        rewrittenAnalysis: undefined,
+        additionalToolCallRecords: [],
+        selfReflectionScores: [],
+        stepRecords: [],
     };
 }

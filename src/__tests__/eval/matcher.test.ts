@@ -401,6 +401,7 @@ describe('classifyResolutionForRun', () => {
                         modelId: 'copilot/gpt-5-mini',
                         seed: 7,
                         completed: true,
+                        wasTruncated: false,
                     })
                 );
                 return createMockLauncherProcess(0);
@@ -559,6 +560,7 @@ describe('classifyResolutionForRun', () => {
                         modelId: 'copilot/gpt-5-mini',
                         seed: 7,
                         completed: true,
+                        wasTruncated: false,
                     })
                 );
                 return createMockLauncherProcess(1);
@@ -697,6 +699,55 @@ describe('classifyResolutionForRun', () => {
         expect(result.error).toContain('result.completed must be a boolean');
     });
 
+    it('rejects headless result when wasTruncated has wrong type', async () => {
+        mockedSpawn.mockImplementation(
+            (_cmd: string, args: readonly string[]) => {
+                const outIndex = args.indexOf('--out');
+                const outPath = args[outIndex + 1];
+                fs.writeFileSync(
+                    outPath,
+                    JSON.stringify({
+                        findings: [],
+                        narrative: 'usable-looking result',
+                        telemetry: {
+                            iterations: 1,
+                            toolCalls: 0,
+                            promptTokens: 0,
+                            completionTokens: 0,
+                            durationMs: 25,
+                            compactionsUsed: 0,
+                        },
+                        rawToolCallLog: [],
+                        modelId: 'copilot/gpt-5-mini',
+                        seed: 7,
+                        completed: true,
+                        wasTruncated: 'yes',
+                    })
+                );
+                return createMockLauncherProcess(0);
+            }
+        );
+
+        const result = await invokeHeadless({
+            workspaceRoot: '/tmp/workspace',
+            baseRef: 'main',
+            headRef: 'feature/x',
+            model: 'copilot/gpt-5-mini',
+            seed: 7,
+            timeoutMs: 60_000,
+            bailOnError: false,
+        });
+
+        expect(result.ok).toBe(false);
+        if (result.ok) {
+            throw new Error(
+                'Expected invokeHeadless to return a failure result'
+            );
+        }
+        expect(result.result).toBeNull();
+        expect(result.error).toContain('result.wasTruncated must be a boolean');
+    });
+
     it('accepts malformed optional finding.sources entries in analysis JSON as raw harness data so later per-finding sanitization can handle them', async () => {
         mockedSpawn.mockImplementation(
             (_cmd: string, args: readonly string[]) => {
@@ -731,6 +782,7 @@ describe('classifyResolutionForRun', () => {
                         modelId: 'copilot/gpt-5-mini',
                         seed: 7,
                         completed: true,
+                        wasTruncated: false,
                     })
                 );
                 return createMockLauncherProcess(0);
@@ -779,6 +831,7 @@ describe('classifyResolutionForRun', () => {
                         modelId: 'copilot/gpt-5-mini',
                         seed: 7,
                         completed: false,
+                        wasTruncated: false,
                     })
                 );
                 return createMockLauncherProcess(1);
@@ -2820,6 +2873,7 @@ index 1234567..89abcde 100644
                 modelId: 'copilot/gpt-5-mini',
                 seed: 0,
                 completed: true,
+                wasTruncated: false,
             },
             match: emptyMatch(),
             resolution: {
@@ -2862,6 +2916,7 @@ index 1234567..89abcde 100644
                 modelId: 'copilot/gpt-5-mini',
                 seed: 1,
                 completed: true,
+                wasTruncated: false,
             },
             match: emptyMatch(),
             resolution: null,

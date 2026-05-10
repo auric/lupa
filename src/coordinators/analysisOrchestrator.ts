@@ -218,13 +218,34 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                             iterationsUsed: result.iterationsUsed,
                             maxIterations:
                                 this.services.workspaceSettings.getMaxIterations(),
+                            wasTruncated: result.wasTruncated,
                         }
                     );
 
+                    const hasError = result.error && result.error.length > 0;
+                    const isIncomplete = !result.completed;
+                    let statusMessage: string;
+                    let statusIcon: 'check' | 'warning' | 'error';
+                    if (hasError && isIncomplete) {
+                        statusMessage = 'Analysis ended with error';
+                        statusIcon = 'warning';
+                    } else if (result.wasTruncated) {
+                        statusMessage = 'Analysis truncated';
+                        statusIcon = 'warning';
+                    } else if (hasError) {
+                        statusMessage = 'Analysis completed with warnings';
+                        statusIcon = 'warning';
+                    } else if (isIncomplete) {
+                        statusMessage = 'Analysis incomplete';
+                        statusIcon = 'warning';
+                    } else {
+                        statusMessage = 'Analysis complete';
+                        statusIcon = 'check';
+                    }
                     this.services.statusBar.showTemporaryMessage(
-                        'Analysis complete',
+                        statusMessage,
                         3000,
-                        'check'
+                        statusIcon
                     );
                 } finally {
                     progressCancellationDisposable.dispose();

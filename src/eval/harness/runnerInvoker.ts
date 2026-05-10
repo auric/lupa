@@ -15,6 +15,7 @@ import {
     requireRemainingHeadlessBudgetMs,
     validateRef,
 } from '../headlessShared';
+import { truncateError } from '../../utils/errorUtils';
 
 const MIN_TIMEOUT_MS = 10_000;
 const LAUNCHER_HEADROOM_MS = 60_000;
@@ -205,6 +206,7 @@ export async function invokeHeadless(
             exitCode === 0 &&
             parsed.ok &&
             parsed.result.completed &&
+            !parsed.result.error &&
             !watchdogFired &&
             !outputLimitExceeded
         ) {
@@ -216,6 +218,13 @@ export async function invokeHeadless(
             error = `Launcher output exceeded ${MAX_LAUNCHER_OUTPUT_BYTES} bytes and was killed`;
         } else if (watchdogFired) {
             error = `Launcher killed by harness watchdog after ${watchdogMs}ms`;
+        } else if (
+            exitCode === 0 &&
+            parsed.ok &&
+            parsed.result.completed &&
+            parsed.result.error
+        ) {
+            error = `Analysis completed but engine reported an error: ${truncateError(parsed.result.error)}; stderr tail: ${tailStderr(stderr, stdout)}`;
         } else if (exitCode !== 0 && parsed.ok && parsed.result.completed) {
             error = `Launcher exited ${exitCode} after writing a completed analysis result; treating the run as failed so the parsed result is preserved only as error context; stderr tail: ${tailStderr(stderr, stdout)}`;
         } else if (!parsed.ok && parsed.reason === 'missing') {

@@ -29,6 +29,11 @@ import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
+import {
+    QUOTA_MESSAGE,
+    TRUNCATED_MESSAGE,
+    ERROR_PLACEHOLDER_PREFIX,
+} from '../constants/messages';
 import type {
     ChatToolCallHandler,
     ChatAnalysisMetadata,
@@ -41,6 +46,7 @@ import {
     AnalysisEngine,
     type AnalysisEngineInput,
     type AnalysisEngineOutput,
+    type AnalysisEngineResult,
 } from './analysisEngine';
 
 /**
@@ -254,20 +260,29 @@ export class ChatParticipantService implements vscode.Disposable {
                 )
                 .build();
             stream.markdown(response);
-            return { errorDetails: { message: 'Service not initialized' } };
+            return {
+                errorDetails: { message: 'Service not initialized' },
+                metadata: {
+                    wasTruncated: false,
+                    responseIsIncomplete: true,
+                } satisfies ChatAnalysisMetadata,
+            };
         }
 
         if (token.isCancellationRequested) {
             return this.handleCancellation(stream);
         }
 
+        // Declare outside try so catch block can flush buffered output
+        let gitRootUri: vscode.Uri | undefined;
+        let debouncedHandler: DebouncedStreamHandler | undefined;
+        let adapter: ToolCallStreamAdapter | undefined;
+
         try {
-            // Create stream adapter first - needed for subagent tool streaming
-            const gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
-            const { debouncedHandler, adapter } = this.createStreamAdapter(
-                stream,
-                gitRootUri
-            );
+            gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
+            const created = this.createStreamAdapter(stream, gitRootUri);
+            debouncedHandler = created.debouncedHandler;
+            adapter = created.adapter;
 
             // Create per-request subagent infrastructure with chat handler
             const timeoutMs =
@@ -329,6 +344,9 @@ export class ChatParticipantService implements vscode.Disposable {
                         conversation.prependHistoryMessages(historyMessages);
                     }
                 } catch (error) {
+                    if (isCancellationError(error)) {
+                        return this.handleCancellation(stream);
+                    }
                     Log.warn(
                         '[ChatParticipantService]: History processing failed, continuing without',
                         error
@@ -355,22 +373,63 @@ export class ChatParticipantService implements vscode.Disposable {
                 adapter
             );
 
-            debouncedHandler.flush();
+            try {
+                if (!token.isCancellationRequested) {
+                    debouncedHandler?.flush();
+                }
+            } catch (flushError) {
+                Log.warn(
+                    '[ChatParticipantService]: Failed to flush stream buffer',
+                    flushError
+                );
+            }
+
+            const explorationWasTruncated =
+                !runner.wasCancelled &&
+                !runner.hitQuotaExhausted &&
+                !runner.hitRateLimit &&
+                (runner.hitMaxIterations || runner.degraded);
 
             if (runner.wasCancelled) {
                 return this.handleCancellation(stream);
             }
 
+            if (explorationWasTruncated) {
+                this.streamTruncationWarning(stream);
+            } else if (runner.hitQuotaExhausted || runner.hitRateLimit) {
+                this.streamQuotaWarning(stream);
+            }
+
             streamMarkdownWithAnchors(stream, result, gitRootUri);
+
+            const isIncomplete =
+                explorationWasTruncated ||
+                runner.hitQuotaExhausted ||
+                runner.hitRateLimit;
 
             return {
                 metadata: {
                     command: 'exploration',
+                    wasTruncated: explorationWasTruncated,
                     cancelled: false,
+                    responseIsIncomplete: isIncomplete,
                     analysisTimestamp: Date.now(),
                 } satisfies ChatAnalysisMetadata,
             };
         } catch (error) {
+            // Flush any buffered streamed content before handling the error.
+            // This preserves partial findings/tool output for the user.
+            try {
+                if (!token.isCancellationRequested) {
+                    debouncedHandler?.flush();
+                }
+            } catch (flushError) {
+                Log.warn(
+                    '[ChatParticipantService]: Failed to flush stream buffer',
+                    flushError
+                );
+            }
+
             // Check error type rather than token state to avoid race conditions
             // where the error is already thrown before we can check the token
             if (isCancellationError(error)) {
@@ -396,9 +455,10 @@ export class ChatParticipantService implements vscode.Disposable {
                 errorDetails: { message: errorMessage },
                 metadata: {
                     command: 'exploration',
+                    wasTruncated: false,
                     cancelled: false,
                     responseIsIncomplete: true,
-                },
+                } satisfies ChatAnalysisMetadata,
             };
         }
     }
@@ -432,7 +492,13 @@ export class ChatParticipantService implements vscode.Disposable {
                 )
                 .build();
             stream.markdown(response);
-            return { errorDetails: { message: 'Service not initialized' } };
+            return {
+                errorDetails: { message: 'Service not initialized' },
+                metadata: {
+                    wasTruncated: false,
+                    responseIsIncomplete: true,
+                } satisfies ChatAnalysisMetadata,
+            };
         }
 
         try {
@@ -449,6 +515,10 @@ export class ChatParticipantService implements vscode.Disposable {
                 stream.markdown(response);
                 return {
                     errorDetails: { message: 'Git service not initialized' },
+                    metadata: {
+                        wasTruncated: false,
+                        responseIsIncomplete: true,
+                    } satisfies ChatAnalysisMetadata,
                 };
             }
 
@@ -465,7 +535,12 @@ export class ChatParticipantService implements vscode.Disposable {
                     .addFollowupPrompt(message)
                     .build();
                 stream.markdown(response);
-                return {};
+                return {
+                    metadata: {
+                        wasTruncated: false,
+                        responseIsIncomplete: false,
+                    } satisfies ChatAnalysisMetadata,
+                };
             }
 
             const finalScopeLabel =
@@ -501,7 +576,10 @@ export class ChatParticipantService implements vscode.Disposable {
             stream.markdown(response);
             return {
                 errorDetails: { message: errorMessage },
-                metadata: { responseIsIncomplete: true },
+                metadata: {
+                    wasTruncated: false,
+                    responseIsIncomplete: true,
+                } satisfies ChatAnalysisMetadata,
             };
         }
     }
@@ -582,9 +660,21 @@ export class ChatParticipantService implements vscode.Disposable {
             onIterationStart: adapter.onIterationStart?.bind(adapter),
         };
 
-        const result = await this.deps!.analysisEngine.analyze(input, output);
-
-        debouncedHandler.flush();
+        let result: AnalysisEngineResult;
+        try {
+            result = await this.deps!.analysisEngine.analyze(input, output);
+        } finally {
+            try {
+                if (!token.isCancellationRequested) {
+                    debouncedHandler.flush();
+                }
+            } catch (flushError) {
+                Log.warn(
+                    '[ChatParticipantService]: Failed to flush stream buffer in analysis',
+                    flushError
+                );
+            }
+        }
 
         if (result.wasCancelled) {
             return this.handleCancellation(stream);
@@ -595,6 +685,23 @@ export class ChatParticipantService implements vscode.Disposable {
                 '[ChatParticipantService]: Analysis failed',
                 result.error
             );
+            // Stream any partial analysis text so the user can see findings
+            // that were recorded before the error occurred.
+            if (result.wasTruncated) {
+                this.streamTruncationWarning(stream);
+            }
+            // Stream partial analysis text unless it's just the engine's
+            // auto-generated error placeholder with no genuine findings.
+            const isErrorPlaceholder =
+                !result.completed &&
+                result.analysisText?.startsWith(ERROR_PLACEHOLDER_PREFIX);
+            if (result.analysisText && !isErrorPlaceholder) {
+                streamMarkdownWithAnchors(
+                    stream,
+                    result.analysisText,
+                    gitRootUri
+                );
+            }
             const response = new ChatResponseBuilder()
                 .addErrorSection(
                     'Analysis Error',
@@ -605,8 +712,20 @@ export class ChatParticipantService implements vscode.Disposable {
             stream.markdown(response);
             return {
                 errorDetails: { message: result.error },
-                metadata: { responseIsIncomplete: true },
+                metadata: {
+                    command: request.command as 'branch' | 'changes',
+                    filesAnalyzed: result.filesAnalyzed,
+                    wasTruncated: result.wasTruncated,
+                    responseIsIncomplete: true,
+                } satisfies ChatAnalysisMetadata,
             };
+        }
+
+        if (result.wasTruncated) {
+            this.streamTruncationWarning(stream);
+        } else if (!result.completed) {
+            // Quota/rate-limit: analysis didn't complete but there's no error
+            this.streamQuotaWarning(stream);
         }
 
         streamMarkdownWithAnchors(stream, result.analysisText, gitRootUri);
@@ -628,7 +747,9 @@ export class ChatParticipantService implements vscode.Disposable {
                 hasCriticalIssues: contentAnalysis.hasCriticalIssues,
                 hasSecurityIssues: contentAnalysis.hasSecurityIssues,
                 hasTestingSuggestions: contentAnalysis.hasTestingSuggestions,
+                wasTruncated: result.wasTruncated,
                 cancelled: false,
+                responseIsIncomplete: !result.completed || result.wasTruncated,
                 analysisTimestamp: Date.now(),
             } satisfies ChatAnalysisMetadata,
         };
@@ -674,8 +795,9 @@ export class ChatParticipantService implements vscode.Disposable {
         return {
             metadata: {
                 cancelled: true,
+                wasTruncated: false,
                 responseIsIncomplete: true,
-            },
+            } satisfies ChatAnalysisMetadata,
         };
     }
 
@@ -709,6 +831,20 @@ export class ChatParticipantService implements vscode.Disposable {
         );
         subagentSessionManager.setParentCancellationToken(token);
         return { subagentSessionManager, subagentExecutor };
+    }
+
+    /**
+     * Streams the standard truncation warning banner to the chat UI.
+     */
+    private streamTruncationWarning(stream: vscode.ChatResponseStream): void {
+        stream.markdown(`\n\n> ${SEVERITY.warning} ${TRUNCATED_MESSAGE}\n\n`);
+    }
+
+    /**
+     * Streams the standard quota/rate-limit warning banner to the chat UI.
+     */
+    private streamQuotaWarning(stream: vscode.ChatResponseStream): void {
+        stream.markdown(`\n\n> ${SEVERITY.warning} ${QUOTA_MESSAGE}\n\n`);
     }
 
     /**

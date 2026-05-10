@@ -91,6 +91,7 @@ export interface PipelineContext {
     handler: ToolCallHandler;
     findingValidator: FindingValidator;
     feedbackStore?: FeedbackStore;
+    mainAnalysisDegraded?: boolean;
     progressCallback?: (message: string, increment?: number) => void;
 
     // --- Accumulated state (mutated by steps) ---

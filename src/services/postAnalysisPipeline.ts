@@ -42,6 +42,10 @@ export interface PostAnalysisPipelineOptions {
     handler: ToolCallHandler;
     feedbackStore?: FeedbackStoreType;
     progressCallback?: (message: string, increment?: number) => void;
+    /** Whether the main analysis degraded before the pipeline started.
+     *  When true, conversation-based steps are skipped to avoid
+     *  re-entering a corrupted/truncated conversation context. */
+    mainAnalysisDegraded?: boolean;
 }
 
 export interface PostAnalysisPipelineResult {

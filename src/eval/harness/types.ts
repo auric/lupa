@@ -479,6 +479,15 @@ export function getHeadlessAnalysisResultValidationError(
     if (!isNonNegativeInteger(result.telemetry.compactionsUsed)) {
         return 'result.telemetry.compactionsUsed must be a non-negative integer';
     }
+    if (typeof result.completed !== 'boolean') {
+        return 'result.completed must be a boolean';
+    }
+    if (typeof result.wasTruncated !== 'boolean') {
+        return 'result.wasTruncated must be a boolean';
+    }
+    if (result.error !== undefined && typeof result.error !== 'string') {
+        return 'result.error must be a string';
+    }
     if (!Array.isArray(result.rawToolCallLog)) {
         return 'result.rawToolCallLog must be an array';
     }
@@ -496,9 +505,6 @@ export function getHeadlessAnalysisResultValidationError(
     }
     if (!isNonNegativeInteger(result.seed)) {
         return 'result.seed must be a non-negative integer';
-    }
-    if (typeof result.completed !== 'boolean') {
-        return 'result.completed must be a boolean';
     }
     return null;
 }

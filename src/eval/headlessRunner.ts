@@ -10,6 +10,7 @@ import {
     normalizeModelIdentifier,
     requireRemainingHeadlessBudgetMs,
 } from './headlessShared';
+import { formatErrorDetail } from '../utils/errorUtils';
 
 export interface HeadlessRunnerOptions {
     workspaceRoot: string;
@@ -39,6 +40,8 @@ export interface HeadlessAnalysisResult {
     modelId: string;
     seed: number;
     completed: boolean;
+    wasTruncated: boolean;
+    error: string | undefined;
 }
 
 /**
@@ -157,12 +160,10 @@ export async function runHeadless(
             }
         );
 
-        if (result.error) {
-            throw new Error(result.error);
-        }
         if (result.wasCancelled) {
+            const errorDetail = formatErrorDetail(result.error);
             throw new Error(
-                `Analysis cancelled for ${opts.baseRef}..${opts.headRef}`
+                `Analysis cancelled for ${opts.baseRef}..${opts.headRef}${errorDetail}`
             );
         }
 
@@ -184,6 +185,8 @@ export async function runHeadless(
             modelId: actualIdentifier,
             seed: opts.seed,
             completed: result.completed,
+            wasTruncated: result.wasTruncated,
+            error: result.error,
         };
     } finally {
         cancellationDisposable.dispose();

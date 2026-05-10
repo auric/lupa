@@ -62,8 +62,12 @@ export interface ChatAnalysisMetadata {
     hasSecurityIssues?: boolean;
     /** Whether testing (🧪) suggestions were included */
     hasTestingSuggestions?: boolean;
+    /** Whether the analysis was truncated due to iteration limits or degraded state */
+    wasTruncated: boolean;
     /** Whether analysis was cancelled */
     cancelled?: boolean;
+    /** Whether the response is incomplete (error or truncation) */
+    responseIsIncomplete?: boolean;
     /** Unix timestamp when analysis was performed */
     analysisTimestamp?: number;
 }

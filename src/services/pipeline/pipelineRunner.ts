@@ -18,30 +18,39 @@ export async function runPipeline(
 ): Promise<StepRecord[]> {
     const records: StepRecord[] = [];
 
+    function pushSkipRecord(
+        step: PipelineStep,
+        status: 'skipped' | 'cancelled'
+    ): void {
+        records.push({
+            name: step.name,
+            label: step.label,
+            kind: step.kind,
+            status,
+            durationMs: 0,
+        });
+    }
+
     for (const step of steps) {
         if (
             context.executionContext.cancellationToken
                 .isCancellationRequested &&
             step.kind !== 'programmatic'
         ) {
-            records.push({
-                name: step.name,
-                label: step.label,
-                kind: step.kind,
-                status: 'cancelled',
-                durationMs: 0,
-            });
+            pushSkipRecord(step, 'cancelled');
+            continue;
+        }
+
+        if (context.mainAnalysisDegraded && step.kind === 'llm-conversation') {
+            pushSkipRecord(step, 'skipped');
+            Log.info(
+                `Pipeline: skipping "${step.label}" because main analysis degraded`
+            );
             continue;
         }
 
         if (!step.shouldRun(context)) {
-            records.push({
-                name: step.name,
-                label: step.label,
-                kind: step.kind,
-                status: 'skipped',
-                durationMs: 0,
-            });
+            pushSkipRecord(step, 'skipped');
             Log.info(`Pipeline: skipping "${step.label}"`);
             continue;
         }

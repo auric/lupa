@@ -4,6 +4,7 @@ import {
     Bot,
     Wrench,
     AlertCircle,
+    AlertTriangle,
     CheckCircle2,
     XCircle,
     Clock,
@@ -15,7 +16,11 @@ import {
 } from 'lucide-react';
 import { JsonViewer } from './JsonViewer';
 import { CopyButton } from './CopyButton';
-import type { ToolCallsData, ToolCallRecord } from '../../types/toolCallTypes';
+import {
+    type ToolCallsData,
+    type ToolCallRecord,
+} from '../../types/toolCallTypes';
+import { TRUNCATED_MESSAGE } from '../../constants/messages';
 import { countAllCalls } from '../utils/toolCallCounting';
 
 interface ToolCallsTabProps {
@@ -258,6 +263,11 @@ function formatToolCallsAsMarkdown(toolCalls: ToolCallsData): string {
         totalIterations > 0 ? `- **Total Iterations:** ${totalIterations}` : '',
         '',
     ].filter(Boolean);
+    if (toolCalls.wasTruncated) {
+        lines.push('');
+        lines.push(`> **Truncated:** ${TRUNCATED_MESSAGE}`);
+        lines.push('');
+    }
     lines.push(...formatCallsMarkdown(toolCalls.calls, 0));
     return lines.join('\n');
 }
@@ -550,12 +560,18 @@ const CallList = ({
     );
 };
 
-const EmptyState = () => (
+const EmptyState = ({
+    wasTruncated,
+}: {
+    wasTruncated: boolean | undefined;
+}) => (
     <div className="tc-empty">
         <Wrench size={36} strokeWidth={1.2} className="tc-empty-icon" />
         <div className="tc-empty-title">No Tool Calls</div>
         <div className="tc-empty-desc">
-            The analysis completed without using any tools.
+            {wasTruncated
+                ? `${TRUNCATED_MESSAGE} No tools were used.`
+                : 'The analysis completed without using any tools.'}
         </div>
     </div>
 );
@@ -575,7 +591,7 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
     const inputRef = useRef<HTMLInputElement>(null);
 
     if (!toolCalls || toolCalls.calls.length === 0) {
-        return <EmptyState />;
+        return <EmptyState wasTruncated={toolCalls?.wasTruncated} />;
     }
 
     const totalCalls = useMemo(
@@ -688,7 +704,19 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
                         </div>
                     </>
                 )}
-                {!toolCalls.analysisCompleted && (
+                {toolCalls.wasTruncated && (
+                    <>
+                        <span className="tc-stat-sep" />
+                        <div
+                            className="tc-stat tc-stat--truncated"
+                            title={TRUNCATED_MESSAGE}
+                        >
+                            <AlertTriangle size={13} />
+                            <span className="tc-stat-label">truncated</span>
+                        </div>
+                    </>
+                )}
+                {!toolCalls.analysisCompleted && !toolCalls.wasTruncated && (
                     <>
                         <span className="tc-stat-sep" />
                         <div className="tc-stat tc-stat--warn">

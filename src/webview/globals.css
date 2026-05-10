@@ -148,6 +148,31 @@ body,
     background-color: var(--vscode-editor-background);
 }
 
+.analysis-truncated-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    border-radius: 4px;
+    background-color: var(
+        --vscode-editorWarning-background,
+        rgba(204, 167, 0, 0.15)
+    );
+    border: 1px solid var(--vscode-editorWarning-foreground, #cca700);
+    color: var(--vscode-editorWarning-foreground, #cca700);
+    font-size: 13px;
+}
+
+.analysis-truncated-icon {
+    font-size: 14px;
+    line-height: 1;
+}
+
+.analysis-truncated-text {
+    line-height: 1.4;
+}
+
 @theme inline {
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);

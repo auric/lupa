@@ -7,6 +7,7 @@ import { TokenValidator } from '../models/tokenValidator';
 import {
     ConversationRunner,
     type ToolCallHandler,
+    type ExitReason,
 } from '../models/conversationRunner';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { DiffHunk } from '../types/contextTypes';
@@ -14,6 +15,7 @@ import type { RecordedFinding } from '../types/findingTypes';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+import { ERROR_PLACEHOLDER_PREFIX } from '../constants/messages';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
@@ -79,6 +81,7 @@ export interface AnalysisEngineResult {
     filesAnalyzed: number;
     stepRecords: StepRecord[];
     findings: RecordedFinding[];
+    wasTruncated: boolean;
 }
 
 /**
@@ -209,6 +212,14 @@ export class AnalysisEngine implements vscode.Disposable {
         let stepRecords: StepRecord[] = [];
         let mainAnalysisWasCancelled = false;
         let mainAnalysisIterationsUsed = 0;
+        let wasTruncated = false;
+        let mainAnalysisDegraded = false;
+        let mainAnalysisExitReason: ExitReason | undefined;
+        let mainAnalysisHitQuotaExhausted = false;
+        let mainAnalysisHitRateLimit = false;
+        let mainAnalysisHitMaxIterations = false;
+        let mainAnalysisFinished = false;
+        let pipelineWasCancelled = false;
 
         try {
             Log.info('Starting analysis with tool-calling support');
@@ -415,15 +426,37 @@ export class AnalysisEngine implements vscode.Disposable {
                 input.token,
                 handler
             );
-            analysisCompleted =
-                !conversationRunner.wasCancelled &&
-                !conversationRunner.hitQuotaExhausted &&
-                !conversationRunner.hitRateLimit &&
-                !conversationRunner.degraded;
+            mainAnalysisFinished = true;
             mainAnalysisWasCancelled = conversationRunner.wasCancelled;
             mainAnalysisIterationsUsed = conversationRunner.iterationsUsed;
+            mainAnalysisDegraded = conversationRunner.degraded;
+            mainAnalysisExitReason = conversationRunner.exitReason;
+            mainAnalysisHitQuotaExhausted =
+                conversationRunner.hitQuotaExhausted;
+            mainAnalysisHitRateLimit = conversationRunner.hitRateLimit;
+            mainAnalysisHitMaxIterations = conversationRunner.hitMaxIterations;
 
-            if (analysisCompleted) {
+            // Hard stops: cancelled, quota exhausted, or rate limited.
+            // These prevent the pipeline from running and are excluded from truncation.
+            const noHardStop =
+                !mainAnalysisWasCancelled &&
+                !mainAnalysisHitQuotaExhausted &&
+                !mainAnalysisHitRateLimit;
+
+            analysisCompleted = noHardStop && !mainAnalysisDegraded;
+            wasTruncated =
+                noHardStop &&
+                (mainAnalysisHitMaxIterations || mainAnalysisDegraded);
+            const shouldRunPipeline =
+                noHardStop && (analysisCompleted || findingStore.size > 0);
+
+            if (shouldRunPipeline) {
+                if (wasTruncated) {
+                    Log.info(
+                        `Analysis truncated — running post-analysis pipeline on ${findingStore.size} recorded findings`
+                    );
+                }
+
                 const pipeline = new PostAnalysisPipeline(
                     this.findingValidator
                 );
@@ -438,10 +471,11 @@ export class AnalysisEngine implements vscode.Disposable {
                     conversationManager,
                     conversationRunner,
                     systemPrompt,
-                    availableTools: availableTools,
+                    availableTools,
                     disabledToolNames,
                     handler,
                     progressCallback: (msg, inc) => output.onProgress(msg, inc),
+                    mainAnalysisDegraded,
                 });
 
                 toolCallRecords.push(
@@ -453,55 +487,88 @@ export class AnalysisEngine implements vscode.Disposable {
 
                 selfReflectionScores = pipelineResult.selfReflectionScores;
                 stepRecords = pipelineResult.stepRecords;
+                pipelineWasCancelled = conversationRunner.wasCancelled;
 
                 output.onProgress(
                     `Analysis complete (${toolCallRecords.length} tool calls)`,
                     2
                 );
-                Log.info('Analysis completed successfully');
+                if (wasTruncated) {
+                    Log.info(
+                        'Analysis truncated — post-analysis pipeline run on recorded findings'
+                    );
+                } else {
+                    Log.info('Analysis completed successfully');
+                }
             } else if (
-                conversationRunner.hitQuotaExhausted ||
-                conversationRunner.hitRateLimit
+                mainAnalysisHitQuotaExhausted ||
+                mainAnalysisHitRateLimit
             ) {
                 Log.warn(
                     'Analysis ended due to API quota or rate limit exhaustion'
                 );
-            } else if (conversationRunner.degraded) {
+            } else if (mainAnalysisDegraded) {
                 Log.warn(
-                    `Analysis ended in degraded state: ${conversationRunner.exitReason}`
+                    `Analysis ended in degraded state: ${mainAnalysisExitReason ?? 'degraded'}`
                 );
-            } else {
+            } else if (mainAnalysisWasCancelled) {
                 Log.info('Analysis was cancelled by user');
             }
         } catch (error) {
             if (isCancellationError(error)) {
+                // Distinguish main-analysis cancellation from pipeline
+                // cancellation to preserve snapshot invariants.
+                if (mainAnalysisFinished) {
+                    pipelineWasCancelled = true;
+                } else {
+                    mainAnalysisWasCancelled = true;
+                }
                 throw error;
             }
             analysisError = getErrorMessage(error);
-            const errorMessage = `Error during analysis: ${analysisError}`;
+            // Only mark as not-completed if the main analysis itself failed.
+            // If the main analysis succeeded but the post-analysis pipeline
+            // failed, preserve the completed state so consumers can tell
+            // the difference.
+            if (!mainAnalysisFinished) {
+                analysisCompleted = false;
+            }
+            const errorMessage = `${ERROR_PLACEHOLDER_PREFIX} ${analysisError}`;
             Log.error(errorMessage, error);
-            analysisText = errorMessage;
+            // Preserve existing analysis text so partial findings are not
+            // hidden from consumers (chat UI, webview) on pipeline errors.
+            if (!analysisText.trim()) {
+                analysisText = errorMessage;
+            }
         } finally {
             // Clear parent cancellation token to release references
             subagentSessionManager.setParentCancellationToken(undefined);
-            // Complete root agent lifecycle in recursive state tree
+            // Complete root agent lifecycle in recursive state tree.
+            // Order matters: error > cancelled > quota/rate-limit > degraded > complete.
+            // Cancellation takes precedence over degraded/quota because a user
+            // may cancel during the post-analysis pipeline.
+            // Max-iterations without degradation intentionally falls through to
+            // completeAgent because the analysis succeeded — it was merely cut
+            // short by the iteration budget.
+            // Use mainAnalysis* snapshots because the pipeline may have called
+            // conversationRunner.run() again, resetting the runner's flags.
             if (recursiveState) {
-                if (analysisCompleted) {
-                    recursiveState.completeAgent('root');
-                } else if (analysisError) {
+                if (analysisError && !mainAnalysisFinished) {
                     recursiveState.failAgent('root', analysisError);
+                } else if (mainAnalysisWasCancelled || pipelineWasCancelled) {
+                    recursiveState.cancelAgent('root');
                 } else if (
-                    conversationRunner.hitQuotaExhausted ||
-                    conversationRunner.hitRateLimit
+                    mainAnalysisHitQuotaExhausted ||
+                    mainAnalysisHitRateLimit
                 ) {
                     recursiveState.completeAgent('root');
-                } else if (conversationRunner.degraded) {
+                } else if (mainAnalysisDegraded) {
                     recursiveState.failAgent(
                         'root',
-                        conversationRunner.exitReason ?? 'degraded'
+                        mainAnalysisExitReason ?? 'degraded'
                     );
                 } else {
-                    recursiveState.cancelAgent('root');
+                    recursiveState.completeAgent('root');
                 }
             }
         }
@@ -510,13 +577,14 @@ export class AnalysisEngine implements vscode.Disposable {
             analysisText,
             toolCallRecords: [...toolCallRecords],
             completed: analysisCompleted,
-            wasCancelled: mainAnalysisWasCancelled,
+            wasCancelled: mainAnalysisWasCancelled || pipelineWasCancelled,
             error: analysisError,
             iterationsUsed: mainAnalysisIterationsUsed,
             selfReflectionScores,
             filesAnalyzed,
             stepRecords,
             findings: findingStore.getAll(),
+            wasTruncated,
         };
     }
 

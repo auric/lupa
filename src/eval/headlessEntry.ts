@@ -9,6 +9,7 @@ import {
     LUPA_HEADLESS_ARGS_ENV,
     LUPA_HEADLESS_SENTINEL_ENV,
 } from './headlessConstants';
+import { Log } from '../services/loggingService';
 import {
     createHeadlessDeadline,
     formatHeadlessTimeoutMessage,
@@ -17,6 +18,7 @@ import {
     requireRemainingHeadlessBudgetMs,
     validateRef,
 } from './headlessShared';
+import { formatErrorDetail, truncateError } from '../utils/errorUtils';
 
 /**
  * Environment-variable contract shared with scripts/eval/launchHeadless.js.
@@ -595,15 +597,21 @@ export async function runHeadlessFromEnv(
                     fs.writeFileSync(args.out, JSON.stringify(result, null, 2));
                 }
                 if (!result.completed) {
-                    // --out (if any) is already written above so the operator
-                    // can inspect the partial result. Surface as a non-zero
-                    // exit via the outer catch: partial findings are unvalidated
-                    // (PostAnalysisPipeline only runs when completed is true).
+                    // Analysis ended without completing. Partial result was
+                    // already written to --out (if provided) for inspection.
                     const suffix = args.out
                         ? `see ${args.out} for partial result`
                         : 'rerun with --out <path> to capture partial result';
+                    const errorDetail = formatErrorDetail(result.error);
                     throw new Error(
-                        `Analysis ended without completing (possible rate-limit, quota exhaustion, or degraded exit); ${suffix}`
+                        `Analysis ended without completing (possible rate-limit, quota exhaustion, or degraded exit)${errorDetail}; ${suffix}`
+                    );
+                }
+                if (result.error) {
+                    // Engine reported an error despite completing — warn but
+                    // do not fail, since findings may still be useful.
+                    Log.warn(
+                        `Analysis completed with error (truncated=${result.wasTruncated}): ${truncateError(result.error)}`
                     );
                 }
                 if (!args.silent) {

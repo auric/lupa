@@ -8,6 +8,7 @@ import { runHeadless } from '../eval/headlessRunner';
 import { ModelRequestHandler } from '../models/modelRequestHandler';
 import { createMockAnalysisEngineResult } from './testUtils/mockFactories';
 import type { IServiceRegistry } from '../services/serviceManager';
+import type { RecordedFinding } from '../types/findingTypes';
 import * as headlessArgs from '../../scripts/eval/headlessArgs';
 
 vi.mock('vscode');
@@ -503,6 +504,7 @@ describe('runHeadless', () => {
         expect(result.modelId).toBe('copilot/gpt-4.1');
         expect(result.seed).toBe(42);
         expect(result.completed).toBe(true);
+        expect(result.wasTruncated).toBe(false);
         expect(result.rawToolCallLog).toHaveLength(1);
         expect(result.telemetry).toMatchObject({
             iterations: 4,
@@ -514,15 +516,19 @@ describe('runHeadless', () => {
         expect(result.telemetry.durationMs).toBeGreaterThanOrEqual(0);
     });
 
-    it('throws when the engine reports an error', async () => {
+    it('returns partial result with error when the engine reports an error', async () => {
         vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
         const services = makeServices({
             analyzeResult: createMockAnalysisEngineResult({
                 error: 'boom',
                 completed: false,
+                findings: [{ id: 'f1', title: 'partial' } as RecordedFinding],
             }),
         });
-        await expect(runHeadless(baseOpts(), services)).rejects.toThrow(/boom/);
+        const result = await runHeadless(baseOpts(), services);
+        expect(result.error).toBe('boom');
+        expect(result.completed).toBe(false);
+        expect(result.findings).toHaveLength(1);
     });
 
     it('throws when the analysis is cancelled', async () => {
@@ -536,6 +542,20 @@ describe('runHeadless', () => {
         });
         await expect(runHeadless(baseOpts(), services)).rejects.toThrow(
             /Analysis cancelled/
+        );
+    });
+
+    it('includes error detail in cancellation throw when error is present', async () => {
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        const services = makeServices({
+            analyzeResult: createMockAnalysisEngineResult({
+                wasCancelled: true,
+                completed: false,
+                error: 'Quota exhausted during pipeline',
+            }),
+        });
+        await expect(runHeadless(baseOpts(), services)).rejects.toThrow(
+            /Quota exhausted during pipeline/
         );
     });
 
@@ -557,7 +577,27 @@ describe('runHeadless', () => {
         const result = await runHeadless(baseOpts(), services);
 
         expect(result.completed).toBe(false);
+        expect(result.wasTruncated).toBe(false);
         expect(result.narrative).toBe('partial');
+    });
+
+    it('propagates wasTruncated=true from engine to result', async () => {
+        vi.mocked(resolveDiff).mockResolvedValue(SAMPLE_DIFF);
+        const services = makeServices({
+            analyzeResult: createMockAnalysisEngineResult({
+                completed: true,
+                wasTruncated: true,
+                error: undefined,
+                analysisText: 'truncated analysis',
+                findings: [],
+            }),
+        });
+
+        const result = await runHeadless(baseOpts(), services);
+
+        expect(result.completed).toBe(true);
+        expect(result.wasTruncated).toBe(true);
+        expect(result.narrative).toBe('truncated analysis');
     });
 
     it('throws when no diff is produced', async () => {

@@ -8,11 +8,14 @@ import { ITool } from '../tools/ITool';
 import { DiffUtils } from '../utils/diffUtils';
 import type { DiffHunk } from '../types/contextTypes';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
+import { RecordFindingTool } from '../tools/recordFindingTool';
+import { PostAnalysisPipeline } from '../services/postAnalysisPipeline';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
     createMockAnalysisEngineInput,
     createMockAnalysisEngineOutput,
+    createEmptyPipelineResult,
 } from './testUtils/mockFactories';
 import type { ExecutionContext } from '../types/executionContext';
 
@@ -37,6 +40,10 @@ class MockAnalysisTool implements ITool {
             .boolean()
             .default(true)
             .describe('Include full body'),
+        file: z
+            .string()
+            .optional()
+            .describe('Optional file path for tracking investigated files'),
     });
 
     getVSCodeTool(): vscode.LanguageModelChatTool {
@@ -1079,6 +1086,785 @@ index 1234567..abcdefg 100644
 
             expect(generateToolAwareSpy).toHaveBeenCalled();
             expect(generateRecursiveSpy).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('truncation handling', () => {
+        it('should run post-analysis pipeline on recorded findings when analysis exits degraded', async () => {
+            // Reproduce the bug: model records findings but never calls submit_review,
+            // causing the runner to exit degraded. Before the fix, the pipeline was
+            // skipped because analysisCompleted was false. After the fix, pipeline
+            // runs because findings exist (findingStore.size > 0).
+            const recordFindingTool = new RecordFindingTool();
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                recordFindingTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'record_finding') {
+                    return recordFindingTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+            mockToolRegistry.getToolNames.mockReturnValue([
+                'find_symbol',
+                'record_finding',
+                'submit_review',
+            ]);
+
+            // Requires enough iterations for investigation calls + record_finding +
+            // completion nudges to exhaust. MAX_COMPLETION_NUDGES = 2, so we need
+            // at least 3 text-only iterations after record_finding to trigger degraded.
+            const truncatedSettings = createMockWorkspaceSettings({
+                maxIterations: 8,
+                maxRecursionDepth: 0,
+            });
+
+            const truncatedProvider = new AnalysisEngine(
+                mockToolRegistry,
+                mockPromptGenerator,
+                truncatedSettings,
+                mockDiffEnricher,
+                mockFindingValidator
+            );
+
+            let callCount = 0;
+            mockCopilotModelManager.sendRequest.mockImplementation(() => {
+                callCount++;
+                if (callCount <= 3) {
+                    // Iterations 1-3: investigation tool calls. The default
+                    // calibration profile requires >=2 investigation calls before
+                    // the first finding; we use 3 to be safe across all profiles.
+                    return Promise.resolve({
+                        content: 'Investigating...',
+                        toolCalls: [
+                            {
+                                id: `call_investigate_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: JSON.stringify({
+                                        symbolName: 'validateToken',
+                                        file: 'src/auth.ts',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                if (callCount === 4) {
+                    // Iteration 4: record a finding.
+                    return Promise.resolve({
+                        content: 'Found an issue',
+                        toolCalls: [
+                            {
+                                id: 'call_record_1',
+                                function: {
+                                    name: 'record_finding',
+                                    arguments: JSON.stringify({
+                                        severity: 'HIGH',
+                                        category: 'logic_error',
+                                        title: 'Off-by-one error',
+                                        file: 'src/auth.ts',
+                                        line: 15,
+                                        description:
+                                            'The loop condition uses <= instead of <, causing an off-by-one error that reads past the array boundary.',
+                                        verification_evidence:
+                                            'Inspected the loop bounds via read_file tool.',
+                                        disproof_note:
+                                            'Checked callers with find_usages — all 3 callers pass unvalidated input.',
+                                        affected_component: 'authenticateUser',
+                                        failure_mechanism: 'runtime_exception',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                // Iterations 5+: respond with text but never call submit_review.
+                // After 3 text-only responses (soft continue + 2 nudges),
+                // the runner exits degraded.
+                return Promise.resolve({
+                    content:
+                        'I have recorded the finding. Let me continue investigating...',
+                    toolCalls: [],
+                });
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockResolvedValue(createEmptyPipelineResult());
+
+            try {
+                const result = await truncatedProvider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                // The finding should survive even though submit_review was never called.
+                expect(result.findings.length).toBeGreaterThan(0);
+                expect(result.findings[0].title).toBe('Off-by-one error');
+
+                // The pipeline must have been invoked — this is the core fix.
+                expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+
+                // The result must indicate truncation because degraded was true.
+                expect(result.wasTruncated).toBe(true);
+                expect(result.completed).toBe(false);
+                // Assert a safe range instead of hard-coding the exact count,
+                // which depends on internal MAX_COMPLETION_NUDGES. Upper bound
+                // is maxIterations so a runaway loop would still fail.
+                expect(result.iterationsUsed).toBeGreaterThanOrEqual(5);
+                expect(result.iterationsUsed).toBeLessThanOrEqual(8);
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
+
+        it('should set wasTruncated when runner hits max iterations', async () => {
+            // Synthetic scenario: model records a finding early, then keeps
+            // making tool calls until the iteration cap is hit.
+            const recordFindingTool = new RecordFindingTool();
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                recordFindingTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'record_finding') {
+                    return recordFindingTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+            mockToolRegistry.getToolNames.mockReturnValue([
+                'find_symbol',
+                'record_finding',
+                'submit_review',
+            ]);
+
+            const capSettings = createMockWorkspaceSettings({
+                maxIterations: 5,
+                maxRecursionDepth: 0,
+            });
+
+            const capProvider = new AnalysisEngine(
+                mockToolRegistry,
+                mockPromptGenerator,
+                capSettings,
+                mockDiffEnricher,
+                mockFindingValidator
+            );
+
+            let callCount = 0;
+            mockCopilotModelManager.sendRequest.mockImplementation(() => {
+                callCount++;
+                if (callCount <= 3) {
+                    // Iterations 1-3: investigation calls. The default calibration
+                    // profile requires >=2 investigation calls before the first
+                    // finding; we use 3 to be safe across all profiles.
+                    return Promise.resolve({
+                        content: 'Investigating...',
+                        toolCalls: [
+                            {
+                                id: `call_investigate_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: JSON.stringify({
+                                        symbolName: 'validateToken',
+                                        file: 'src/auth.ts',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                if (callCount === 4) {
+                    // Iteration 4: record a finding.
+                    return Promise.resolve({
+                        content: 'Found an issue',
+                        toolCalls: [
+                            {
+                                id: 'call_record_1',
+                                function: {
+                                    name: 'record_finding',
+                                    arguments: JSON.stringify({
+                                        severity: 'HIGH',
+                                        category: 'logic_error',
+                                        title: 'Buffer overflow risk',
+                                        file: 'src/auth.ts',
+                                        line: 20,
+                                        description:
+                                            'Unbounded string copy into fixed-size buffer.',
+                                        verification_evidence:
+                                            'Read the function body carefully.',
+                                        disproof_note:
+                                            'Checked callers with find_usages — all pass unvalidated input.',
+                                        affected_component: 'authenticateUser',
+                                        failure_mechanism: 'runtime_exception',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                // Burn the last iteration with a tool call so we hit the cap
+                // without ever calling submit_review.
+                return Promise.resolve({
+                    content: 'Investigating further...',
+                    toolCalls: [
+                        {
+                            id: `call_tool_${callCount}`,
+                            function: {
+                                name: 'find_symbol',
+                                arguments: JSON.stringify({
+                                    symbolName: 'foo',
+                                }),
+                            },
+                        },
+                    ],
+                });
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockResolvedValue(createEmptyPipelineResult());
+
+            try {
+                const result = await capProvider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                expect(result.findings.length).toBeGreaterThan(0);
+                expect(result.wasTruncated).toBe(true);
+                // When max iterations is hit (not degraded), analysisCompleted is
+                // still true because none of the negative flags are set.
+                expect(result.completed).toBe(true);
+                expect(result.iterationsUsed).toBe(5);
+                expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
+
+        it('should skip pipeline when degraded with no findings', async () => {
+            // Negative path: runner exits degraded but nothing was ever recorded.
+            // The pipeline should NOT run in this case.
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
+            const noFindingsSettings = createMockWorkspaceSettings({
+                maxIterations: 5,
+                maxRecursionDepth: 0,
+            });
+
+            const noFindingsProvider = new AnalysisEngine(
+                mockToolRegistry,
+                mockPromptGenerator,
+                noFindingsSettings,
+                mockDiffEnricher,
+                mockFindingValidator
+            );
+
+            mockCopilotModelManager.sendRequest.mockImplementation(() => {
+                // Never call any tool — just text responses until completion
+                // nudges exhaust and runner exits degraded.
+                return Promise.resolve({
+                    content: 'Looking at the diff...',
+                    toolCalls: [],
+                });
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockResolvedValue(createEmptyPipelineResult());
+
+            try {
+                const result = await noFindingsProvider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                expect(result.findings.length).toBe(0);
+                expect(result.wasTruncated).toBe(true);
+                expect(result.completed).toBe(false);
+                // Assert a safe range; exact count depends on internal nudge logic.
+                expect(result.iterationsUsed).toBeGreaterThanOrEqual(2);
+                expect(result.iterationsUsed).toBeLessThanOrEqual(5);
+                // Pipeline must NOT have been invoked — no findings to process.
+                expect(pipelineRunSpy).not.toHaveBeenCalled();
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
+
+        it('should still run pipeline when max iterations hit with no findings', async () => {
+            // Boundary: runner hits max iterations without ever recording a finding.
+            // analysisCompleted remains true, so the pipeline still runs.
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
+            const capNoFindingsSettings = createMockWorkspaceSettings({
+                maxIterations: 3,
+                maxRecursionDepth: 0,
+            });
+
+            const capNoFindingsProvider = new AnalysisEngine(
+                mockToolRegistry,
+                mockPromptGenerator,
+                capNoFindingsSettings,
+                mockDiffEnricher,
+                mockFindingValidator
+            );
+
+            mockCopilotModelManager.sendRequest.mockImplementation(() => {
+                // Burn iterations with tool calls but never record findings.
+                return Promise.resolve({
+                    content: 'Investigating...',
+                    toolCalls: [
+                        {
+                            id: 'call_find',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: JSON.stringify({
+                                    symbolName: 'foo',
+                                    file: 'src/auth.ts',
+                                }),
+                            },
+                        },
+                    ],
+                });
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockResolvedValue(createEmptyPipelineResult());
+
+            try {
+                const result = await capNoFindingsProvider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                expect(result.findings.length).toBe(0);
+                expect(result.wasTruncated).toBe(true);
+                expect(result.completed).toBe(true);
+                // Pipeline still runs because analysisCompleted is true (max
+                // iterations does not set any negative flag).
+                expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
+
+        it('should skip pipeline when cancelled', async () => {
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockResolvedValue(createEmptyPipelineResult());
+
+            try {
+                const cancelledSource = createMockCancellationTokenSource();
+                cancelledSource.cancel();
+
+                const result = await provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: cancelledSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                expect(result.findings.length).toBe(0);
+                expect(result.wasTruncated).toBe(false);
+                expect(result.completed).toBe(false);
+                expect(pipelineRunSpy).not.toHaveBeenCalled();
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
+
+        it('should skip pipeline when quota exhausted', async () => {
+            class ChatQuotaExceeded extends Error {
+                constructor(message = 'Quota exceeded') {
+                    super(message);
+                    this.name = 'ChatQuotaExceeded';
+                }
+            }
+
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockResolvedValue(createEmptyPipelineResult());
+
+            try {
+                mockCopilotModelManager.sendRequest.mockRejectedValue(
+                    new ChatQuotaExceeded()
+                );
+
+                const result = await provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                expect(result.findings.length).toBe(0);
+                expect(result.wasTruncated).toBe(false);
+                expect(result.completed).toBe(false);
+                expect(pipelineRunSpy).not.toHaveBeenCalled();
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
+
+        it('should skip pipeline when rate limited', async () => {
+            class ChatRateLimited extends Error {
+                constructor(message = 'Rate limited') {
+                    super(message);
+                    this.name = 'ChatRateLimited';
+                }
+            }
+
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockResolvedValue(createEmptyPipelineResult());
+
+            vi.useFakeTimers();
+
+            try {
+                mockCopilotModelManager.sendRequest.mockRejectedValue(
+                    new ChatRateLimited()
+                );
+
+                const runPromise = provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                // Advance timers past all retry backoffs. The runner retries
+                // up to 5 times with cumulative backoff well under 600s.
+                await vi.advanceTimersByTimeAsync(120_000);
+                const result = await runPromise;
+
+                expect(result.findings.length).toBe(0);
+                expect(result.wasTruncated).toBe(false);
+                expect(result.completed).toBe(false);
+                expect(pipelineRunSpy).not.toHaveBeenCalled();
+                // Verify the runner actually retried (1 initial + 5 retries = 6 calls).
+                expect(
+                    mockCopilotModelManager.sendRequest
+                ).toHaveBeenCalledTimes(6);
+            } finally {
+                pipelineRunSpy.mockRestore();
+                vi.useRealTimers();
+            }
+        });
+
+        it('should surface pipeline errors without losing recorded findings', async () => {
+            const recordFindingTool = new RecordFindingTool();
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                recordFindingTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'record_finding') {
+                    return recordFindingTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+            mockToolRegistry.getToolNames.mockReturnValue([
+                'find_symbol',
+                'record_finding',
+                'submit_review',
+            ]);
+
+            let callCount = 0;
+            mockCopilotModelManager.sendRequest.mockImplementation(() => {
+                callCount++;
+                if (callCount <= 3) {
+                    return Promise.resolve({
+                        content: 'Investigating...',
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: JSON.stringify({
+                                        symbolName: 'validateToken',
+                                        file: 'src/auth.ts',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                if (callCount === 4) {
+                    return Promise.resolve({
+                        content: 'I found an issue.',
+                        toolCalls: [
+                            {
+                                id: 'call_record',
+                                function: {
+                                    name: 'record_finding',
+                                    arguments: JSON.stringify({
+                                        severity: 'HIGH',
+                                        category: 'logic_error',
+                                        title: 'Buffer overflow risk',
+                                        file: 'src/auth.ts',
+                                        line: 20,
+                                        description:
+                                            'Unbounded string copy into fixed-size buffer.',
+                                        verification_evidence:
+                                            'Read the function body carefully.',
+                                        disproof_note:
+                                            'Checked callers with find_usages — all pass unvalidated input.',
+                                        affected_component: 'authenticateUser',
+                                        failure_mechanism: 'runtime_exception',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                return Promise.resolve({
+                    content: 'Continuing investigation...',
+                    toolCalls: [],
+                });
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockRejectedValue(new Error('Pipeline failure'));
+
+            try {
+                const truncatedSettings = createMockWorkspaceSettings({
+                    maxIterations: 8,
+                    maxRecursionDepth: 0,
+                });
+
+                const truncatedProvider = new AnalysisEngine(
+                    mockToolRegistry,
+                    mockPromptGenerator,
+                    truncatedSettings,
+                    mockDiffEnricher,
+                    mockFindingValidator
+                );
+
+                const result = await truncatedProvider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                // Findings should still be present despite pipeline error
+                expect(result.findings.length).toBeGreaterThan(0);
+                expect(result.error).toContain('Pipeline failure');
+                expect(result.completed).toBe(false);
+                expect(result.wasTruncated).toBe(true);
+                expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
+
+        it('should preserve completed=true when pipeline fails after successful main analysis', async () => {
+            const recordFindingTool = new RecordFindingTool();
+            const submitReviewTool = new SubmitReviewTool();
+            const mockTool = new MockAnalysisTool();
+
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                recordFindingTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'record_finding') {
+                    return recordFindingTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+            mockToolRegistry.getToolNames.mockReturnValue([
+                'find_symbol',
+                'record_finding',
+                'submit_review',
+            ]);
+
+            // Main analysis succeeds: investigation then submit_review
+            let callCount = 0;
+            mockCopilotModelManager.sendRequest.mockImplementation(() => {
+                callCount++;
+                if (callCount <= 2) {
+                    return Promise.resolve({
+                        content: 'Investigating...',
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: JSON.stringify({
+                                        symbolName: 'validateToken',
+                                        file: 'src/auth.ts',
+                                    }),
+                                },
+                            },
+                        ],
+                    });
+                }
+                return Promise.resolve({
+                    content: 'Analysis complete',
+                    toolCalls: [
+                        {
+                            id: 'call_submit',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content: 'Final review',
+                                }),
+                            },
+                        },
+                    ],
+                });
+            });
+
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockRejectedValue(new Error('Pipeline failure after success'));
+
+            try {
+                const result = await provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                // Main analysis succeeded, so completed stays true even though
+                // the pipeline failed afterward.
+                expect(result.completed).toBe(true);
+                expect(result.error).toContain(
+                    'Pipeline failure after success'
+                );
+                expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
+        });
+
+        it('should capture pipeline errors after successful main analysis', async () => {
+            // Use default mock which returns submit_review successfully,
+            // so main analysis completes and pipeline is triggered.
+            const pipelineRunSpy = vi
+                .spyOn(PostAnalysisPipeline.prototype, 'run')
+                .mockRejectedValue(new Error('Pipeline crashed'));
+
+            try {
+                const result = await provider.analyze(
+                    createMockAnalysisEngineInput({
+                        parsedDiff: DiffUtils.parseDiff(sampleDiff),
+                        llmClient: mockCopilotModelManager as any,
+                        token: tokenSource.token,
+                    }),
+                    createMockAnalysisEngineOutput()
+                );
+
+                // Error should be captured without crashing
+                expect(result.error).toContain('Pipeline crashed');
+                expect(result.wasCancelled).toBe(false);
+                expect(result.completed).toBe(true);
+                expect(result.wasTruncated).toBe(false);
+                expect(pipelineRunSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                pipelineRunSpy.mockRestore();
+            }
         });
     });
 });

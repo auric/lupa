@@ -45,6 +45,7 @@ CLAUDE.md
 .augment/**
 _bmad/**
 _bmad-output/**
+eval/**
 
 # -----------------------------------------------------------------------------
 # Test and coverage artifacts

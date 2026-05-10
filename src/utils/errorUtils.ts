@@ -23,3 +23,35 @@ export function getErrorMessage(error: unknown): string {
         }
     }
 }
+
+/** Maximum length for error strings before truncation. */
+export const MAX_ERROR_LEN = 500;
+
+/**
+ * Formats an error message with a colon prefix if present.
+ * Returns empty string if error is undefined/empty.
+ * Useful for embedding errors into sentence context.
+ */
+export function formatErrorDetail(error: string | undefined): string {
+    const truncated = truncateError(error);
+    return truncated ? `: ${truncated}` : '';
+}
+
+/**
+ * Truncates an error message to a maximum length, appending an ellipsis
+ * indicator when truncation occurs.
+ */
+export function truncateError(
+    error: string | undefined,
+    maxLen = MAX_ERROR_LEN
+): string {
+    if (!error || error.length <= maxLen) {
+        return error ?? '';
+    }
+    const suffix = '... (truncated)';
+    if (maxLen <= suffix.length) {
+        return error.slice(0, maxLen);
+    }
+    const sliceEnd = maxLen - suffix.length;
+    return error.slice(0, sliceEnd) + suffix;
+}
