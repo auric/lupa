@@ -28,7 +28,7 @@ describe('ModelRequestHandler', () => {
     });
 
     describe('convertMessages', () => {
-        it('should convert system messages to Assistant messages (VS Code API quirk)', () => {
+        it('should convert system messages to User messages with system_instructions tags (VS Code API quirk)', () => {
             const messages: ToolCallMessage[] = [
                 { role: 'system', content: 'You are a helpful assistant.' },
             ];
@@ -118,20 +118,75 @@ describe('ModelRequestHandler', () => {
             const result = ModelRequestHandler.convertMessages(messages);
 
             expect(result).toHaveLength(4);
+            expect(result[0].role).toBe(
+                vscode.LanguageModelChatMessageRole.User
+            );
         });
 
-        it('should skip messages with null content for user role', () => {
+        it('should skip system messages with null content', () => {
+            const messages: ToolCallMessage[] = [
+                { role: 'system', content: null },
+            ];
+
+            const result = ModelRequestHandler.convertMessages(messages);
+
+            expect(result).toHaveLength(0);
+        });
+
+        it('should skip system messages with empty string content', () => {
+            const messages: ToolCallMessage[] = [
+                { role: 'system', content: '' },
+            ];
+
+            const result = ModelRequestHandler.convertMessages(messages);
+
+            expect(result).toHaveLength(0);
+        });
+
+        it('should handle multiple consecutive system messages', () => {
+            const messages: ToolCallMessage[] = [
+                { role: 'system', content: 'First instruction' },
+                { role: 'system', content: 'Second instruction' },
+            ];
+
+            const result = ModelRequestHandler.convertMessages(messages);
+
+            expect(result).toHaveLength(2);
+            expect(result[0].role).toBe(
+                vscode.LanguageModelChatMessageRole.User
+            );
+            expect(result[1].role).toBe(
+                vscode.LanguageModelChatMessageRole.User
+            );
+        });
+
+        it('should wrap system content containing </system_instructions> (known limitation: produces malformed XML)', () => {
+            const messages: ToolCallMessage[] = [
+                {
+                    role: 'system',
+                    content: 'Use </system_instructions> carefully',
+                },
+            ];
+
+            const result = ModelRequestHandler.convertMessages(messages);
+
+            expect(result).toHaveLength(1);
+            expect(vscode.LanguageModelChatMessage.User).toHaveBeenCalledWith(
+                '<system_instructions>Use </system_instructions> carefully</system_instructions>'
+            );
+        });
+
+        it('should skip user messages with null content', () => {
             const messages: ToolCallMessage[] = [
                 { role: 'user', content: null },
             ];
 
             const result = ModelRequestHandler.convertMessages(messages);
 
-            // User messages with null content are skipped
             expect(result).toHaveLength(0);
         });
 
-        it('should throw error for invalid JSON in tool call arguments', () => {
+        it('should silently skip tool calls with invalid JSON arguments', () => {
             const messages: ToolCallMessage[] = [
                 {
                     role: 'assistant',
@@ -182,7 +237,7 @@ describe('ModelRequestHandler', () => {
 
             const result = await ModelRequestHandler.withTimeout(
                 thenable,
-                1000, // 1 second timeout
+                1000,
                 cancellationTokenSource.token
             );
 
@@ -196,7 +251,7 @@ describe('ModelRequestHandler', () => {
             await expect(
                 ModelRequestHandler.withTimeout(
                     thenable,
-                    50, // 50ms timeout
+                    50,
                     cancellationTokenSource.token
                 )
             ).rejects.toSatisfy((error: unknown) => isTimeoutError(error));
@@ -335,41 +390,36 @@ describe('ModelRequestHandler', () => {
         });
 
         it('should suppress late rejections from thenable after timeout', async () => {
-            // Track unhandled rejections
             let unhandledRejection = false;
             const handler = () => {
                 unhandledRejection = true;
             };
             process.on('unhandledRejection', handler);
 
-            // Create a thenable that rejects after the timeout
-            let rejectThenable: (reason: any) => void;
-            const thenable = new Promise<string>((_, reject) => {
-                rejectThenable = reject;
-            });
+            try {
+                let rejectThenable: (reason: unknown) => void;
+                const thenable = new Promise<string>((_, reject) => {
+                    rejectThenable = reject;
+                });
 
-            // Race with timeout
-            const promise = ModelRequestHandler.withTimeout(
-                thenable,
-                10, // Very short timeout
-                cancellationTokenSource.token
-            );
+                const promise = ModelRequestHandler.withTimeout(
+                    thenable,
+                    10,
+                    cancellationTokenSource.token
+                );
 
-            // Wait for timeout
-            await expect(promise).rejects.toSatisfy((error: unknown) =>
-                isTimeoutError(error)
-            );
+                await expect(promise).rejects.toSatisfy((error: unknown) =>
+                    isTimeoutError(error)
+                );
 
-            // Now reject the thenable after timeout has won
-            rejectThenable!(new Error('Late rejection'));
+                rejectThenable!(new Error('Late rejection'));
 
-            // Give event loop time to process the rejection
-            await new Promise((resolve) => setTimeout(resolve, 50));
+                await new Promise((resolve) => setTimeout(resolve, 50));
 
-            // Should not have caused an unhandled rejection
-            expect(unhandledRejection).toBe(false);
-
-            process.off('unhandledRejection', handler);
+                expect(unhandledRejection).toBe(false);
+            } finally {
+                process.off('unhandledRejection', handler);
+            }
         });
     });
 
@@ -502,7 +552,6 @@ describe('ModelRequestHandler', () => {
         });
 
         it('should timeout after specified duration', async () => {
-            // Mock a request that never resolves
             mockModel.sendRequest.mockImplementation(
                 () => new Promise(() => {})
             );
@@ -517,17 +566,15 @@ describe('ModelRequestHandler', () => {
                     mockModel,
                     request,
                     cancellationTokenSource.token,
-                    50 // 50ms timeout
+                    50
                 )
             ).rejects.toSatisfy((error: unknown) => isTimeoutError(error));
         }, 1000);
 
         it('should timeout when stream consumption stalls', async () => {
-            // Mock a stream that stalls during iteration
             const mockStream = {
                 async *[Symbol.asyncIterator]() {
                     yield new vscode.LanguageModelTextPart('First chunk');
-                    // Stall indefinitely - simulating poor network
                     await new Promise(() => {});
                 },
             };
@@ -544,7 +591,7 @@ describe('ModelRequestHandler', () => {
                     mockModel,
                     request,
                     cancellationTokenSource.token,
-                    50 // 50ms timeout should catch the stalled stream
+                    50
                 )
             ).rejects.toSatisfy((error: unknown) => isTimeoutError(error));
         }, 1000);
@@ -552,7 +599,6 @@ describe('ModelRequestHandler', () => {
         it('should cancel during stream consumption when token fires', async () => {
             let yieldCount = 0;
 
-            // Mock a stream that yields slowly
             const mockStream = {
                 async *[Symbol.asyncIterator]() {
                     while (yieldCount < 10) {
@@ -572,7 +618,6 @@ describe('ModelRequestHandler', () => {
                 tools: [],
             };
 
-            // Cancel after 30ms - should stop after a few chunks
             setTimeout(() => cancellationTokenSource.cancel(), 30);
 
             await expect(
@@ -580,11 +625,10 @@ describe('ModelRequestHandler', () => {
                     mockModel,
                     request,
                     cancellationTokenSource.token,
-                    5000 // Long timeout - cancellation should trigger first
+                    5000
                 )
             ).rejects.toThrow();
 
-            // Should have processed only a few chunks before cancellation
             expect(yieldCount).toBeLessThan(10);
         }, 1000);
 
@@ -610,9 +654,7 @@ describe('ModelRequestHandler', () => {
 
         it('should return null content when response is empty', async () => {
             const mockStream = {
-                async *[Symbol.asyncIterator]() {
-                    // Empty stream
-                },
+                async *[Symbol.asyncIterator]() {},
             };
 
             mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
@@ -661,9 +703,9 @@ describe('ModelRequestHandler', () => {
             );
 
             expect(mockModel.sendRequest).toHaveBeenCalledWith(
-                expect.any(Array), // messages
-                expect.objectContaining({ tools: [mockTool] }), // options
-                expect.any(Object) // linked CancellationToken (not the original)
+                expect.any(Array),
+                expect.objectContaining({ tools: [mockTool] }),
+                expect.any(Object)
             );
         });
 
@@ -693,15 +735,46 @@ describe('ModelRequestHandler', () => {
             expect(response.content).toBe('Hello, world!');
         });
 
+        it('should convert system messages through sendRequest pipeline', async () => {
+            const mockStream = {
+                async *[Symbol.asyncIterator]() {
+                    yield new vscode.LanguageModelTextPart('Response');
+                },
+            };
+
+            mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
+
+            const request: ToolCallRequest = {
+                messages: [
+                    { role: 'system', content: 'System context' },
+                    { role: 'user', content: 'User query' },
+                ],
+                tools: [],
+            };
+
+            const response = await ModelRequestHandler.sendRequest(
+                mockModel,
+                request,
+                cancellationTokenSource.token,
+                5000
+            );
+
+            expect(mockModel.sendRequest).toHaveBeenCalledWith(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        role: vscode.LanguageModelChatMessageRole.User,
+                    }),
+                ]),
+                expect.any(Object),
+                expect.any(Object)
+            );
+            expect(response.content).toBe('Response');
+        });
+
         it('should actively stop stream consumption on timeout (no resource leak)', async () => {
-            // This test verifies that when inactivity timeout fires, the stream consumer
-            // actually stops iterating, preventing resource leaks.
             let yieldCount = 0;
             let streamExited = false;
 
-            // Mock a stream that yields slowly but would continue forever.
-            // Each chunk takes 80ms, inactivity timeout is 50ms — so the timer
-            // fires between chunks when the stream stalls.
             const mockStream = {
                 async *[Symbol.asyncIterator]() {
                     try {
@@ -715,7 +788,6 @@ describe('ModelRequestHandler', () => {
                             );
                         }
                     } finally {
-                        // This runs when the iterator is aborted
                         streamExited = true;
                     }
                 },
@@ -738,12 +810,9 @@ describe('ModelRequestHandler', () => {
                 )
             ).rejects.toSatisfy((error: unknown) => isTimeoutError(error));
 
-            // Wait a bit for the stream to be cleaned up
             await new Promise((resolve) => setTimeout(resolve, 100));
 
-            // Stream should have exited (not continuing in background)
             expect(streamExited).toBe(true);
-            // Should have processed only a few chunks before timeout cancelled it
             expect(yieldCount).toBeLessThan(10);
         }, 2000);
     });
