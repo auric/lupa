@@ -9,7 +9,14 @@ import { TimeoutError } from '../types/errorTypes';
 import { Log } from '../services/loggingService';
 
 /**
- * Shared message conversion and request execution for LLM clients.
+ * Static utility class for handling language model requests.
+ *
+ * Extracts common message conversion and request handling logic that is shared
+ * between CopilotModelManager and ChatLLMClient. This ensures DRY compliance
+ * and consistent behavior across all analysis paths.
+ *
+ * Note: This is a pure utility class with no logging. Logging responsibility
+ * remains with the calling services (CopilotModelManager, ChatLLMClient).
  */
 export class ModelRequestHandler {
     /**
@@ -28,6 +35,7 @@ export class ModelRequestHandler {
 
         for (const msg of messages) {
             if (msg.role === 'system' && msg.content) {
+                // VS Code API quirk: system messages are sent as User messages with special formatting
                 result.push(
                     vscode.LanguageModelChatMessage.User(
                         `<system_instructions>${msg.content}</system_instructions>`
@@ -71,6 +79,7 @@ export class ModelRequestHandler {
 
                 result.push(vscode.LanguageModelChatMessage.Assistant(content));
             } else if (msg.role === 'tool') {
+                // Tool responses become user messages with LanguageModelToolResultPart
                 const toolResultContent = [
                     new vscode.LanguageModelTextPart(msg.content || ''),
                 ];
