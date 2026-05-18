@@ -217,7 +217,7 @@ export class RecordFindingTool extends BaseTool {
         }
 
         // File investigation gate: require that the model has actually investigated
-        // the target file (via read_file, find_symbol, find_usages, or validate_claim)
+        // the target file (via read_file, find_symbol, find_usages, search_for_pattern, or validate_claim)
         // before recording a finding. Prevents "drive-by" findings based only on
         // diff hunks without verifying claims against the actual codebase.
         if (context.investigatedFiles) {

@@ -92,7 +92,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
                 investigationNote =
                     `\n\n⚠️ INVESTIGATION GAP: You claimed to analyze ${uninvestigated.length} file(s) that have NO tool call records: ` +
                     `${uninvestigated.join(', ')}. ` +
-                    `You must use read_file, find_symbol, find_usages, or validate_claim on a file before claiming you analyzed it. ` +
+                    `You must use read_file, find_symbol, find_usages, search_for_pattern, or validate_claim on a file before claiming you analyzed it. ` +
                     `Go investigate these files before calling submit_review.`;
             }
         }

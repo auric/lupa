@@ -313,7 +313,14 @@ export class ToolExecutor {
                 ) {
                     const normalized = normalizeRelativePath(filePath);
                     if (normalized) {
-                        this.executionContext.investigatedFiles.add(normalized);
+                        if (
+                            name !== 'search_for_pattern' ||
+                            (normalized.split('/').pop() ?? '').includes('.')
+                        ) {
+                            this.executionContext.investigatedFiles.add(
+                                normalized
+                            );
+                        }
                     }
                 }
             }
