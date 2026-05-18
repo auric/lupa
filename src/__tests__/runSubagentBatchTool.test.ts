@@ -1496,3 +1496,232 @@ describe('RunSubagentBatchTool', () => {
         });
     });
 });
+
+describe('Subagent Files Merge', () => {
+    it('should merge subagent filesTouched into parent investigatedFiles', async () => {
+        const workspaceSettings = createMockWorkspaceSettings();
+        const sessionManager = new SubagentSessionManager(workspaceSettings);
+        const { recursiveState, rootId } = createTestRecursiveState();
+
+        const executor = createMockExecutor({
+            success: true,
+            toolCalls: [
+                {
+                    id: 'tc-1',
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/auth.ts' },
+                    result: 'file content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-2',
+                    toolName: 'find_symbol',
+                    arguments: { relative_path: 'src/handler.ts' },
+                    result: 'symbol info',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ],
+        });
+
+        const tool = new RunSubagentBatchTool(workspaceSettings);
+        const investigatedFiles = new Set<string>();
+        const context = createBatchExecutionContext(executor, sessionManager, {
+            recursiveState,
+            currentDepth: 0,
+            currentAgentId: rootId,
+            investigatedFiles,
+        });
+
+        await tool.execute({ tasks: [{ task: VALID_TASK }] }, context);
+
+        expect(investigatedFiles.size).toBe(2);
+        expect(investigatedFiles.has('src/auth.ts')).toBe(true);
+        expect(investigatedFiles.has('src/handler.ts')).toBe(true);
+    });
+
+    it('should merge subagent filesTouched with normalized Windows paths', async () => {
+        const workspaceSettings = createMockWorkspaceSettings();
+        const sessionManager = new SubagentSessionManager(workspaceSettings);
+        const { recursiveState, rootId } = createTestRecursiveState();
+
+        const executor = createMockExecutor({
+            success: true,
+            toolCalls: [
+                {
+                    id: 'tc-1',
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src\\auth\\handler.ts' },
+                    result: 'content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-2',
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['./src/auth.ts'] },
+                    result: 'diff',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ],
+        });
+
+        const tool = new RunSubagentBatchTool(workspaceSettings);
+        const investigatedFiles = new Set<string>();
+        const context = createBatchExecutionContext(executor, sessionManager, {
+            recursiveState,
+            currentDepth: 0,
+            currentAgentId: rootId,
+            investigatedFiles,
+        });
+
+        await tool.execute({ tasks: [{ task: VALID_TASK }] }, context);
+
+        expect(investigatedFiles.size).toBe(2);
+        expect(investigatedFiles.has('src/auth/handler.ts')).toBe(true);
+        expect(investigatedFiles.has('src/auth.ts')).toBe(true);
+    });
+
+    it('should merge subagent filesTouched from all investigation tool types', async () => {
+        const workspaceSettings = createMockWorkspaceSettings();
+        const sessionManager = new SubagentSessionManager(workspaceSettings);
+        const { recursiveState, rootId } = createTestRecursiveState();
+
+        const executor = createMockExecutor({
+            success: true,
+            toolCalls: [
+                {
+                    id: 'tc-1',
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/read.ts' },
+                    result: 'content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-2',
+                    toolName: 'find_symbol',
+                    arguments: { relative_path: 'src/symbol.ts' },
+                    result: 'symbol',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-3',
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/usage.ts',
+                        symbol_name: 'foo',
+                    },
+                    result: 'usages',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-4',
+                    toolName: 'search_for_pattern',
+                    arguments: { search_path: 'src/regex.ts', pattern: 'foo' },
+                    result: 'matches',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-5',
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/diff.ts'] },
+                    result: 'diff',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-6',
+                    toolName: 'validate_claim',
+                    arguments: {
+                        file: 'src/claim.ts',
+                        symbol: 'foo',
+                        claim_type: 'symbol_unused',
+                    },
+                    result: 'verified',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ],
+        });
+
+        const tool = new RunSubagentBatchTool(workspaceSettings);
+        const investigatedFiles = new Set<string>();
+        const context = createBatchExecutionContext(executor, sessionManager, {
+            recursiveState,
+            currentDepth: 0,
+            currentAgentId: rootId,
+            investigatedFiles,
+        });
+
+        await tool.execute({ tasks: [{ task: VALID_TASK }] }, context);
+
+        expect(investigatedFiles.size).toBe(6);
+        expect(investigatedFiles.has('src/read.ts')).toBe(true);
+        expect(investigatedFiles.has('src/symbol.ts')).toBe(true);
+        expect(investigatedFiles.has('src/usage.ts')).toBe(true);
+        expect(investigatedFiles.has('src/regex.ts')).toBe(true);
+        expect(investigatedFiles.has('src/diff.ts')).toBe(true);
+        expect(investigatedFiles.has('src/claim.ts')).toBe(true);
+    });
+
+    it('should not merge into investigatedFiles when context lacks the set', async () => {
+        const workspaceSettings = createMockWorkspaceSettings();
+        const sessionManager = new SubagentSessionManager(workspaceSettings);
+        const { recursiveState, rootId } = createTestRecursiveState();
+
+        const executor = createMockExecutor({
+            success: true,
+            toolCalls: [
+                {
+                    id: 'tc-1',
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/file.ts' },
+                    result: 'content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ],
+        });
+
+        const tool = new RunSubagentBatchTool(workspaceSettings);
+        const context = createBatchExecutionContext(executor, sessionManager, {
+            recursiveState,
+            currentDepth: 0,
+            currentAgentId: rootId,
+            investigatedFiles: undefined,
+        });
+
+        await tool.execute({ tasks: [{ task: VALID_TASK }] }, context);
+
+        // Should not crash — just skip the merge gracefully
+        expect(true).toBe(true);
+    });
+});

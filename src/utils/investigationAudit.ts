@@ -23,6 +23,14 @@ export function extractFilesTouched(toolCalls: ToolCallRecord[]): string[] {
                     files.add(normalized);
                 }
             }
+        } else if (call.toolName === 'validate_claim') {
+            const raw = getStringArg(args, 'file');
+            if (raw) {
+                const normalized = normalizeRelativePath(raw);
+                if (normalized) {
+                    files.add(normalized);
+                }
+            }
         } else if (call.toolName === 'find_symbol') {
             const relativePath = getStringArg(args, 'relative_path');
             const filePath = getStringArg(args, 'file_path');
