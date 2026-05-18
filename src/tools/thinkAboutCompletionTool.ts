@@ -5,6 +5,7 @@ import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { flexibleStringArrayNonEmpty } from './schemaHelpers';
 import { pathSuffixMatch } from '../utils/pathUtils';
+import { normalizeRelativePath } from '../utils/investigationAudit';
 
 const MAX_HYPOTHESIS_TRAIL_CHARS = 2000;
 
@@ -81,7 +82,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
         let uninvestigated: string[] = [];
         if (context.investigatedFiles && context.investigatedFiles.size > 0) {
             uninvestigated = files_analyzed.filter((claimed) => {
-                const normalizedClaimed = claimed.replace(/\\/g, '/');
+                const normalizedClaimed = normalizeRelativePath(claimed);
                 return ![...context.investigatedFiles!].some(
                     (actual) =>
                         pathSuffixMatch(normalizedClaimed, actual) ||

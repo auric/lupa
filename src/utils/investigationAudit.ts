@@ -13,6 +13,10 @@ export function extractFilesTouched(toolCalls: ToolCallRecord[]): string[] {
     const flat = flattenToolCalls(toolCalls);
 
     for (const call of flat) {
+        if (!call.success && !isZeroResultCall(call)) {
+            continue;
+        }
+
         const args = call.arguments;
 
         if (call.toolName === 'read_file' || call.toolName === 'find_usages') {

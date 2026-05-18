@@ -502,6 +502,9 @@ RULES:
                 }
             }
 
+            // toolExecutor only records files for successful calls in real-time;
+            // this merge also captures files from failed/degraded/cancelled
+            // subagent tool calls so the parent doesn't re-investigate them.
             if (context.investigatedFiles && filesTouched.length > 0) {
                 for (const file of filesTouched) {
                     context.investigatedFiles.add(file);
