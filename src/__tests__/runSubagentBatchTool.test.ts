@@ -1741,9 +1741,11 @@ describe('Subagent Files Merge', () => {
             investigatedFiles: undefined,
         });
 
-        await tool.execute({ tasks: [{ task: VALID_TASK }] }, context);
-
-        // Should not crash — just skip the merge gracefully
-        expect(true).toBe(true);
+        const result = await tool.execute(
+            { tasks: [{ task: VALID_TASK }] },
+            context
+        );
+        expect(result.success).toBe(true);
+        expect(result.data).toContain('Batch Results');
     });
 });
