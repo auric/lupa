@@ -9,11 +9,13 @@ import type { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
 import { isCancellationError, isTimeoutError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+import { normalizeRelativePath } from '../utils/investigationAudit';
 
 const FILE_TRACKING_TOOLS = new Set([
     'read_file',
     'find_symbol',
     'find_usages',
+    'search_for_pattern',
     'validate_claim',
 ]);
 
@@ -297,15 +299,19 @@ export class ToolExecutor {
             ) {
                 const parsed = validatedArgs as Record<string, unknown>;
                 const filePath =
-                    parsed.file_path ?? parsed.file ?? parsed.relative_path;
+                    parsed.file_path ??
+                    parsed.file ??
+                    parsed.relative_path ??
+                    parsed.search_path;
                 if (
                     filePath &&
                     typeof filePath === 'string' &&
                     filePath !== '.'
                 ) {
-                    this.executionContext.investigatedFiles.add(
-                        filePath.replace(/\\/g, '/')
-                    );
+                    const normalized = normalizeRelativePath(filePath);
+                    if (normalized) {
+                        this.executionContext.investigatedFiles.add(normalized);
+                    }
                 }
             }
 
