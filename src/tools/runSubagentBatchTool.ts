@@ -17,7 +17,6 @@ import {
     buildInvestigationAudit,
     formatCompactAudit,
     extractFilesTouched,
-    normalizeRelativePath,
 } from '../utils/investigationAudit';
 import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
@@ -505,10 +504,7 @@ RULES:
 
             if (context.investigatedFiles && filesTouched.length > 0) {
                 for (const file of filesTouched) {
-                    const normalized = normalizeRelativePath(file);
-                    if (normalized) {
-                        context.investigatedFiles.add(normalized);
-                    }
+                    context.investigatedFiles.add(file);
                 }
             }
 

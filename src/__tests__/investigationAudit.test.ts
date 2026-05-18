@@ -789,6 +789,10 @@ describe('extractFilesTouched', () => {
                 toolName: 'search_for_pattern',
                 arguments: { search_path: 'src/services' },
             }),
+            makeToolCall({
+                toolName: 'search_for_pattern',
+                arguments: { search_path: 'src/services/' },
+            }),
         ];
         const result = extractFilesTouched(calls);
         expect(result).toEqual([]);

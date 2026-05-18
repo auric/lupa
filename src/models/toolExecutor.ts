@@ -290,8 +290,11 @@ export class ToolExecutor {
             }
 
             // Track files investigated via deep investigation tools.
-            // This excludes get_file_diff (which only shows changed hunks) to ensure
-            // the model has read the actual file content before recording findings.
+            // All tools in FILE_TRACKING_TOOLS count — they represent meaningful
+            // codebase exploration even if they don't read full file content
+            // (e.g., search_for_pattern verifies patterns exist, find_symbol
+            // confirms symbol locations). get_file_diff is intentionally excluded
+            // since diff hunks alone don't constitute investigation.
             if (
                 toolResult.success &&
                 this.executionContext.investigatedFiles &&

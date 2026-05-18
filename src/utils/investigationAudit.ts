@@ -38,9 +38,10 @@ export function extractFilesTouched(toolCalls: ToolCallRecord[]): string[] {
             }
         } else if (call.toolName === 'search_for_pattern') {
             const searchPath = getStringArg(args, 'search_path');
-            if (searchPath && searchPath !== '.' && !searchPath.endsWith('/')) {
+            if (searchPath && searchPath !== '.') {
                 const normalized = normalizeRelativePath(searchPath);
-                if (normalized && normalized.includes('.')) {
+                const lastSegment = normalized.split('/').pop() ?? '';
+                if (normalized && lastSegment.includes('.')) {
                     files.add(normalized);
                 }
             }
