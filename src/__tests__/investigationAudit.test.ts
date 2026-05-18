@@ -907,8 +907,8 @@ describe('extractFilesTouched', () => {
                 arguments: { file_path: 'src/foo.ts' },
             }),
             makeToolCall({
-                toolName: 'validate_claim',
-                arguments: { file_path: 'src/bar.ts' },
+                toolName: 'submit_review',
+                arguments: { file: 'src/bar.ts' },
             }),
         ];
         const result = extractFilesTouched(calls);
