@@ -23,7 +23,7 @@ export class ModelRequestHandler {
      * Convert ToolCallMessage array to VS Code LanguageModelChatMessage array.
      *
      * Handles the VS Code API quirk where system messages must be sent as
-     * Assistant messages, not a dedicated system call.
+     * User messages with special formatting, not a dedicated system call.
      *
      * @param messages - Array of ToolCallMessage to convert
      * @returns Array of VS Code LanguageModelChatMessage
@@ -35,9 +35,11 @@ export class ModelRequestHandler {
 
         for (const msg of messages) {
             if (msg.role === 'system' && msg.content) {
-                // VS Code API quirk: system messages are sent as Assistant messages
+                // VS Code API quirk: system messages are sent as User messages with special formatting
                 result.push(
-                    vscode.LanguageModelChatMessage.Assistant(msg.content)
+                    vscode.LanguageModelChatMessage.User(
+                        `<system_instructions>${msg.content}</system_instructions>`
+                    )
                 );
             } else if (msg.role === 'user' && msg.content) {
                 result.push(vscode.LanguageModelChatMessage.User(msg.content));
