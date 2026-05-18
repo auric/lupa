@@ -759,6 +759,17 @@ describe('extractFilesTouched', () => {
         expect(result).toEqual(['src/services/auth.ts']);
     });
 
+    it('extracts files from validate_claim tool calls', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'validate_claim',
+                arguments: { file: 'src/claims/verify.ts' },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual(['src/claims/verify.ts']);
+    });
+
     it('extracts files from search_for_pattern with specific search_path', () => {
         const calls: ToolCallRecord[] = [
             makeToolCall({
