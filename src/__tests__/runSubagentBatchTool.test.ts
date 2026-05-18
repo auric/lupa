@@ -546,6 +546,28 @@ describe('RunSubagentBatchTool', () => {
             expect(result.data).toContain('Partial rate-limited findings');
         });
 
+        it('should include partial findings for quota_exhausted failures', async () => {
+            const executor = createMockExecutor({
+                success: false,
+                error: 'quota_exhausted',
+                response: 'Partial quota-exhausted findings',
+                toolCallsMade: 12,
+            });
+            const tool = new RunSubagentBatchTool(workspaceSettings);
+            const context = createBatchExecutionContext(
+                executor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                { tasks: [{ task: VALID_TASK }] },
+                context
+            );
+
+            expect(result.data).toContain('DEGRADED');
+            expect(result.data).toContain('Partial quota-exhausted findings');
+        });
+
         it('should trigger rollback on generic failure', async () => {
             const executor = createMockExecutor({
                 success: false,
