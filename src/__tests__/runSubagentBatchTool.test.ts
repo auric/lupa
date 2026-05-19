@@ -1404,16 +1404,16 @@ describe('RunSubagentBatchTool', () => {
             timestamp: Date.now(),
         });
 
-        it('should extract files from get_file_diff calls', () => {
+        it('should not extract files from get_file_diff calls (diff hunks are not investigation)', () => {
             const calls = [makeGetFileDiffCall(['src/services/auth.ts'])];
             const result = RunSubagentBatchTool.extractFilesExamined(calls);
-            expect(result).toEqual(['src/services/auth.ts']);
+            expect(result).toEqual([]);
         });
 
-        it('should handle newline-separated string input', () => {
+        it('should not extract files from newline-separated get_file_diff input', () => {
             const calls = [makeGetFileDiffCall('src/a.ts\nsrc/b.ts')];
             const result = RunSubagentBatchTool.extractFilesExamined(calls);
-            expect(result).toEqual(['src/a.ts', 'src/b.ts']);
+            expect(result).toEqual([]);
         });
 
         it('should extract files from read_file calls', () => {
@@ -1487,23 +1487,54 @@ describe('RunSubagentBatchTool', () => {
             expect(result).toEqual(['src/regex.ts']);
         });
 
-        it('should normalize Windows backslash separators', () => {
-            const calls = [makeGetFileDiffCall(['src\\auth\\handler.ts'])];
+        it('should normalize Windows backslash separators in read_file paths', () => {
+            const calls: ToolCallRecord[] = [
+                {
+                    id: 'test-id',
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src\\auth\\handler.ts' },
+                    result: 'content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
             const result = RunSubagentBatchTool.extractFilesExamined(calls);
             expect(result).toEqual(['src/auth/handler.ts']);
         });
 
-        it('should strip ./ prefix from paths', () => {
-            const calls = [makeGetFileDiffCall(['./src/auth.ts'])];
+        it('should strip ./ prefix from read_file paths', () => {
+            const calls: ToolCallRecord[] = [
+                {
+                    id: 'test-id',
+                    toolName: 'read_file',
+                    arguments: { file_path: './src/auth.ts' },
+                    result: 'content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
             const result = RunSubagentBatchTool.extractFilesExamined(calls);
             expect(result).toEqual(['src/auth.ts']);
         });
 
-        it('should deduplicate paths across all investigation tools', () => {
+        it('should deduplicate paths across investigation tools', () => {
             const calls: ToolCallRecord[] = [
-                makeGetFileDiffCall(['src/auth.ts']),
                 {
                     id: 'test-id',
+                    toolName: 'find_symbol',
+                    arguments: { relative_path: 'src/auth.ts' },
+                    result: 'symbol info',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'test-id-2',
                     toolName: 'read_file',
                     arguments: { file_path: './src/auth.ts' },
                     result: 'content',
@@ -1567,7 +1598,7 @@ describe('Subagent Files Merge', () => {
         expect(investigatedFiles.has('src/handler.ts')).toBe(true);
     });
 
-    it('should merge subagent filesTouched with normalized Windows paths', async () => {
+    it('should not merge get_file_diff files into investigatedFiles (diff hunks are not investigation)', async () => {
         const workspaceSettings = createMockWorkspaceSettings();
         const sessionManager = new SubagentSessionManager(workspaceSettings);
         const { recursiveState, rootId } = createTestRecursiveState();
@@ -1609,9 +1640,9 @@ describe('Subagent Files Merge', () => {
 
         await tool.execute({ tasks: [{ task: VALID_TASK }] }, context);
 
-        expect(investigatedFiles.size).toBe(2);
+        expect(investigatedFiles.size).toBe(1);
         expect(investigatedFiles.has('src/auth/handler.ts')).toBe(true);
-        expect(investigatedFiles.has('src/auth.ts')).toBe(true);
+        expect(investigatedFiles.has('src/auth.ts')).toBe(false);
     });
 
     it('should merge subagent filesTouched from all investigation tool types', async () => {
@@ -1667,16 +1698,6 @@ describe('Subagent Files Merge', () => {
                 },
                 {
                     id: 'tc-5',
-                    toolName: 'get_file_diff',
-                    arguments: { file_paths: ['src/diff.ts'] },
-                    result: 'diff',
-                    success: true,
-                    error: undefined,
-                    durationMs: 10,
-                    timestamp: Date.now(),
-                },
-                {
-                    id: 'tc-6',
                     toolName: 'validate_claim',
                     arguments: {
                         file: 'src/claim.ts',
@@ -1703,12 +1724,11 @@ describe('Subagent Files Merge', () => {
 
         await tool.execute({ tasks: [{ task: VALID_TASK }] }, context);
 
-        expect(investigatedFiles.size).toBe(6);
+        expect(investigatedFiles.size).toBe(5);
         expect(investigatedFiles.has('src/read.ts')).toBe(true);
         expect(investigatedFiles.has('src/symbol.ts')).toBe(true);
         expect(investigatedFiles.has('src/usage.ts')).toBe(true);
         expect(investigatedFiles.has('src/regex.ts')).toBe(true);
-        expect(investigatedFiles.has('src/diff.ts')).toBe(true);
         expect(investigatedFiles.has('src/claim.ts')).toBe(true);
     });
 

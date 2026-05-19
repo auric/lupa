@@ -809,7 +809,7 @@ describe('extractFilesTouched', () => {
         expect(result).toEqual([]);
     });
 
-    it('extracts files from get_file_diff calls', () => {
+    it('does not extract files from get_file_diff calls (diff hunks are not investigation)', () => {
         const calls: ToolCallRecord[] = [
             makeToolCall({
                 toolName: 'get_file_diff',
@@ -817,7 +817,7 @@ describe('extractFilesTouched', () => {
             }),
         ];
         const result = extractFilesTouched(calls);
-        expect(result).toEqual(['src/a.ts']);
+        expect(result).toEqual([]);
     });
 
     it('extracts from nested tool calls', () => {

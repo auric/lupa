@@ -57,13 +57,6 @@ export function extractFilesTouched(toolCalls: ToolCallRecord[]): string[] {
                     files.add(normalized);
                 }
             }
-        } else if (call.toolName === 'get_file_diff') {
-            for (const p of parseDiffFilePaths(args)) {
-                const normalized = normalizeRelativePath(p);
-                if (normalized) {
-                    files.add(normalized);
-                }
-            }
         }
     }
 
