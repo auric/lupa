@@ -5,6 +5,7 @@ import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { flexibleStringArrayNonEmpty } from './schemaHelpers';
 import { pathSuffixMatch } from '../utils/pathUtils';
+import { normalizeRelativePath } from '../utils/investigationAudit';
 
 const MAX_HYPOTHESIS_TRAIL_CHARS = 2000;
 
@@ -81,7 +82,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
         let uninvestigated: string[] = [];
         if (context.investigatedFiles && context.investigatedFiles.size > 0) {
             uninvestigated = files_analyzed.filter((claimed) => {
-                const normalizedClaimed = claimed.replace(/\\/g, '/');
+                const normalizedClaimed = normalizeRelativePath(claimed);
                 return ![...context.investigatedFiles!].some(
                     (actual) =>
                         pathSuffixMatch(normalizedClaimed, actual) ||
@@ -92,7 +93,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
                 investigationNote =
                     `\n\n⚠️ INVESTIGATION GAP: You claimed to analyze ${uninvestigated.length} file(s) that have NO tool call records: ` +
                     `${uninvestigated.join(', ')}. ` +
-                    `You must use read_file, find_symbol, find_usages, or validate_claim on a file before claiming you analyzed it. ` +
+                    `You must use read_file, find_symbol, find_usages, search_for_pattern, or validate_claim on a file before claiming you analyzed it. ` +
                     `Go investigate these files before calling submit_review.`;
             }
         }

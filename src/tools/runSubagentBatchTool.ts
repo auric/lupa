@@ -16,13 +16,13 @@ import {
 import {
     buildInvestigationAudit,
     formatCompactAudit,
+    extractFilesTouched,
 } from '../utils/investigationAudit';
 import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
-import * as path from 'path';
 import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { DiffHunk } from '../types/contextTypes';
 
@@ -471,16 +471,14 @@ RULES:
                 ? SubagentErrors.timeout(timeoutMs)
                 : result.error;
 
+            const filesTouched = extractFilesTouched(result.toolCalls);
+
             if (recursiveState && alloc.childAgentId) {
-                const filesExamined = RunSubagentBatchTool.extractFilesExamined(
-                    result.toolCalls,
-                    context.parsedDiff
-                );
                 if (result.success) {
                     recursiveState.completeAgent(
                         alloc.childAgentId,
                         [],
-                        filesExamined
+                        filesTouched
                     );
                 } else if (recursiveStateError === 'cancelled') {
                     recursiveState.cancelAgent(alloc.childAgentId);
@@ -494,13 +492,22 @@ RULES:
                     recursiveState.completeAgent(
                         alloc.childAgentId,
                         [],
-                        filesExamined
+                        filesTouched
                     );
                 } else {
                     recursiveState.failAgent(
                         alloc.childAgentId,
                         recursiveStateError ?? 'Unknown error'
                     );
+                }
+            }
+
+            // toolExecutor only records files for successful calls in real-time;
+            // this merge also captures files from failed/degraded/cancelled
+            // subagent tool calls so the parent doesn't re-investigate them.
+            if (context.investigatedFiles && filesTouched.length > 0) {
+                for (const file of filesTouched) {
+                    context.investigatedFiles.add(file);
                 }
             }
 
@@ -854,72 +861,8 @@ RULES:
 
     static extractFilesExamined(
         toolCalls: ToolCallRecord[],
-        parsedDiff?: DiffHunk[]
+        _parsedDiff?: DiffHunk[]
     ): string[] {
-        const files = new Set<string>();
-        for (const call of toolCalls) {
-            if (call.toolName !== 'get_file_diff') {
-                continue;
-            }
-            const raw = call.arguments['file_paths'];
-            const filePaths = Array.isArray(raw)
-                ? raw
-                : typeof raw === 'string'
-                  ? raw
-                        .split('\n')
-                        .map((l) => l.trim())
-                        .filter(Boolean)
-                  : [];
-            for (const fp of filePaths) {
-                if (typeof fp !== 'string') {
-                    continue;
-                }
-                const resolved = parsedDiff
-                    ? RunSubagentBatchTool.resolveToCanonicalPath(
-                          fp,
-                          parsedDiff
-                      )
-                    : fp;
-                if (resolved) {
-                    files.add(resolved);
-                }
-            }
-        }
-        return [...files];
-    }
-
-    private static resolveToCanonicalPath(
-        rawPath: string,
-        parsedDiff: DiffHunk[]
-    ): string | undefined {
-        const normalized = rawPath
-            .trim()
-            .replace(/\\/g, '/')
-            .replace(/^\/+/, '')
-            .replace(/^\.\//, '');
-        const requestedPath = path.posix.normalize(normalized);
-
-        const exactMatch = parsedDiff.find((f) => f.filePath === requestedPath);
-        if (exactMatch) {
-            return exactMatch.filePath;
-        }
-
-        // Case-insensitive fallback — models often use wrong casing for file paths
-        const lowerRequested = requestedPath.toLowerCase();
-        const ciMatches = parsedDiff.filter(
-            (f) => f.filePath.toLowerCase() === lowerRequested
-        );
-        if (ciMatches.length === 1) {
-            return ciMatches[0]!.filePath;
-        }
-
-        const suffixMatches = parsedDiff.filter((f) =>
-            f.filePath.endsWith('/' + requestedPath)
-        );
-        if (suffixMatches.length === 1) {
-            return suffixMatches[0]!.filePath;
-        }
-
-        return undefined;
+        return extractFilesTouched(toolCalls);
     }
 }

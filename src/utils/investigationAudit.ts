@@ -8,6 +8,61 @@ import type {
     InvestigationDepth,
 } from '../types/investigationTypes';
 
+export function extractFilesTouched(toolCalls: ToolCallRecord[]): string[] {
+    const files = new Set<string>();
+    const flat = flattenToolCalls(toolCalls);
+
+    for (const call of flat) {
+        if (!call.success && !isZeroResultCall(call)) {
+            continue;
+        }
+
+        const args = call.arguments;
+
+        if (call.toolName === 'read_file' || call.toolName === 'find_usages') {
+            const raw = getStringArg(args, 'file_path');
+            if (raw) {
+                const normalized = normalizeRelativePath(raw);
+                if (normalized) {
+                    files.add(normalized);
+                }
+            }
+        } else if (call.toolName === 'validate_claim') {
+            const raw = getStringArg(args, 'file');
+            if (raw) {
+                const normalized = normalizeRelativePath(raw);
+                if (normalized) {
+                    files.add(normalized);
+                }
+            }
+        } else if (call.toolName === 'find_symbol') {
+            const relativePath = getStringArg(args, 'relative_path');
+            const filePath = getStringArg(args, 'file_path');
+            const raw =
+                !relativePath || relativePath === '.'
+                    ? (filePath ?? '')
+                    : relativePath;
+            if (raw) {
+                const normalized = normalizeRelativePath(raw);
+                if (normalized) {
+                    files.add(normalized);
+                }
+            }
+        } else if (call.toolName === 'search_for_pattern') {
+            const searchPath = getStringArg(args, 'search_path');
+            if (searchPath && searchPath !== '.') {
+                const normalized = normalizeRelativePath(searchPath);
+                const lastSegment = normalized.split('/').pop() ?? '';
+                if (normalized && lastSegment.includes('.')) {
+                    files.add(normalized);
+                }
+            }
+        }
+    }
+
+    return [...files];
+}
+
 export function normalizeRelativePath(p: string): string {
     let slashed = p.replace(/\\/g, '/').replace(/^\.\//, '');
     // Strip Windows drive letter (e.g., C:/)

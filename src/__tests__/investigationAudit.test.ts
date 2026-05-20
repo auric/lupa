@@ -3,6 +3,7 @@ import {
     buildInvestigationAudit,
     normalizeRelativePath,
     formatCompactAudit,
+    extractFilesTouched,
 } from '../utils/investigationAudit';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 
@@ -700,5 +701,228 @@ describe('zero-result tool calls count toward depth', () => {
         // read(2) + symbols(2) + usages(2) = 6
         expect(depth!.score).toBe(6);
         expect(depth!.breakdown).toContain('usages');
+    });
+});
+
+describe('extractFilesTouched', () => {
+    it('returns empty array for empty tool calls', () => {
+        const result = extractFilesTouched([]);
+        expect(result).toEqual([]);
+    });
+
+    it('extracts files from read_file tool calls', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual(['src/foo.ts']);
+    });
+
+    it('extracts files from find_usages tool calls', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'find_usages',
+                arguments: { file_path: 'src/bar.ts' },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual(['src/bar.ts']);
+    });
+
+    it('extracts files from find_symbol tool calls', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: {
+                    relative_path: 'src/services/auth.ts',
+                },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual(['src/services/auth.ts']);
+    });
+
+    it('falls back to file_path for find_symbol when relative_path is "."', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: {
+                    relative_path: '.',
+                    file_path: 'src/services/auth.ts',
+                },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual(['src/services/auth.ts']);
+    });
+
+    it('extracts files from validate_claim tool calls', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'validate_claim',
+                arguments: { file: 'src/claims/verify.ts' },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual(['src/claims/verify.ts']);
+    });
+
+    it('extracts files from search_for_pattern with specific search_path', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'search_for_pattern',
+                arguments: {
+                    search_path: 'src/utils/helpers.ts',
+                },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual(['src/utils/helpers.ts']);
+    });
+
+    it('does not count "." search_path in search_for_pattern', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'search_for_pattern',
+                arguments: { search_path: '.' },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual([]);
+    });
+
+    it('does not count directory-only search_path in search_for_pattern', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'search_for_pattern',
+                arguments: { search_path: 'src/services' },
+            }),
+            makeToolCall({
+                toolName: 'search_for_pattern',
+                arguments: { search_path: 'src/services/' },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual([]);
+    });
+
+    it('does not extract files from get_file_diff calls (diff hunks are not investigation)', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'get_file_diff',
+                arguments: { file_paths: ['src/a.ts'] },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual([]);
+    });
+
+    it('extracts from nested tool calls', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'search_for_pattern',
+                nestedCalls: [
+                    makeToolCall({
+                        id: 'nested-1',
+                        toolName: 'read_file',
+                        arguments: { file_path: 'src/foo.ts' },
+                    }),
+                    makeToolCall({
+                        id: 'nested-2',
+                        toolName: 'find_symbol',
+                        arguments: {
+                            relative_path: 'src/bar.ts',
+                        },
+                    }),
+                ],
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result.sort()).toEqual(['src/bar.ts', 'src/foo.ts']);
+    });
+
+    it('normalizes Windows backslash separators', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'read_file',
+                arguments: { file_path: 'src\\foo\\bar.ts' },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual(['src/foo/bar.ts']);
+    });
+
+    it('strips ./ prefix', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'read_file',
+                arguments: { file_path: './src/foo.ts' },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual(['src/foo.ts']);
+    });
+
+    it('resolves .. segments in paths', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/../lib/foo.ts' },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual(['lib/foo.ts']);
+    });
+
+    it('deduplicates identical normalized paths across tools', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'read_file',
+                arguments: { file_path: 'src/foo.ts' },
+            }),
+            makeToolCall({
+                toolName: 'find_usages',
+                arguments: { file_path: 'src\\foo.ts' },
+            }),
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: { relative_path: './src/foo.ts' },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual(['src/foo.ts']);
+    });
+
+    it('skips calls with empty or missing file paths', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'read_file',
+                arguments: {},
+            }),
+            makeToolCall({
+                toolName: 'find_symbol',
+                arguments: { relative_path: '' },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual([]);
+    });
+
+    it('ignores non-investigation tool calls', () => {
+        const calls: ToolCallRecord[] = [
+            makeToolCall({
+                toolName: 'record_finding',
+                arguments: { file_path: 'src/foo.ts' },
+            }),
+            makeToolCall({
+                toolName: 'submit_review',
+                arguments: { file: 'src/bar.ts' },
+            }),
+        ];
+        const result = extractFilesTouched(calls);
+        expect(result).toEqual([]);
     });
 });

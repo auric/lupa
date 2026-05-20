@@ -97,7 +97,7 @@ export interface ExecutionContext {
 
     /**
      * Set of file paths the model has investigated via read_file, find_symbol,
-     * find_usages, or validate_claim. Used by record_finding to ensure the model
+     * find_usages, search_for_pattern, or validate_claim. Used by record_finding to ensure the model
      * has actually examined a file before making claims about it.
      * Paths are normalized with forward slashes.
      */

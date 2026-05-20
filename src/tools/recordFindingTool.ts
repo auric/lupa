@@ -10,6 +10,7 @@ import {
 } from '../types/findingTypes';
 import type { ClaimType } from '../types/claimTypes';
 import { pathSuffixMatch } from '../utils/pathUtils';
+import { normalizeRelativePath } from '../utils/investigationAudit';
 
 const VALID_CLAIM_TYPES: readonly ClaimType[] = [
     'symbol_unused',
@@ -197,7 +198,7 @@ export class RecordFindingTool extends BaseTool {
             const changedFiles = new Set(
                 context.parsedDiff.map((d) => d.filePath)
             );
-            const normalizedFile = args.file.replace(/\\/g, '/');
+            const normalizedFile = normalizeRelativePath(args.file);
             const isInDiff =
                 changedFiles.has(normalizedFile) ||
                 [...changedFiles].some(
@@ -216,11 +217,11 @@ export class RecordFindingTool extends BaseTool {
         }
 
         // File investigation gate: require that the model has actually investigated
-        // the target file (via read_file, find_symbol, find_usages, or validate_claim)
+        // the target file (via read_file, find_symbol, find_usages, search_for_pattern, or validate_claim)
         // before recording a finding. Prevents "drive-by" findings based only on
         // diff hunks without verifying claims against the actual codebase.
         if (context.investigatedFiles) {
-            const normalizedFile = args.file.replace(/\\/g, '/');
+            const normalizedFile = normalizeRelativePath(args.file);
             const hasInvestigated =
                 context.investigatedFiles.has(normalizedFile) ||
                 [...context.investigatedFiles].some(
@@ -232,7 +233,7 @@ export class RecordFindingTool extends BaseTool {
 
             if (!hasInvestigated) {
                 return toolError(
-                    `Finding rejected: you have not investigated "${args.file}" with read_file, find_symbol, find_usages, or validate_claim. ` +
+                    `Finding rejected: you have not investigated "${args.file}" with read_file, find_symbol, find_usages, search_for_pattern, or validate_claim. ` +
                         'You MUST read the actual file or verify symbols before recording a finding — ' +
                         'findings based only on diff hunks have a 90%+ false positive rate. ' +
                         'Investigate the file first, then try recording again.'

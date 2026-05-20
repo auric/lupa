@@ -7,7 +7,6 @@ import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 import type { SubagentResult } from '../types/modelTypes';
 import type { ExecutionContext } from '../types/executionContext';
-import type { DiffHunk } from '../types/contextTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import {
     createMockCancellationTokenSource,
@@ -545,6 +544,28 @@ describe('RunSubagentBatchTool', () => {
 
             expect(result.data).toContain('DEGRADED');
             expect(result.data).toContain('Partial rate-limited findings');
+        });
+
+        it('should include partial findings for quota_exhausted failures', async () => {
+            const executor = createMockExecutor({
+                success: false,
+                error: 'quota_exhausted',
+                response: 'Partial quota-exhausted findings',
+                toolCallsMade: 12,
+            });
+            const tool = new RunSubagentBatchTool(workspaceSettings);
+            const context = createBatchExecutionContext(
+                executor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                { tasks: [{ task: VALID_TASK }] },
+                context
+            );
+
+            expect(result.data).toContain('DEGRADED');
+            expect(result.data).toContain('Partial quota-exhausted findings');
         });
 
         it('should trigger rollback on generic failure', async () => {
@@ -1370,14 +1391,6 @@ describe('RunSubagentBatchTool', () => {
     });
 
     describe('extractFilesExamined', () => {
-        const makeDiffHunk = (filePath: string): DiffHunk => ({
-            filePath,
-            hunks: [],
-            isNewFile: false,
-            isDeletedFile: false,
-            originalHeader: `diff --git a/${filePath} b/${filePath}`,
-        });
-
         const makeGetFileDiffCall = (
             filePaths: string | string[]
         ): ToolCallRecord => ({
@@ -1391,89 +1404,24 @@ describe('RunSubagentBatchTool', () => {
             timestamp: Date.now(),
         });
 
-        it('should resolve exact-match file paths', () => {
-            const diff = [makeDiffHunk('src/services/auth.ts')];
+        it('should not extract files from get_file_diff calls (diff hunks are not investigation)', () => {
             const calls = [makeGetFileDiffCall(['src/services/auth.ts'])];
-            const result = RunSubagentBatchTool.extractFilesExamined(
-                calls,
-                diff
-            );
-            expect(result).toEqual(['src/services/auth.ts']);
-        });
-
-        it('should resolve case-insensitive file paths', () => {
-            const diff = [makeDiffHunk('src/services/auth.ts')];
-            const calls = [makeGetFileDiffCall(['src/services/Auth.ts'])];
-            const result = RunSubagentBatchTool.extractFilesExamined(
-                calls,
-                diff
-            );
-            expect(result).toEqual(['src/services/auth.ts']);
-        });
-
-        it('should resolve suffix matches', () => {
-            const diff = [makeDiffHunk('src/services/auth.ts')];
-            const calls = [makeGetFileDiffCall(['auth.ts'])];
-            const result = RunSubagentBatchTool.extractFilesExamined(
-                calls,
-                diff
-            );
-            expect(result).toEqual(['src/services/auth.ts']);
-        });
-
-        it('should prefer exact match over case-insensitive', () => {
-            const diff = [
-                makeDiffHunk('src/Auth.ts'),
-                makeDiffHunk('src/auth.ts'),
-            ];
-            const calls = [makeGetFileDiffCall(['src/auth.ts'])];
-            const result = RunSubagentBatchTool.extractFilesExamined(
-                calls,
-                diff
-            );
-            expect(result).toEqual(['src/auth.ts']);
-        });
-
-        it('should handle newline-separated string input', () => {
-            const diff = [makeDiffHunk('src/a.ts'), makeDiffHunk('src/b.ts')];
-            const calls = [makeGetFileDiffCall('src/a.ts\nsrc/b.ts')];
-            const result = RunSubagentBatchTool.extractFilesExamined(
-                calls,
-                diff
-            );
-            expect(result).toEqual(['src/a.ts', 'src/b.ts']);
-        });
-
-        it('should deduplicate resolved paths', () => {
-            const diff = [makeDiffHunk('src/auth.ts')];
-            const calls = [
-                makeGetFileDiffCall(['src/auth.ts']),
-                makeGetFileDiffCall(['src/Auth.ts']),
-            ];
-            const result = RunSubagentBatchTool.extractFilesExamined(
-                calls,
-                diff
-            );
-            expect(result).toEqual(['src/auth.ts']);
-        });
-
-        it('should skip unresolvable paths', () => {
-            const diff = [makeDiffHunk('src/auth.ts')];
-            const calls = [makeGetFileDiffCall(['src/nonexistent.ts'])];
-            const result = RunSubagentBatchTool.extractFilesExamined(
-                calls,
-                diff
-            );
+            const result = RunSubagentBatchTool.extractFilesExamined(calls);
             expect(result).toEqual([]);
         });
 
-        it('should ignore non-get_file_diff tool calls', () => {
-            const diff = [makeDiffHunk('src/auth.ts')];
+        it('should not extract files from newline-separated get_file_diff input', () => {
+            const calls = [makeGetFileDiffCall('src/a.ts\nsrc/b.ts')];
+            const result = RunSubagentBatchTool.extractFilesExamined(calls);
+            expect(result).toEqual([]);
+        });
+
+        it('should extract files from read_file calls', () => {
             const calls: ToolCallRecord[] = [
                 {
                     id: 'test-id',
                     toolName: 'read_file',
-                    arguments: { file_paths: ['src/auth.ts'] },
+                    arguments: { file_path: 'src/auth.ts' },
                     result: 'content',
                     success: true,
                     error: undefined,
@@ -1481,11 +1429,343 @@ describe('RunSubagentBatchTool', () => {
                     timestamp: Date.now(),
                 },
             ];
-            const result = RunSubagentBatchTool.extractFilesExamined(
-                calls,
-                diff
-            );
-            expect(result).toEqual([]);
+            const result = RunSubagentBatchTool.extractFilesExamined(calls);
+            expect(result).toEqual(['src/auth.ts']);
         });
+
+        it('should extract files from find_symbol calls', () => {
+            const calls: ToolCallRecord[] = [
+                {
+                    id: 'test-id',
+                    toolName: 'find_symbol',
+                    arguments: { relative_path: 'src/services/auth.ts' },
+                    result: 'symbol info',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+            const result = RunSubagentBatchTool.extractFilesExamined(calls);
+            expect(result).toEqual(['src/services/auth.ts']);
+        });
+
+        it('should extract files from find_usages calls', () => {
+            const calls: ToolCallRecord[] = [
+                {
+                    id: 'test-id',
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/handler.ts',
+                        symbol_name: 'foo',
+                    },
+                    result: 'usages info',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+            const result = RunSubagentBatchTool.extractFilesExamined(calls);
+            expect(result).toEqual(['src/handler.ts']);
+        });
+
+        it('should extract files from search_for_pattern calls with file-level search_path', () => {
+            const calls: ToolCallRecord[] = [
+                {
+                    id: 'test-id',
+                    toolName: 'search_for_pattern',
+                    arguments: { search_path: 'src/regex.ts', pattern: 'foo' },
+                    result: 'matches',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+            const result = RunSubagentBatchTool.extractFilesExamined(calls);
+            expect(result).toEqual(['src/regex.ts']);
+        });
+
+        it('should normalize Windows backslash separators in read_file paths', () => {
+            const calls: ToolCallRecord[] = [
+                {
+                    id: 'test-id',
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src\\auth\\handler.ts' },
+                    result: 'content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+            const result = RunSubagentBatchTool.extractFilesExamined(calls);
+            expect(result).toEqual(['src/auth/handler.ts']);
+        });
+
+        it('should strip ./ prefix from read_file paths', () => {
+            const calls: ToolCallRecord[] = [
+                {
+                    id: 'test-id',
+                    toolName: 'read_file',
+                    arguments: { file_path: './src/auth.ts' },
+                    result: 'content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+            const result = RunSubagentBatchTool.extractFilesExamined(calls);
+            expect(result).toEqual(['src/auth.ts']);
+        });
+
+        it('should deduplicate paths across investigation tools', () => {
+            const calls: ToolCallRecord[] = [
+                {
+                    id: 'test-id',
+                    toolName: 'find_symbol',
+                    arguments: { relative_path: 'src/auth.ts' },
+                    result: 'symbol info',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'test-id-2',
+                    toolName: 'read_file',
+                    arguments: { file_path: './src/auth.ts' },
+                    result: 'content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+            const result = RunSubagentBatchTool.extractFilesExamined(calls);
+            expect(result).toEqual(['src/auth.ts']);
+        });
+    });
+});
+
+describe('Subagent Files Merge', () => {
+    it('should merge subagent filesTouched into parent investigatedFiles', async () => {
+        const workspaceSettings = createMockWorkspaceSettings();
+        const sessionManager = new SubagentSessionManager(workspaceSettings);
+        const { recursiveState, rootId } = createTestRecursiveState();
+
+        const executor = createMockExecutor({
+            success: true,
+            toolCalls: [
+                {
+                    id: 'tc-1',
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/auth.ts' },
+                    result: 'file content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-2',
+                    toolName: 'find_symbol',
+                    arguments: { relative_path: 'src/handler.ts' },
+                    result: 'symbol info',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ],
+        });
+
+        const tool = new RunSubagentBatchTool(workspaceSettings);
+        const investigatedFiles = new Set<string>();
+        const context = createBatchExecutionContext(executor, sessionManager, {
+            recursiveState,
+            currentDepth: 0,
+            currentAgentId: rootId,
+            investigatedFiles,
+        });
+
+        await tool.execute({ tasks: [{ task: VALID_TASK }] }, context);
+
+        expect(investigatedFiles.size).toBe(2);
+        expect(investigatedFiles.has('src/auth.ts')).toBe(true);
+        expect(investigatedFiles.has('src/handler.ts')).toBe(true);
+    });
+
+    it('should not merge get_file_diff files into investigatedFiles (diff hunks are not investigation)', async () => {
+        const workspaceSettings = createMockWorkspaceSettings();
+        const sessionManager = new SubagentSessionManager(workspaceSettings);
+        const { recursiveState, rootId } = createTestRecursiveState();
+
+        const executor = createMockExecutor({
+            success: true,
+            toolCalls: [
+                {
+                    id: 'tc-1',
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src\\auth\\handler.ts' },
+                    result: 'content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-2',
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['./src/auth.ts'] },
+                    result: 'diff',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ],
+        });
+
+        const tool = new RunSubagentBatchTool(workspaceSettings);
+        const investigatedFiles = new Set<string>();
+        const context = createBatchExecutionContext(executor, sessionManager, {
+            recursiveState,
+            currentDepth: 0,
+            currentAgentId: rootId,
+            investigatedFiles,
+        });
+
+        await tool.execute({ tasks: [{ task: VALID_TASK }] }, context);
+
+        expect(investigatedFiles.size).toBe(1);
+        expect(investigatedFiles.has('src/auth/handler.ts')).toBe(true);
+        expect(investigatedFiles.has('src/auth.ts')).toBe(false);
+    });
+
+    it('should merge subagent filesTouched from all investigation tool types', async () => {
+        const workspaceSettings = createMockWorkspaceSettings();
+        const sessionManager = new SubagentSessionManager(workspaceSettings);
+        const { recursiveState, rootId } = createTestRecursiveState();
+
+        const executor = createMockExecutor({
+            success: true,
+            toolCalls: [
+                {
+                    id: 'tc-1',
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/read.ts' },
+                    result: 'content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-2',
+                    toolName: 'find_symbol',
+                    arguments: { relative_path: 'src/symbol.ts' },
+                    result: 'symbol',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-3',
+                    toolName: 'find_usages',
+                    arguments: {
+                        file_path: 'src/usage.ts',
+                        symbol_name: 'foo',
+                    },
+                    result: 'usages',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-4',
+                    toolName: 'search_for_pattern',
+                    arguments: { search_path: 'src/regex.ts', pattern: 'foo' },
+                    result: 'matches',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: 'tc-5',
+                    toolName: 'validate_claim',
+                    arguments: {
+                        file: 'src/claim.ts',
+                        symbol: 'foo',
+                        claim_type: 'symbol_unused',
+                    },
+                    result: 'verified',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ],
+        });
+
+        const tool = new RunSubagentBatchTool(workspaceSettings);
+        const investigatedFiles = new Set<string>();
+        const context = createBatchExecutionContext(executor, sessionManager, {
+            recursiveState,
+            currentDepth: 0,
+            currentAgentId: rootId,
+            investigatedFiles,
+        });
+
+        await tool.execute({ tasks: [{ task: VALID_TASK }] }, context);
+
+        expect(investigatedFiles.size).toBe(5);
+        expect(investigatedFiles.has('src/read.ts')).toBe(true);
+        expect(investigatedFiles.has('src/symbol.ts')).toBe(true);
+        expect(investigatedFiles.has('src/usage.ts')).toBe(true);
+        expect(investigatedFiles.has('src/regex.ts')).toBe(true);
+        expect(investigatedFiles.has('src/claim.ts')).toBe(true);
+    });
+
+    it('should not merge into investigatedFiles when context lacks the set', async () => {
+        const workspaceSettings = createMockWorkspaceSettings();
+        const sessionManager = new SubagentSessionManager(workspaceSettings);
+        const { recursiveState, rootId } = createTestRecursiveState();
+
+        const executor = createMockExecutor({
+            success: true,
+            toolCalls: [
+                {
+                    id: 'tc-1',
+                    toolName: 'read_file',
+                    arguments: { file_path: 'src/file.ts' },
+                    result: 'content',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ],
+        });
+
+        const tool = new RunSubagentBatchTool(workspaceSettings);
+        const context = createBatchExecutionContext(executor, sessionManager, {
+            recursiveState,
+            currentDepth: 0,
+            currentAgentId: rootId,
+            investigatedFiles: undefined,
+        });
+
+        const result = await tool.execute(
+            { tasks: [{ task: VALID_TASK }] },
+            context
+        );
+        expect(result.success).toBe(true);
+        expect(result.data).toContain('Batch Results');
     });
 });
